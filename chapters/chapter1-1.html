@@ -1,0 +1,385 @@
+<h1>RAG vs Fine-Tuning vs Prompt Engineering</h1>
+<p style="color:#888; margin-bottom: 2rem;">Three fundamentally different approaches to customizing AI — understanding when and why to use each one.</p>
+
+<h2>The Core Problem</h2>
+
+<p>A base LLM (like GPT-4 or Claude) is trained on general internet knowledge. But in practice, you almost always need it to behave differently — to know your company's data, follow a specific tone, or reference documents it was never trained on. There are three strategies to bridge this gap, and each operates at a completely different level:</p>
+
+<table>
+    <thead>
+        <tr>
+            <th>Approach</th>
+            <th>What changes?</th>
+            <th>Analogy</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td><strong>Prompt Engineering</strong></td>
+            <td>Only the input (instructions)</td>
+            <td>Giving a chef verbal instructions before they cook</td>
+        </tr>
+        <tr>
+            <td><strong>Fine-Tuning</strong></td>
+            <td>The model's internal weights</td>
+            <td>Sending the chef to culinary school to learn a new cuisine</td>
+        </tr>
+        <tr>
+            <td><strong>RAG</strong></td>
+            <td>The context available at query time</td>
+            <td>Handing the chef a recipe book right when they need it</td>
+        </tr>
+    </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>1) Prompt Engineering</h2>
+
+<p>Prompt engineering is the simplest approach: you craft instructions that guide the base LLM's behavior <em>without changing the model itself</em>. The model reads your prompt, follows the instructions, and produces a customized output.</p>
+
+<div class="example-block">
+    <div class="label">Example Prompt</div>
+    <p>"Act as an expert chef. I'll give you ingredients and you'll provide a recipe. Use a friendly, casual tone. Always include cooking times and difficulty level."</p>
+</div>
+
+<p>The key insight: the model is unchanged. You're working entirely within the constraints of what it already knows. This is powerful for quick tasks but fundamentally limited — you can't teach it new facts this way.</p>
+
+<h3>How it Works</h3>
+
+<table>
+    <thead>
+        <tr>
+            <th>Step</th>
+            <th>What Happens</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>1</td>
+            <td>Write specific instructions in your prompt (role, format, constraints)</td>
+        </tr>
+        <tr>
+            <td>2</td>
+            <td>Optionally include examples (few-shot learning) to demonstrate desired output</td>
+        </tr>
+        <tr>
+            <td>3</td>
+            <td>Structure the prompt with clear context boundaries</td>
+        </tr>
+        <tr>
+            <td>4</td>
+            <td>Model processes prompt → generates customized output</td>
+        </tr>
+    </tbody>
+</table>
+
+<h3>Pros &amp; Cons</h3>
+
+<table>
+    <thead>
+        <tr>
+            <th style="color:#4ecca3;">✓ Pros</th>
+            <th style="color:#e94560;">✗ Cons</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>No technical expertise needed</td>
+            <td>Limited by model's base knowledge</td>
+        </tr>
+        <tr>
+            <td>Instant results — no setup time</td>
+            <td>Inconsistent results across sessions</td>
+        </tr>
+        <tr>
+            <td>Free (no training costs)</td>
+            <td>Token limits restrict complexity</td>
+        </tr>
+        <tr>
+            <td>Highly flexible, easy to iterate</td>
+            <td>Can't add new knowledge or facts</td>
+        </tr>
+        <tr>
+            <td>Works with any LLM</td>
+            <td>Requires careful prompt crafting for reliability</td>
+        </tr>
+    </tbody>
+</table>
+
+<h3>Best For</h3>
+
+<ul>
+    <li><strong>Quick prototyping</strong> — test an idea in minutes before committing to infrastructure</li>
+    <li><strong>General-purpose tasks</strong> — summarization, translation, code generation</li>
+    <li><strong>Small-scale applications</strong> — chatbots with simple behavior requirements</li>
+    <li><strong>When flexibility matters</strong> — you can change behavior instantly by editing the prompt</li>
+</ul>
+
+<hr class="divider">
+
+<h2>2) Fine-Tuning</h2>
+
+<p>Fine-tuning goes deeper: you take a base LLM and <em>permanently modify its neural network weights</em> by training it on domain-specific data. The result is a specialized model that has internalized new knowledge or behavior at a fundamental level.</p>
+
+<p>Think of it as education vs. instruction. Prompt engineering tells the model what to do right now. Fine-tuning <em>teaches</em> it — the knowledge becomes part of the model itself.</p>
+
+<div class="example-block">
+    <div class="label">Fine-Tuning Pipeline</div>
+    <p><strong>Base LLM</strong> → Company provides Training Data → Model trains on data → <strong>Weights are modified</strong> → Fine-Tuned LLM (Specialized Version)</p>
+</div>
+
+<h3>How it Works</h3>
+
+<table>
+    <thead>
+        <tr>
+            <th>Step</th>
+            <th>What Happens</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>1</td>
+            <td>Prepare domain-specific training data (thousands of examples in your target format)</td>
+        </tr>
+        <tr>
+            <td>2</td>
+            <td>Train the model on your data using GPU infrastructure</td>
+        </tr>
+        <tr>
+            <td>3</td>
+            <td>Model weights are permanently changed — it "learns" the new patterns</td>
+        </tr>
+        <tr>
+            <td>4</td>
+            <td>Result: a specialized version that behaves differently from the base model</td>
+        </tr>
+    </tbody>
+</table>
+
+<h3>Pros &amp; Cons</h3>
+
+<table>
+    <thead>
+        <tr>
+            <th style="color:#4ecca3;">✓ Pros</th>
+            <th style="color:#e94560;">✗ Cons</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>Deeply specialized knowledge</td>
+            <td>Expensive ($1,000s–$10,000s + GPU costs)</td>
+        </tr>
+        <tr>
+            <td>Consistent, reliable behavior</td>
+            <td>Requires ML expertise to do well</td>
+        </tr>
+        <tr>
+            <td>No prompt engineering needed at inference</td>
+            <td>Can "forget" general knowledge (catastrophic forgetting)</td>
+        </tr>
+        <tr>
+            <td>Can learn entirely new writing styles/tones</td>
+            <td>Needs full retraining to incorporate updates</td>
+        </tr>
+        <tr>
+            <td>Better for highly specific domains</td>
+            <td>Training data quality directly affects output quality</td>
+        </tr>
+    </tbody>
+</table>
+
+<h3>Best For</h3>
+
+<ul>
+    <li><strong>Specific writing styles/tones</strong> — brand voice, legal language, medical terminology</li>
+    <li><strong>Domain-specific language</strong> — when the base model doesn't understand your jargon</li>
+    <li><strong>High-volume, consistent tasks</strong> — same type of output thousands of times per day</li>
+    <li><strong>When accuracy is critical</strong> — and you can invest in proper training data curation</li>
+</ul>
+
+<hr class="divider">
+
+<h2>3) RAG (Retrieval-Augmented Generation)</h2>
+
+<p>RAG takes a fundamentally different approach: instead of changing the model or crafting better instructions, you give the model <em>access to external knowledge at query time</em>. The model itself stays unchanged — but it can now reference up-to-date, private, or specialized information before generating a response.</p>
+
+<p>This is the most practical approach for most enterprise use cases because it requires no model training, keeps data fresh, and provides source attribution.</p>
+
+<div class="example-block">
+    <div class="label">RAG Pipeline</div>
+    <p><strong>User Query</strong> + <strong>Knowledge Base</strong> → Retrieve relevant docs → Combine with Base LLM (unchanged) → <strong>Augmented Response</strong> (with citations)</p>
+</div>
+
+<h3>How it Works</h3>
+
+<table>
+    <thead>
+        <tr>
+            <th>Step</th>
+            <th>What Happens</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>1</td>
+            <td>Store documents in a vector database (converted to embeddings)</td>
+        </tr>
+        <tr>
+            <td>2</td>
+            <td>For each user query, retrieve the most relevant documents via similarity search</td>
+        </tr>
+        <tr>
+            <td>3</td>
+            <td>Combine retrieved docs with the query as context for the LLM</td>
+        </tr>
+        <tr>
+            <td>4</td>
+            <td>LLM generates an answer grounded in the retrieved context</td>
+        </tr>
+    </tbody>
+</table>
+
+<h3>Pros &amp; Cons</h3>
+
+<table>
+    <thead>
+        <tr>
+            <th style="color:#4ecca3;">✓ Pros</th>
+            <th style="color:#e94560;">✗ Cons</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>Always up-to-date information</td>
+            <td>Requires infrastructure setup (vector DB, embeddings)</td>
+        </tr>
+        <tr>
+            <td>No training required — add docs anytime</td>
+            <td>Retrieval quality directly affects results</td>
+        </tr>
+        <tr>
+            <td>Source attribution and citations built-in</td>
+            <td>Adds latency from the retrieval step</td>
+        </tr>
+        <tr>
+            <td>Can handle private/proprietary data securely</td>
+            <td>Context window limits how much can be passed to LLM</td>
+        </tr>
+        <tr>
+            <td>Cost-effective compared to fine-tuning</td>
+            <td>Complex queries may need multi-step retrieval</td>
+        </tr>
+    </tbody>
+</table>
+
+<h3>Best For</h3>
+
+<ul>
+    <li><strong>Knowledge bases &amp; documentation</strong> — internal wikis, product docs, policy databases</li>
+    <li><strong>Real-time/frequently updated info</strong> — news, market data, inventory systems</li>
+    <li><strong>Customer support systems</strong> — where accuracy and source-citing matter</li>
+    <li><strong>Compliance-heavy industries</strong> — healthcare, finance, legal (audit trail required)</li>
+</ul>
+
+<hr class="divider">
+
+<h2>Head-to-Head Comparison</h2>
+
+<p>The full picture at a glance:</p>
+
+<table>
+    <thead>
+        <tr>
+            <th>Dimension</th>
+            <th>Prompt Engineering</th>
+            <th>Fine-Tuning</th>
+            <th>RAG</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td><strong>Cost</strong></td>
+            <td>Free</td>
+            <td>$1,000s–$10,000s</td>
+            <td>Infrastructure only</td>
+        </tr>
+        <tr>
+            <td><strong>Setup Time</strong></td>
+            <td>Minutes</td>
+            <td>Days to Weeks</td>
+            <td>Hours to Days</td>
+        </tr>
+        <tr>
+            <td><strong>Expertise Needed</strong></td>
+            <td>None</td>
+            <td>ML engineering</td>
+            <td>Moderate (infra + embeddings)</td>
+        </tr>
+        <tr>
+            <td><strong>Data Freshness</strong></td>
+            <td>Static (model's training cutoff)</td>
+            <td>Static (training snapshot)</td>
+            <td>Always current</td>
+        </tr>
+        <tr>
+            <td><strong>Model Changes</strong></td>
+            <td>None — unchanged</td>
+            <td>Permanently modified</td>
+            <td>None — unchanged</td>
+        </tr>
+        <tr>
+            <td><strong>New Knowledge</strong></td>
+            <td>Cannot add</td>
+            <td>Baked into weights</td>
+            <td>Add anytime via documents</td>
+        </tr>
+        <tr>
+            <td><strong>Consistency</strong></td>
+            <td>Variable</td>
+            <td>High</td>
+            <td>Depends on retrieval quality</td>
+        </tr>
+        <tr>
+            <td><strong>Source Citations</strong></td>
+            <td>No</td>
+            <td>No</td>
+            <td>Yes — built-in</td>
+        </tr>
+        <tr>
+            <td><strong>Scalability</strong></td>
+            <td>Limited by context window</td>
+            <td>Unlimited (internalized)</td>
+            <td>Unlimited (external DB)</td>
+        </tr>
+    </tbody>
+</table>
+
+<h2>Decision Framework</h2>
+
+<p>Use this to pick the right approach for your situation:</p>
+
+<div class="example-block">
+    <div class="label">When to use Prompt Engineering</div>
+    <p>You need results <strong>right now</strong>, the task is general-purpose, you're prototyping, or you don't have training data or infrastructure budget.</p>
+</div>
+
+<div class="example-block">
+    <div class="label">When to use Fine-Tuning</div>
+    <p>You need the model to <strong>behave consistently</strong> in a very specific way (tone, format, domain language), you have high-quality training data, and the knowledge won't change frequently.</p>
+</div>
+
+<div class="example-block">
+    <div class="label">When to use RAG</div>
+    <p>You need <strong>up-to-date, verifiable answers</strong> from specific documents, the data changes frequently, you need source citations, or you're working with private/proprietary information.</p>
+</div>
+
+<p><strong>Can you combine them?</strong> Absolutely. In production, many systems use all three together: a fine-tuned model (for consistent tone) with RAG (for fresh data) and careful prompt engineering (for output formatting). The approaches are complementary, not mutually exclusive.</p>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter1">← Chapter 1: Retrieval-Augmented Generation</a>
+    <span></span>
+</nav>
