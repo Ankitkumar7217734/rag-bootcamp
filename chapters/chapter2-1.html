@@ -1,0 +1,359 @@
+<h1>Phase 2 &amp; 3: Query Processing and Generation</h1>
+<p style="color:#888; margin-bottom: 2rem;">How a user's question becomes a grounded, cited answer — the online half of the RAG pipeline.</p>
+
+<h2>The Online Pipeline</h2>
+
+<p>The ingestion phase (Chapter 2) built the searchable index offline. Now, every time a user sends a message, the <strong>online pipeline</strong> fires in real time. It has two phases: <em>Query Processing</em> (find the right context) and <em>Generation</em> (produce the answer).</p>
+
+<!-- Online pipeline overview -->
+<svg class="diagram-svg" viewBox="0 0 940 150" xmlns="http://www.w3.org/2000/svg" aria-label="Online query and generation pipeline">
+  <defs>
+    <marker id="a" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#818cf8"/>
+    </marker>
+  </defs>
+
+  <rect x="12" y="30" width="128" height="80" rx="8" fill="#16161a" stroke="#ffd166" stroke-width="1.5"/>
+  <text x="76" y="64" text-anchor="middle" fill="#ffd166" font-size="13" font-weight="600" font-family="system-ui">User</text>
+  <text x="76" y="85" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Query</text>
+
+  <line x1="142" y1="70" x2="178" y2="70" stroke="#818cf8" stroke-width="1.8" marker-end="url(#a)"/>
+
+  <rect x="181" y="30" width="152" height="80" rx="8" fill="#1a1a2e" stroke="#6366f1" stroke-width="1.5"/>
+  <text x="257" y="64" text-anchor="middle" fill="#6366f1" font-size="13" font-weight="600" font-family="system-ui">Embedding</text>
+  <text x="257" y="85" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Query → Vector</text>
+
+  <line x1="335" y1="70" x2="371" y2="70" stroke="#818cf8" stroke-width="1.8" marker-end="url(#a)"/>
+
+  <rect x="374" y="30" width="160" height="80" rx="8" fill="#1a1a2e" stroke="#4ecca3" stroke-width="1.5"/>
+  <text x="454" y="64" text-anchor="middle" fill="#4ecca3" font-size="13" font-weight="600" font-family="system-ui">Similarity</text>
+  <text x="454" y="85" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Search Vector DB</text>
+
+  <line x1="536" y1="70" x2="572" y2="70" stroke="#818cf8" stroke-width="1.8" marker-end="url(#a)"/>
+
+  <rect x="575" y="30" width="158" height="80" rx="8" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="654" y="64" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="600" font-family="system-ui">Augment</text>
+  <text x="654" y="85" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Query + Context</text>
+
+  <line x1="735" y1="70" x2="771" y2="70" stroke="#818cf8" stroke-width="1.8" marker-end="url(#a)"/>
+
+  <rect x="774" y="30" width="150" height="80" rx="8" fill="#1a1a2e" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="849" y="64" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="600" font-family="system-ui">LLM</text>
+  <text x="849" y="85" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Generate Answer</text>
+</svg>
+
+<hr class="divider">
+
+<h2>Phase 2: Query Processing</h2>
+
+<h3>Step 1 — Embed the User's Query</h3>
+
+<p>The user's question — say, <em>"What is RAG?"</em> — is passed through the <strong>same embedding model</strong> used during ingestion. This is critical: the query and the stored chunks must live in the same vector space for similarity search to work.</p>
+
+<pre>User query:  "What is RAG?"
+Embedding:   [0.3, 0.4, 0.6, 0.2, ...]    ← now a vector</pre>
+
+<h3>Step 2 — Similarity Search</h3>
+
+<p>The query vector is compared against every stored chunk vector in the database. The chunks with the <em>highest similarity scores</em> are retrieved as candidates.</p>
+
+<p>There are two main distance metrics used for this comparison:</p>
+
+<!-- Similarity metrics diagram -->
+<svg class="diagram-svg" viewBox="0 0 840 270" xmlns="http://www.w3.org/2000/svg" aria-label="Cosine similarity vs Euclidean distance illustration">
+  <defs>
+    <marker id="arrow" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L7,3 z" fill="#818cf8"/>
+    </marker>
+  </defs>
+
+  <!-- Cosine similarity panel -->
+  <rect x="20" y="12" width="382" height="246" rx="10" fill="#16161a" stroke="#26262c" stroke-width="1"/>
+  <text x="211" y="46" text-anchor="middle" fill="#818cf8" font-size="15" font-weight="700" font-family="system-ui">Cosine Similarity</text>
+  <text x="211" y="68" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Measures the angle between two vectors</text>
+
+  <!-- Vectors from origin at (120, 220) -->
+  <line x1="120" y1="220" x2="290" y2="110" stroke="#4ecca3" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="120" y1="220" x2="320" y2="150" stroke="#a78bfa" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- Arc showing angle -->
+  <path d="M 158,192 A 46,46 0 0,1 172,172" stroke="#ffd166" stroke-width="1.5" fill="none"/>
+  <text x="192" y="170" fill="#ffd166" font-size="12" font-family="system-ui">θ small = similar</text>
+  <text x="294" y="106" fill="#4ecca3" font-size="12" font-family="system-ui">Query</text>
+  <text x="324" y="147" fill="#a78bfa" font-size="12" font-family="system-ui">Chunk</text>
+  <text x="211" y="248" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Score: 1.0 = identical · 0.0 = unrelated</text>
+
+  <!-- Euclidean distance panel -->
+  <rect x="438" y="12" width="382" height="246" rx="10" fill="#16161a" stroke="#26262c" stroke-width="1"/>
+  <text x="629" y="46" text-anchor="middle" fill="#6366f1" font-size="15" font-weight="700" font-family="system-ui">Euclidean Distance</text>
+  <text x="629" y="68" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Measures straight-line distance in vector space</text>
+
+  <!-- Two points with a line -->
+  <circle cx="540" cy="160" r="9" fill="#4ecca3"/>
+  <circle cx="720" cy="188" r="9" fill="#a78bfa"/>
+  <line x1="540" y1="160" x2="720" y2="188" stroke="#ffd166" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <text x="630" y="152" text-anchor="middle" fill="#ffd166" font-size="12" font-family="system-ui">distance d</text>
+  <text x="516" y="180" fill="#4ecca3" font-size="12" font-family="system-ui">Query</text>
+  <text x="727" y="210" fill="#a78bfa" font-size="12" font-family="system-ui">Chunk</text>
+  <text x="629" y="248" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Score: 0 = identical · higher = less similar</text>
+</svg>
+
+<table>
+  <thead>
+    <tr><th>Metric</th><th>What it Measures</th><th>When to Use</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Cosine Similarity</strong></td><td>Angle between vectors (direction)</td><td>Text search — the default choice. Length-insensitive, so short and long texts compare fairly.</td></tr>
+    <tr><td><strong>Euclidean Distance</strong></td><td>Straight-line gap between points</td><td>When vector magnitudes matter (e.g., image embeddings, some numeric data).</td></tr>
+    <tr><td><strong>Dot Product</strong></td><td>Magnitude + direction</td><td>When embeddings are already normalized — fast and equivalent to cosine then.</td></tr>
+  </tbody>
+</table>
+
+<h3>Step 3 — Retrieved Results (D1, D2, D3)</h3>
+
+<p>The top-k most similar chunks are returned from the vector database. A typical RAG system retrieves <strong>3–10 chunks</strong> — enough context to answer well, but not so much that it overwhelms the LLM's context window.</p>
+
+<!-- Retrieved chunks + augmentation -->
+<svg class="diagram-svg" viewBox="0 0 840 290" xmlns="http://www.w3.org/2000/svg" aria-label="Retrieved chunks being combined with original query">
+  <defs>
+    <marker id="arr4" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#818cf8"/>
+    </marker>
+    <marker id="arr4y" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#ffd166"/>
+    </marker>
+  </defs>
+
+  <!-- Three retrieved docs (left column) -->
+  <rect x="12" y="18" width="158" height="62" rx="6" fill="#1a1a2e" stroke="#4ecca3" stroke-width="1.5"/>
+  <text x="91" y="44" text-anchor="middle" fill="#4ecca3" font-size="13" font-weight="600" font-family="system-ui">D1 — Chunk</text>
+  <text x="91" y="64" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">sim: 0.94</text>
+
+  <rect x="12" y="98" width="158" height="62" rx="6" fill="#1a1a2e" stroke="#4ecca3" stroke-width="1.5"/>
+  <text x="91" y="124" text-anchor="middle" fill="#4ecca3" font-size="13" font-weight="600" font-family="system-ui">D2 — Chunk</text>
+  <text x="91" y="144" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">sim: 0.89</text>
+
+  <rect x="12" y="178" width="158" height="62" rx="6" fill="#1a1a2e" stroke="#4ecca3" stroke-width="1.5"/>
+  <text x="91" y="204" text-anchor="middle" fill="#4ecca3" font-size="13" font-weight="600" font-family="system-ui">D3 — Chunk</text>
+  <text x="91" y="224" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">sim: 0.82</text>
+
+  <!-- Arrows from D1, D2, D3 converging to Augmented Context center (~y=140) -->
+  <line x1="172" y1="49" x2="342" y2="122" stroke="#818cf8" stroke-width="1.5" marker-end="url(#arr4)"/>
+  <line x1="172" y1="129" x2="342" y2="137" stroke="#818cf8" stroke-width="1.5" marker-end="url(#arr4)"/>
+  <line x1="172" y1="209" x2="342" y2="152" stroke="#818cf8" stroke-width="1.5" marker-end="url(#arr4)"/>
+
+  <!-- Original Query — placed BELOW the chunks, clearly separated -->
+  <rect x="192" y="248" width="162" height="36" rx="6" fill="#16161a" stroke="#ffd166" stroke-width="1.5"/>
+  <text x="273" y="264" text-anchor="middle" fill="#ffd166" font-size="12" font-weight="600" font-family="system-ui">Original Query</text>
+  <text x="273" y="278" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">"What is RAG?"</text>
+  <!-- Arrow from Query going up-right into bottom of Augmented Context -->
+  <line x1="354" y1="252" x2="430" y2="192" stroke="#ffd166" stroke-width="1.5" marker-end="url(#arr4y)"/>
+
+  <!-- Augmented Context box -->
+  <rect x="346" y="82" width="192" height="118" rx="8" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="442" y="110" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="600" font-family="system-ui">Augmented Context</text>
+  <text x="442" y="130" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Query + D1 text</text>
+  <text x="442" y="148" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">+ D2 text + D3 text</text>
+  <text x="442" y="166" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">+ metadata</text>
+
+  <!-- Arrow to LLM -->
+  <line x1="540" y1="141" x2="578" y2="141" stroke="#818cf8" stroke-width="1.5" marker-end="url(#arr4)"/>
+
+  <!-- LLM -->
+  <rect x="581" y="106" width="140" height="70" rx="8" fill="#1a1a2e" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="651" y="138" text-anchor="middle" fill="#a78bfa" font-size="15" font-weight="700" font-family="system-ui">LLM</text>
+  <text x="651" y="160" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Generate answer</text>
+
+  <!-- Arrow to checkmark -->
+  <line x1="723" y1="141" x2="766" y2="141" stroke="#818cf8" stroke-width="1.5" marker-end="url(#arr4)"/>
+  <text x="780" y="147" fill="#4ecca3" font-size="20" font-family="system-ui">✓</text>
+</svg>
+
+<h3>Step 4 — Enriching with Metadata</h3>
+
+<p>Before passing to the LLM, retrieved chunks are enriched with their metadata (source, page, date). This is what enables <strong>source citations</strong> in the final answer.</p>
+
+<pre>{
+  "original_query": "What is RAG?",
+  "retrieved_context": [
+    {
+      "text": "RAG stands for Retrieval-Augmented Generation...",
+      "source": "RAG_Bootcamp_Notes.pdf",
+      "page": 1
+    },
+    {
+      "text": "The vector database stores embeddings generated by...",
+      "source": "RAG_Architecture_Guide.pdf",
+      "page": 7
+    }
+  ]
+}</pre>
+
+<hr class="divider">
+
+<h2>Phase 3: Generation</h2>
+
+<h3>Step 5 — Building the Augmented Prompt</h3>
+
+<p>The original query and retrieved context are combined into a single prompt for the LLM. A typical template looks like this:</p>
+
+<div class="example-block">
+  <div class="label">Augmented Prompt Template</div>
+  <p><strong>System:</strong> You are a helpful assistant. Answer the question using ONLY the provided context. If the answer is not in the context, say "I don't know." Cite your sources.</p>
+  <p><strong>Context:</strong><br>
+  [D1]: "RAG stands for Retrieval-Augmented Generation. It is a technique that..."<br>
+  [D2]: "The vector database enables semantic search across millions of documents..."<br>
+  [D3]: "Embedding models convert text into numerical vectors that capture meaning..."</p>
+  <p><strong>Question:</strong> What is RAG?</p>
+</div>
+
+<h3>Step 6 — LLM Options</h3>
+
+<p>The augmented prompt is sent to a Large Language Model. The LLM's job is to <em>synthesize</em> the retrieved information into a natural, coherent answer — not to hallucinate from its training data. Common LLM providers for RAG pipelines:</p>
+
+<table>
+  <thead>
+    <tr><th>Provider</th><th>Notable Models</th><th>Strength</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>OpenAI</strong></td><td>GPT-4o, GPT-4 Turbo</td><td>Industry standard, large context window</td></tr>
+    <tr><td><strong>Anthropic</strong></td><td>Claude Sonnet, Claude Haiku</td><td>Long context, low hallucination rate</td></tr>
+    <tr><td><strong>Google</strong></td><td>Gemini 1.5 Pro</td><td>1M token context, multimodal</td></tr>
+    <tr><td><strong>Groq</strong></td><td>Llama 3 (via Groq)</td><td>Ultra-fast inference (open-source models)</td></tr>
+    <tr><td><strong>Meta / OSS</strong></td><td>Llama 3, Mistral</td><td>Self-hosted, no data leaves your infra</td></tr>
+  </tbody>
+</table>
+
+<h3>Step 7 — Summarized Output</h3>
+
+<p>The LLM produces the final answer, synthesizing only the retrieved context. A well-formed RAG response has three qualities:</p>
+
+<ol>
+  <li><strong>Grounded</strong> — every factual claim is traceable to a retrieved chunk</li>
+  <li><strong>Cited</strong> — the source and page are included so the user can verify</li>
+  <li><strong>Concise</strong> — the LLM summarizes; it doesn't dump the raw retrieved text</li>
+</ol>
+
+<div class="example-block">
+  <div class="label">Example RAG Response</div>
+  <p><strong>Question:</strong> "What is RAG?"</p>
+  <p><strong>Answer:</strong> "RAG (Retrieval-Augmented Generation) is a technique that enhances AI language models by combining their generation capabilities with external knowledge retrieval. Instead of relying solely on training data, the model retrieves relevant documents at query time and uses them as context to generate accurate, up-to-date answers. [Source: RAG_Bootcamp_Notes.pdf, p.1]"</p>
+</div>
+
+<hr class="divider">
+
+<h2>End-to-End: The Complete RAG Flow</h2>
+
+<!-- Full end-to-end flow  -->
+<svg class="diagram-svg" viewBox="0 0 1060 360" xmlns="http://www.w3.org/2000/svg" aria-label="Complete RAG end-to-end flow from user query to final answer">
+  <defs>
+    <marker id="ae" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#818cf8"/>
+    </marker>
+  </defs>
+
+  <!-- Phase labels -->
+  <text x="15" y="32" fill="#4f4f57" font-size="12" font-weight="700" font-family="system-ui" letter-spacing="1">OFFLINE (Ingestion)</text>
+  <text x="15" y="215" fill="#4f4f57" font-size="12" font-weight="700" font-family="system-ui" letter-spacing="1">ONLINE (Query Time)</text>
+
+  <!-- ═══ OFFLINE ROW (center y=81) ═══ -->
+  <rect x="15" y="46" width="122" height="70" rx="6" fill="#16161a" stroke="#36363e" stroke-width="1.2"/>
+  <text x="76" y="76" text-anchor="middle" fill="#b4b4be" font-size="12" font-weight="600" font-family="system-ui">Documents</text>
+  <text x="76" y="96" text-anchor="middle" fill="#4f4f57" font-size="11" font-family="system-ui">PDF · CSV · Web</text>
+
+  <line x1="139" y1="81" x2="172" y2="81" stroke="#818cf8" stroke-width="1.5" marker-end="url(#ae)"/>
+
+  <rect x="175" y="46" width="122" height="70" rx="6" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.2"/>
+  <text x="236" y="76" text-anchor="middle" fill="#818cf8" font-size="12" font-weight="600" font-family="system-ui">Splitter</text>
+  <text x="236" y="96" text-anchor="middle" fill="#4f4f57" font-size="11" font-family="system-ui">Chunks</text>
+
+  <line x1="299" y1="81" x2="332" y2="81" stroke="#818cf8" stroke-width="1.5" marker-end="url(#ae)"/>
+
+  <rect x="335" y="46" width="142" height="70" rx="6" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.2"/>
+  <text x="406" y="76" text-anchor="middle" fill="#818cf8" font-size="12" font-weight="600" font-family="system-ui">Embed Model</text>
+  <text x="406" y="96" text-anchor="middle" fill="#4f4f57" font-size="11" font-family="system-ui">Text → Vectors</text>
+
+  <line x1="479" y1="81" x2="512" y2="81" stroke="#818cf8" stroke-width="1.5" marker-end="url(#ae)"/>
+
+  <!-- ═══ VECTOR DB (shared, spans both rows) ═══ -->
+  <rect x="516" y="36" width="144" height="288" rx="8" fill="#16161a" stroke="#4ecca3" stroke-width="1.8"/>
+  <text x="588" y="66" text-anchor="middle" fill="#4ecca3" font-size="12" font-weight="700" font-family="system-ui">VECTOR DB</text>
+  <text x="588" y="86" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">[…]  doc1</text>
+  <text x="588" y="104" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">[…]  doc2</text>
+  <text x="588" y="122" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">[…]  doc3</text>
+
+  <!-- Retrieved results out of VDB right side -->
+  <text x="674" y="178" text-anchor="start" fill="#4ecca3" font-size="11" font-family="system-ui">Retrieved</text>
+  <line x1="662" y1="190" x2="700" y2="190" stroke="#818cf8" stroke-width="1.5" marker-end="url(#ae)"/>
+
+  <!-- ═══ ONLINE ROW (center y=265) ═══ -->
+  <rect x="15" y="230" width="122" height="70" rx="6" fill="#16161a" stroke="#ffd166" stroke-width="1.5"/>
+  <text x="76" y="260" text-anchor="middle" fill="#ffd166" font-size="12" font-weight="600" font-family="system-ui">User Query</text>
+  <text x="76" y="280" text-anchor="middle" fill="#4f4f57" font-size="11" font-family="system-ui">"What is RAG?"</text>
+
+  <line x1="139" y1="265" x2="172" y2="265" stroke="#818cf8" stroke-width="1.5" marker-end="url(#ae)"/>
+
+  <rect x="175" y="230" width="142" height="70" rx="6" fill="#1a1a2e" stroke="#6366f1" stroke-width="1.2"/>
+  <text x="246" y="260" text-anchor="middle" fill="#6366f1" font-size="12" font-weight="600" font-family="system-ui">Embed Model</text>
+  <text x="246" y="280" text-anchor="middle" fill="#4f4f57" font-size="11" font-family="system-ui">Query → Vector</text>
+
+  <!-- Long arrow to VDB with label -->
+  <text x="376" y="256" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">Similarity Search</text>
+  <line x1="319" y1="265" x2="514" y2="265" stroke="#818cf8" stroke-width="1.5" marker-end="url(#ae)"/>
+
+  <!-- ═══ AUGMENTED CONTEXT ═══ -->
+  <rect x="704" y="148" width="172" height="120" rx="6" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.2"/>
+  <text x="790" y="176" text-anchor="middle" fill="#818cf8" font-size="12" font-weight="600" font-family="system-ui">Augmented</text>
+  <text x="790" y="194" text-anchor="middle" fill="#818cf8" font-size="12" font-weight="600" font-family="system-ui">Context</text>
+  <text x="790" y="215" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">Query + D1 + D2</text>
+  <text x="790" y="234" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">+ D3 + metadata</text>
+
+  <line x1="878" y1="208" x2="914" y2="208" stroke="#818cf8" stroke-width="1.5" marker-end="url(#ae)"/>
+
+  <!-- ═══ LLM ═══ -->
+  <rect x="918" y="172" width="118" height="72" rx="6" fill="#1a1a2e" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="977" y="202" text-anchor="middle" fill="#a78bfa" font-size="14" font-weight="700" font-family="system-ui">LLM</text>
+  <text x="977" y="225" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">Answer ✓</text>
+</svg>
+
+<h2>Why This Architecture Works</h2>
+
+<table>
+  <thead>
+    <tr><th>Problem</th><th>How RAG Solves It</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Hallucination</strong></td>
+      <td>The LLM is instructed to answer only from retrieved context, not from its training weights.</td>
+    </tr>
+    <tr>
+      <td><strong>Stale Knowledge</strong></td>
+      <td>The vector database can be updated continuously — new documents are ingested without retraining the LLM.</td>
+    </tr>
+    <tr>
+      <td><strong>No Citations</strong></td>
+      <td>Metadata (source, page, date) is retrieved alongside the text and included in the prompt, enabling verifiable answers.</td>
+    </tr>
+    <tr>
+      <td><strong>Context Limits</strong></td>
+      <td>Instead of stuffing entire documents into the prompt, only the top-k relevant chunks are passed — staying well within the LLM's context window.</td>
+    </tr>
+    <tr>
+      <td><strong>Private Data</strong></td>
+      <td>Your documents stay in your own vector database. The LLM only sees what you choose to retrieve and pass as context.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">Summary</div>
+  <p><strong>Ingestion</strong> (offline): Documents → Chunks → Embeddings → Vector DB</p>
+  <p><strong>Query Processing</strong> (online): User Query → Embed → Similarity Search → Retrieve Top-K Chunks</p>
+  <p><strong>Generation</strong> (online): Original Query + Retrieved Chunks → Augmented Prompt → LLM → Cited Answer</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter2">← Phase 1: Document Ingestion &amp; Preprocessing</a>
+    <span></span>
+</nav>

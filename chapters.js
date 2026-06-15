@@ -20,5 +20,17 @@ const chapters = [
                 description: "Comparing the three main approaches to AI customization."
             }
         ]
+    },
+    {
+        id: "chapter2",
+        title: "Chapter 2: Core Components of RAG",
+        description: "Deep dive into Phase 1 — Document Ingestion: loading data sources, chunking with overlap, generating embeddings, and storing vectors in FAISS, ChromaDB, Pinecone, and more.",
+        children: [
+            {
+                id: "chapter2-1",
+                title: "Phase 2 & 3: Query Processing and Generation",
+                description: "How a user query becomes a grounded, cited answer — embedding the query, similarity search (cosine vs Euclidean), context augmentation, LLM selection, and the complete end-to-end flow."
+            }
+        ]
     }
 ];

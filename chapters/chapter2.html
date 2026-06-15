@@ -1,0 +1,225 @@
+<h1>Chapter 2: Core Components of RAG</h1>
+<p style="color:#888; margin-bottom: 2rem;">A deep dive into the three phases of RAG — ingestion, retrieval, and generation — and the tools that power each one.</p>
+
+<h2>Overview</h2>
+
+<p>In Chapter 1 we saw what RAG is and why it matters. Now we break open the architecture and examine each component in detail. RAG is a pipeline with three distinct phases. Understanding each phase — and the decisions made within it — is what separates a working RAG system from a great one.</p>
+
+<!-- Pipeline diagram -->
+<svg class="diagram-svg" viewBox="0 0 980 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="RAG three-phase pipeline">
+  <defs>
+    <marker id="c2-ph-arr" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L10,4 z" fill="#818cf8"/>
+    </marker>
+  </defs>
+
+  <!-- Phase 1 -->
+  <rect x="20" y="50" width="278" height="160" rx="12" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
+  <text x="159" y="100" text-anchor="middle" fill="#818cf8" font-size="14" font-weight="700" font-family="system-ui" letter-spacing="1">PHASE 1</text>
+  <text x="159" y="133" text-anchor="middle" fill="#ececf1" font-size="20" font-weight="600" font-family="system-ui">Document Ingestion</text>
+  <text x="159" y="164" text-anchor="middle" fill="#76767f" font-size="14" font-family="system-ui">PDFs · Web · Databases</text>
+
+  <!-- Arrow 1→2 -->
+  <line x1="300" y1="130" x2="354" y2="130" stroke="#818cf8" stroke-width="2.5" marker-end="url(#c2-ph-arr)"/>
+
+  <!-- Phase 2 -->
+  <rect x="358" y="50" width="278" height="160" rx="12" fill="#1a1a2e" stroke="#6366f1" stroke-width="2"/>
+  <text x="497" y="100" text-anchor="middle" fill="#6366f1" font-size="14" font-weight="700" font-family="system-ui" letter-spacing="1">PHASE 2</text>
+  <text x="497" y="133" text-anchor="middle" fill="#ececf1" font-size="20" font-weight="600" font-family="system-ui">Query Processing</text>
+  <text x="497" y="164" text-anchor="middle" fill="#76767f" font-size="14" font-family="system-ui">Embed · Search · Retrieve</text>
+
+  <!-- Arrow 2→3 -->
+  <line x1="638" y1="130" x2="692" y2="130" stroke="#818cf8" stroke-width="2.5" marker-end="url(#c2-ph-arr)"/>
+
+  <!-- Phase 3 -->
+  <rect x="696" y="50" width="264" height="160" rx="12" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2"/>
+  <text x="828" y="100" text-anchor="middle" fill="#a78bfa" font-size="14" font-weight="700" font-family="system-ui" letter-spacing="1">PHASE 3</text>
+  <text x="828" y="133" text-anchor="middle" fill="#ececf1" font-size="20" font-weight="600" font-family="system-ui">Generation</text>
+  <text x="828" y="164" text-anchor="middle" fill="#76767f" font-size="14" font-family="system-ui">Augment · LLM · Output</text>
+</svg>
+
+<hr class="divider">
+
+<h2>Phase 1: Document Ingestion &amp; Preprocessing</h2>
+
+<p>This is the <em>offline</em> phase — it runs before any user ever asks a question. Its job is to take raw documents and transform them into a format that can be searched by meaning, not just keywords.</p>
+
+<h3>Step 1 — Load Your Data Sources</h3>
+
+<p>RAG can ingest virtually any structured or unstructured data source:</p>
+
+<table>
+  <thead>
+    <tr><th>Source Type</th><th>Examples</th><th>Common Use Case</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>PDFs / Docs</strong></td><td>Annual reports, manuals, policies</td><td>Enterprise knowledge bases</td></tr>
+    <tr><td><strong>Web Pages</strong></td><td>Product docs, Wikipedia, blogs</td><td>Research assistants</td></tr>
+    <tr><td><strong>Databases</strong></td><td>SQL tables, CSV exports</td><td>Business intelligence</td></tr>
+    <tr><td><strong>CSV / Spreadsheets</strong></td><td>Inventory, pricing, schedules</td><td>Customer support, e-commerce</td></tr>
+  </tbody>
+</table>
+
+<h3>Step 2 — Splitting Documents into Chunks</h3>
+
+<p>An LLM has a fixed <strong>context size</strong> — the maximum amount of text it can read at once. A 500-page PDF cannot be sent whole. The Document Splitter breaks it into smaller, overlapping pieces called <strong>chunks</strong>.</p>
+
+<!-- Chunk splitting diagram -->
+<svg class="diagram-svg" viewBox="0 0 880 230" xmlns="http://www.w3.org/2000/svg" aria-label="Document splitting into chunks">
+  <defs>
+    <marker id="arr2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#818cf8"/>
+    </marker>
+  </defs>
+
+  <!-- Document -->
+  <rect x="20" y="38" width="138" height="150" rx="8" fill="#16161a" stroke="#36363e" stroke-width="1.5"/>
+  <text x="89" y="68" text-anchor="middle" fill="#b4b4be" font-size="12" font-family="system-ui">pdf / doc</text>
+  <line x1="34" y1="82" x2="144" y2="82" stroke="#26262c" stroke-width="1"/>
+  <line x1="34" y1="98" x2="144" y2="98" stroke="#26262c" stroke-width="1"/>
+  <line x1="34" y1="114" x2="144" y2="114" stroke="#26262c" stroke-width="1"/>
+  <line x1="34" y1="130" x2="144" y2="130" stroke="#26262c" stroke-width="1"/>
+  <line x1="34" y1="146" x2="124" y2="146" stroke="#26262c" stroke-width="1"/>
+  <text x="89" y="174" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">500 pages</text>
+
+  <!-- Arrow + Splitter label -->
+  <text x="198" y="105" text-anchor="middle" fill="#818cf8" font-size="12" font-weight="600" font-family="system-ui">Splitter</text>
+  <line x1="161" y1="116" x2="240" y2="116" stroke="#818cf8" stroke-width="1.8" marker-end="url(#arr2)"/>
+
+  <!-- Chunk 1 -->
+  <rect x="254" y="24" width="158" height="64" rx="6" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="333" y="51" text-anchor="middle" fill="#818cf8" font-size="12" font-weight="600" font-family="system-ui">Chunk 1</text>
+  <text x="333" y="71" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">pages 1–10</text>
+
+  <!-- Chunk 2 -->
+  <rect x="254" y="102" width="158" height="64" rx="6" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="333" y="129" text-anchor="middle" fill="#818cf8" font-size="12" font-weight="600" font-family="system-ui">Chunk 2</text>
+  <text x="333" y="149" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">pages 9–19 (overlap)</text>
+
+  <!-- Chunk 3 hint -->
+  <rect x="258" y="178" width="150" height="28" rx="4" fill="#16161a" stroke="#36363e" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="333" y="196" text-anchor="middle" fill="#4f4f57" font-size="11" font-family="system-ui">Chunk 3… and so on</text>
+
+  <!-- Arrow to Embedding Model -->
+  <text x="490" y="106" text-anchor="middle" fill="#818cf8" font-size="12" font-weight="600" font-family="system-ui">Embedding</text>
+  <text x="490" y="122" text-anchor="middle" fill="#818cf8" font-size="12" font-weight="600" font-family="system-ui">Model</text>
+  <line x1="415" y1="134" x2="564" y2="134" stroke="#818cf8" stroke-width="1.8" marker-end="url(#arr2)"/>
+
+  <!-- Vector DB cylinder -->
+  <ellipse cx="680" cy="76" rx="76" ry="26" fill="#16161a" stroke="#4ecca3" stroke-width="1.5"/>
+  <rect x="604" y="76" width="152" height="96" fill="#16161a" stroke="#4ecca3" stroke-width="1.5"/>
+  <ellipse cx="680" cy="172" rx="76" ry="26" fill="#16161a" stroke="#4ecca3" stroke-width="1.5"/>
+  <text x="680" y="128" text-anchor="middle" fill="#4ecca3" font-size="13" font-weight="600" font-family="system-ui">Vector DB</text>
+  <text x="680" y="150" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">[0.6, 0.5, 0.4…]</text>
+</svg>
+
+<div class="example-block">
+  <div class="label">Why Overlap Matters</div>
+  <p>If a chunk ends at page 10 and the next starts at page 11, a sentence that spans the page boundary gets cut in half. <strong>Overlap</strong> (e.g., pages 9–19 instead of 11–20) ensures no meaning is lost at the seams. A typical overlap is 10–20% of the chunk size.</p>
+</div>
+
+<h3>Step 3 — Generating Embeddings</h3>
+
+<p>An <strong>embedding model</strong> converts each chunk of text into a vector — a list of numbers that encodes the <em>semantic meaning</em> of that text. Chunks with similar meaning end up with numerically similar vectors, even if they use completely different words.</p>
+
+<pre>[0.6, 0.5, 0.4, 0.1, 0.7, ...]   ← "What is a neural network?"
+[0.6, 0.5, 0.3, 0.2, 0.6, ...]   ← "Explain deep learning models"
+[0.1, 0.9, 0.2, 0.8, 0.1, ...]   ← "Best recipe for chocolate cake"</pre>
+
+<p>The first two sentences are semantically close (high vector similarity); the third is unrelated (low similarity). Popular embedding models include:</p>
+
+<table>
+  <thead>
+    <tr><th>Provider</th><th>Model</th><th>Key Trait</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>OpenAI</strong></td><td>text-embedding-3-large</td><td>High accuracy, widely used</td></tr>
+    <tr><td><strong>HuggingFace</strong></td><td>all-MiniLM-L6-v2</td><td>Free, runs locally, fast</td></tr>
+    <tr><td><strong>Cohere</strong></td><td>embed-english-v3.0</td><td>Multilingual, strong for search</td></tr>
+    <tr><td><strong>Google</strong></td><td>text-embedding-004</td><td>Best for Vertex AI pipelines</td></tr>
+  </tbody>
+</table>
+
+<h3>Step 4 — Storing in a Vector Database</h3>
+
+<p>The generated vectors (plus the original text and metadata) are stored in a <strong>Vector Database</strong>. This is a specialized database optimized to perform fast similarity searches across millions of vectors.</p>
+
+<table>
+  <thead>
+    <tr><th>Vector DB</th><th>Type</th><th>Best For</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>FAISS</strong></td><td>In-memory library</td><td>Local prototyping, speed</td></tr>
+    <tr><td><strong>ChromaDB</strong></td><td>Open-source, embedded</td><td>Small-to-mid scale, fast setup</td></tr>
+    <tr><td><strong>Pinecone</strong></td><td>Managed cloud service</td><td>Production at scale</td></tr>
+    <tr><td><strong>DataStax (Astra)</strong></td><td>Managed (Cassandra-based)</td><td>Enterprise, hybrid workloads</td></tr>
+    <tr><td><strong>Weaviate</strong></td><td>Open-source / cloud</td><td>Multi-modal (text + images)</td></tr>
+  </tbody>
+</table>
+
+<p>Each stored entry looks something like this:</p>
+
+<pre>{
+  "id": "doc_42_chunk_3",
+  "vector": [0.6, 0.5, 0.4, ...],
+  "text": "Revenue increased by 10% in Q3...",
+  "metadata": {
+    "source": "Tesla_Annual_Report_2023.pdf",
+    "page": 42,
+    "date": "2023-10-15"
+  }
+}</pre>
+
+<p>The <code>metadata</code> field is critical for citations — it tells the LLM <em>where</em> the retrieved fact came from, enabling transparent, auditable answers.</p>
+
+<hr class="divider">
+
+<h2>Ingestion Phase — Full Flow Summary</h2>
+
+<!-- Full ingestion flow -->
+<svg class="diagram-svg" viewBox="0 0 920 150" xmlns="http://www.w3.org/2000/svg" aria-label="Full ingestion pipeline">
+  <defs>
+    <marker id="arr3" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#818cf8"/>
+    </marker>
+  </defs>
+
+  <rect x="12" y="30" width="138" height="78" rx="8" fill="#16161a" stroke="#36363e" stroke-width="1.5"/>
+  <text x="81" y="63" text-anchor="middle" fill="#b4b4be" font-size="13" font-weight="600" font-family="system-ui">Data Sources</text>
+  <text x="81" y="84" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">PDF · CSV · Web</text>
+
+  <line x1="152" y1="69" x2="188" y2="69" stroke="#818cf8" stroke-width="1.8" marker-end="url(#arr3)"/>
+
+  <rect x="191" y="30" width="138" height="78" rx="8" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="260" y="63" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="600" font-family="system-ui">Splitter</text>
+  <text x="260" y="84" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Chunk + Overlap</text>
+
+  <line x1="331" y1="69" x2="367" y2="69" stroke="#818cf8" stroke-width="1.8" marker-end="url(#arr3)"/>
+
+  <rect x="370" y="30" width="158" height="78" rx="8" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="449" y="63" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="600" font-family="system-ui">Embedding Model</text>
+  <text x="449" y="84" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Text → Vectors</text>
+
+  <line x1="530" y1="69" x2="566" y2="69" stroke="#818cf8" stroke-width="1.8" marker-end="url(#arr3)"/>
+
+  <rect x="569" y="30" width="158" height="78" rx="8" fill="#1a1a2e" stroke="#4ecca3" stroke-width="1.5"/>
+  <text x="648" y="63" text-anchor="middle" fill="#4ecca3" font-size="13" font-weight="600" font-family="system-ui">Vector Database</text>
+  <text x="648" y="84" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Store + Index</text>
+
+  <line x1="729" y1="69" x2="765" y2="69" stroke="#818cf8" stroke-width="1.8" marker-end="url(#arr3)"/>
+
+  <rect x="768" y="30" width="136" height="78" rx="8" fill="#16161a" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="836" y="63" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="600" font-family="system-ui">Ready to</text>
+  <text x="836" y="84" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="600" font-family="system-ui">Query ✓</text>
+</svg>
+
+<div class="example-block">
+  <div class="label">Key Insight</div>
+  <p>The ingestion phase runs <strong>once</strong> (or periodically when docs change). Every user query then benefits from the pre-built index — no re-processing needed. This is what makes RAG fast at query time.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter1-1">← RAG vs Fine-Tuning vs Prompt Engineering</a>
+    <a href="#chapter2-1" class="next">Phase 2 &amp; 3: Query Processing &amp; Generation →</a>
+</nav>
