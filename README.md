@@ -40,9 +40,9 @@ RAG_webpages/
 ├── style.css           # All styles
 ├── chapters.js         # Chapter config (edit this to add chapters)
 ├── app.js              # Router and sidebar logic
-├── chapters/           # One HTML file per chapter
-│   ├── chapter1.html
-│   ├── chapter2.html
-│   └── chapter3.html
-└── Architecture of RAG.png
+├── Asset/              # Assets like images
+│   └── images.png
+└── chapters/           # One HTML file per chapter
+    ├── chapter1.html
+    └── chapter1-1.html
 ```
