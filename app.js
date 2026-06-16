@@ -299,32 +299,81 @@ function handleRoute() {
     } else {
         buildHomepage();
     }
-    closeSidebar();
+    // After navigating, dismiss the mobile drawer only — never collapse the
+    // desktop sidebar just because the user clicked a chapter link.
+    if (isMobileViewport()) closeSidebar();
 }
 
-/* ---- Mobile sidebar toggle ---- */
+/* ---- Sidebar open/close ----
+ * Two modes share one toggle button:
+ *   - Mobile (<= 860px): the sidebar is an off-canvas drawer. "open" slides it
+ *     in over a backdrop; closing hides it.
+ *   - Desktop (> 860px): the sidebar is always-on by default. Closing collapses
+ *     it out of the layout (the article reclaims the space); the choice is
+ *     remembered across visits via localStorage.
+ */
+const SIDEBAR_PREF_KEY = 'sidebarCollapsed';
+
+function isMobileViewport() {
+    return window.matchMedia('(max-width: 860px)').matches;
+}
+
 function openSidebar() {
-    document.getElementById('sidebar').classList.add('open');
-    document.getElementById('sidebar-backdrop').classList.add('visible');
+    if (isMobileViewport()) {
+        document.getElementById('sidebar').classList.add('open');
+        document.getElementById('sidebar-backdrop').classList.add('visible');
+    } else {
+        document.body.classList.remove('sidebar-collapsed');
+        try { localStorage.setItem(SIDEBAR_PREF_KEY, 'false'); } catch (e) { /* ignore */ }
+    }
 }
 
 function closeSidebar() {
+    // Always clear the mobile drawer state…
     const sidebar = document.getElementById('sidebar');
     if (sidebar) sidebar.classList.remove('open');
     const backdrop = document.getElementById('sidebar-backdrop');
     if (backdrop) backdrop.classList.remove('visible');
+
+    // …and on desktop, collapse it out of the layout and remember the choice.
+    if (!isMobileViewport()) {
+        document.body.classList.add('sidebar-collapsed');
+        try { localStorage.setItem(SIDEBAR_PREF_KEY, 'true'); } catch (e) { /* ignore */ }
+    }
+}
+
+function toggleSidebar() {
+    if (isMobileViewport()) {
+        document.getElementById('sidebar').classList.contains('open')
+            ? closeSidebar()
+            : openSidebar();
+    } else {
+        document.body.classList.contains('sidebar-collapsed')
+            ? openSidebar()
+            : closeSidebar();
+    }
 }
 
 function wireSidebarToggle() {
     const toggle = document.getElementById('sidebar-toggle');
+    const closeBtn = document.getElementById('sidebar-close');
     const backdrop = document.getElementById('sidebar-backdrop');
-    if (toggle) {
-        toggle.addEventListener('click', () => {
-            const sidebar = document.getElementById('sidebar');
-            sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
-        });
-    }
+
+    if (toggle) toggle.addEventListener('click', toggleSidebar);
+    if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
     if (backdrop) backdrop.addEventListener('click', closeSidebar);
+
+    // Escape closes the sidebar
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeSidebar();
+    });
+
+    // Restore the remembered desktop collapsed state
+    let collapsed = false;
+    try { collapsed = localStorage.getItem(SIDEBAR_PREF_KEY) === 'true'; } catch (e) { /* ignore */ }
+    if (collapsed && !isMobileViewport()) {
+        document.body.classList.add('sidebar-collapsed');
+    }
 }
 
 // Initialize
