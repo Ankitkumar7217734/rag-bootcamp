@@ -37,5 +37,10 @@ const chapters = [
         id: "chapter3",
         title: "Chapter 3: Data Ingestion & Parsing",
         description: "Turning raw files into searchable Documents — the LangChain Document object, text/PDF/Word/CSV/Excel/JSON/SQL loaders, text-splitting strategies, artifact cleaning, and metadata enrichment, with code and sample data."
+    },
+    {
+        id: "chapter4",
+        title: "Chapter 4: Vector Embeddings & Vector Databases",
+        description: "How text becomes numbers — embeddings that capture meaning, cosine similarity, the movie/Netflix feature analogy, HuggingFace vs OpenAI embedding models, batch embeddings, and building semantic search."
     }
 ];

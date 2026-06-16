@@ -1,0 +1,326 @@
+<h1>Chapter 4: Vector Embeddings &amp; Vector Databases</h1>
+<p style="color:#888; margin-bottom: 2rem;">How words and documents become <em>numbers</em> — the embeddings that capture meaning, the math that measures similarity, and the databases built to search them at scale.</p>
+
+<h2>Overview</h2>
+
+<p>Chapter 3 turned every messy file into a clean list of <code>Document</code> objects. But a computer cannot search <em>text</em> by meaning — it only understands <strong>numbers</strong>. This chapter is about the bridge between the two: the <strong>embedding</strong>.</p>
+
+<p>An embedding is a way to <strong>translate words into the language computers understand: numbers</strong>. Once text lives as vectors, "find me something similar" becomes a geometry problem — and that is exactly what a <strong>vector database</strong> is built to solve, fast, at the scale of millions of records.</p>
+
+<!-- Text → embeddings → vector DB flow -->
+<svg class="diagram-svg" viewBox="0 0 940 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Text to embeddings to vector database flow">
+  <defs>
+    <marker id="c4-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+  </defs>
+
+  <!-- Raw text -->
+  <text x="95" y="30" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="700" font-family="system-ui" letter-spacing="1">TEXT / DOCS</text>
+  <rect x="20" y="48" width="150" height="34" rx="6" fill="#16161a" stroke="#36363e" stroke-width="1.5"/>
+  <text x="95" y="70" text-anchor="middle" fill="#b4b4be" font-size="13" font-family="system-ui">"cat", "kitten"</text>
+  <rect x="20" y="90" width="150" height="34" rx="6" fill="#16161a" stroke="#36363e" stroke-width="1.5"/>
+  <text x="95" y="112" text-anchor="middle" fill="#b4b4be" font-size="13" font-family="system-ui">document chunks</text>
+
+  <line x1="172" y1="91" x2="214" y2="91" stroke="#818cf8" stroke-width="2" marker-end="url(#c4-arr)"/>
+
+  <!-- Embedding model -->
+  <rect x="218" y="52" width="178" height="78" rx="10" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
+  <text x="307" y="86" text-anchor="middle" fill="#818cf8" font-size="15" font-weight="600" font-family="system-ui">Embedding Model</text>
+  <text x="307" y="108" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">OpenAI · HuggingFace</text>
+
+  <line x1="398" y1="91" x2="440" y2="91" stroke="#818cf8" stroke-width="2" marker-end="url(#c4-arr)"/>
+
+  <!-- Vectors -->
+  <rect x="444" y="52" width="178" height="78" rx="10" fill="#1a1a2e" stroke="#6366f1" stroke-width="2"/>
+  <text x="533" y="82" text-anchor="middle" fill="#6366f1" font-size="15" font-weight="600" font-family="system-ui">Vectors</text>
+  <text x="533" y="106" text-anchor="middle" fill="#76767f" font-size="12" font-family="monospace">[0.2, 0.5, 0.7, …]</text>
+
+  <line x1="624" y1="91" x2="666" y2="91" stroke="#818cf8" stroke-width="2" marker-end="url(#c4-arr)"/>
+
+  <!-- Vector DB -->
+  <rect x="670" y="52" width="178" height="78" rx="10" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2"/>
+  <text x="759" y="86" text-anchor="middle" fill="#a78bfa" font-size="15" font-weight="600" font-family="system-ui">Vector Database</text>
+  <text x="759" y="108" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">store + index</text>
+
+  <!-- Down arrow to similarity search -->
+  <line x1="759" y1="132" x2="759" y2="182" stroke="#818cf8" stroke-width="2" marker-end="url(#c4-arr)"/>
+
+  <rect x="630" y="186" width="258" height="62" rx="10" fill="#16161a" stroke="#4ecca3" stroke-width="1.8"/>
+  <text x="759" y="214" text-anchor="middle" fill="#4ecca3" font-size="14" font-weight="600" font-family="system-ui">Similarity Search</text>
+  <text x="759" y="234" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">find nearest meaning ✓</text>
+</svg>
+
+<div class="example-block">
+  <div class="label">The Core Idea</div>
+  <p>Traditional databases match <strong>exact</strong> values — search "cat" and you get rows containing the literal word "cat". A vector database matches <strong>meaning</strong> — search "cat" and it can surface "kitten", "feline", or "tabby", because those live <em>near each other</em> in vector space.</p>
+</div>
+
+<hr class="divider">
+
+<h2>What Is an Embedding?</h2>
+
+<p>Think of an embedding as a way to translate words into numbers — but not <em>random</em> numbers. The numbers are arranged so that <strong>things with similar meaning end up close together</strong>. Each word becomes a point (a vector) in space.</p>
+
+<p>Real embeddings have hundreds or thousands of dimensions, but the idea is easiest to see in 2D. Here we hand-place a few animals on a grid:</p>
+
+<pre>import numpy as np
+import matplotlib.pyplot as plt
+
+# Simplified 2D example (real embeddings are higher dimensional)
+word_embeddings = {
+    "cat":    [1, 5],
+    "dog":    [3, 1],
+    "mouse":  [5, 8],
+    "rabbit": [7, 3],
+    "snake":  [9, 11],
+    "tiger":  [11, 6],
+}
+
+fig, ax = plt.subplots(figsize=(6, 6))
+for word, emb in word_embeddings.items():
+    ax.scatter(emb[0], emb[1])
+    ax.annotate(word, (emb[0], emb[1]))
+ax.set_title("Word Embeddings in 2D")
+ax.set_xlabel("Embedding Dimension 1")
+ax.set_ylabel("Embedding Dimension 2")
+ax.grid(True, alpha=0.5)
+plt.show()</pre>
+
+<p>The position carries meaning. In a <em>real</em> embedding model, "cat" and "kitten" would sit almost on top of each other, while "cat" and "car" would be far apart — even though they share three letters. <strong>Embeddings encode meaning, not spelling.</strong></p>
+
+<hr class="divider">
+
+<h2>Traditional Database vs Vector Database</h2>
+
+<p>Why do we need a new kind of database at all? Because the question we ask of text data has changed.</p>
+
+<table>
+  <thead>
+    <tr><th></th><th>Traditional Database</th><th>Vector Database</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Matches on</strong></td><td>Exact values / keywords</td><td>Semantic meaning (similarity)</td></tr>
+    <tr><td><strong>Query</strong></td><td><code>WHERE name = 'cat'</code></td><td>"find things <em>like</em> cat"</td></tr>
+    <tr><td><strong>Stores</strong></td><td>Rows &amp; columns</td><td>High-dimensional vectors</td></tr>
+    <tr><td><strong>Returns</strong></td><td>Exact matches only</td><td>Ranked nearest neighbors</td></tr>
+    <tr><td><strong>Great for</strong></td><td>Transactions, lookups</td><td>Search, recommendations, RAG</td></tr>
+  </tbody>
+</table>
+
+<p>A vector database <strong>stores</strong> embeddings and lets you <strong>apply</strong> a query vector against all of them to find the closest matches — for example pulling back the vector <code>[0.2, 0.5, 0.7]</code> as the nearest neighbor to your search. That "closest" calculation is where similarity math comes in.</p>
+
+<hr class="divider">
+
+<h2>Measuring Similarity — Cosine Similarity</h2>
+
+<p>If words are vectors, "how similar are two words?" becomes "how close are two vectors?" The most common measure in RAG is <strong>cosine similarity</strong>: it measures the <em>angle</em> between two vectors, ignoring their length.</p>
+
+<ul>
+  <li><strong>Close to 1</strong> → very similar (small angle, same direction)</li>
+  <li><strong>Close to 0</strong> → unrelated (perpendicular)</li>
+  <li><strong>Close to -1</strong> → opposite meaning</li>
+</ul>
+
+<pre>import numpy as np
+
+def cosine_similarity(v1, v2):
+    """Measures the angle between two vectors.
+       ~1 = very similar, ~0 = unrelated, ~-1 = opposite."""
+    dot_product = np.dot(v1, v2)
+    norm_a = np.linalg.norm(v1)
+    norm_b = np.linalg.norm(v2)
+    return dot_product / (norm_a * norm_b)</pre>
+
+<p>The formula behind that one line is:</p>
+
+<pre>                 A · B
+cos(θ) = ─────────────────────
+            ‖A‖ × ‖B‖</pre>
+
+<p>Let's compare a cat to a kitten, and a cat to a car:</p>
+
+<pre>cat_vector    = [0.8,  0.6, 0.2]
+kitten_vector = [0.9,  0.7, 0.1]
+car_vector    = [-0.5, 0.3, 0.2]
+
+print(cosine_similarity(cat_vector, kitten_vector))   # → 0.993  (very similar)
+print(cosine_similarity(cat_vector, car_vector))      # → -0.27  (unrelated/opposite)</pre>
+
+<p>Cat and kitten score ~0.99 — nearly identical in meaning. Cat and car, despite the spelling, score negative. This single number is the engine behind every semantic search.</p>
+
+<hr class="divider">
+
+<h2>Feature Representation — The Movie Analogy</h2>
+
+<p>Why do similar things get similar vectors? Because each dimension can be thought of as a <strong>feature</strong>. Imagine scoring movies on three features — how much <em>Action</em>, <em>Comedy</em>, and <em>Suspense</em> each contains:</p>
+
+<table>
+  <thead>
+    <tr><th>Movie</th><th>Action</th><th>Comedy</th><th>Suspense</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Iron Man</strong></td><td>0.95</td><td>0.2</td><td>0.6</td></tr>
+    <tr><td><strong>Hulk</strong></td><td>0.96</td><td>0.4</td><td>0.3</td></tr>
+    <tr><td><strong>Sherlock Holmes</strong></td><td>0.6</td><td>0.95</td><td>0.97</td></tr>
+  </tbody>
+</table>
+
+<p>Each row is a vector. <em>Iron Man</em> <code>[0.95, 0.2, 0.6]</code> and <em>Hulk</em> <code>[0.96, 0.4, 0.3]</code> both point in the "high-action" direction, so their cosine similarity is high. That is exactly how a service like <strong>Netflix</strong> recommends: if you loved Iron Man, the nearest vectors — Hulk and other action films — are surfaced next.</p>
+
+<div class="example-block">
+  <div class="label">The Key Insight</div>
+  <p>An embedding model learns thousands of these "features" automatically from huge amounts of data — you never hand-label them. The result: meaning becomes geometry, and recommendation, search, and RAG retrieval all reduce to "find the nearest vectors."</p>
+</div>
+
+<hr class="divider">
+
+<h2>Embedding Models</h2>
+
+<p>You don't compute embeddings by hand — you use a pre-trained <strong>embedding model</strong> that has already learned meaning from massive datasets. It takes <strong>text, data, or documents</strong> in and returns <strong>vectors</strong> out. Two families dominate:</p>
+
+<table>
+  <thead>
+    <tr><th>Provider</th><th>Runs</th><th>Cost</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>HuggingFace</strong></td><td>Locally / open-source</td><td>Free</td><td>Great for privacy, offline, and prototyping (e.g. <code>all-MiniLM-L6-v2</code>)</td></tr>
+    <tr><td><strong>OpenAI</strong></td><td>Hosted API</td><td>Pay per token</td><td>High quality, no infra to manage, larger dimensions</td></tr>
+  </tbody>
+</table>
+
+<h3>HuggingFace Embeddings (local &amp; free)</h3>
+
+<p>The <code>all-MiniLM-L6-v2</code> model is small, fast, and runs on your own machine — perfect for getting started without an API key.</p>
+
+<pre>from langchain_huggingface import HuggingFaceEmbeddings
+
+huggingface_embeddings = HuggingFaceEmbeddings(
+    model_name="sentence-transformers/all-MiniLM-L6-v2"
+)
+
+text = "Hello, I am a student."
+embedding = huggingface_embeddings.embed_query(text)
+
+print(embedding)
+print(f"Embedding Length: {len(embedding)}")   # → 384</pre>
+
+<p>The model returns a 384-dimensional vector — 384 numbers that together represent the meaning of that sentence.</p>
+
+<h3>OpenAI Embeddings (hosted API)</h3>
+
+<p>OpenAI's models are accessed through an API key (kept safely in a <code>.env</code> file, never hard-coded).</p>
+
+<pre>from langchain_openai import OpenAIEmbeddings
+import os, dotenv
+
+dotenv.load_dotenv()
+openai_api_key = os.getenv("openai_api_key")
+
+embeddings = OpenAIEmbeddings(
+    model="text-embedding-ada-002",
+    api_key=openai_api_key,
+)
+
+text = "Hello, I am a student of Computer Science at the University of Delhi."
+embedding = embeddings.embed_query(text)
+print(f"Embedding Length: {len(embedding)}")   # → 1536</pre>
+
+<h3>Choosing an OpenAI Model</h3>
+
+<table>
+  <thead>
+    <tr><th>Model</th><th>Dimensions</th><th>Cost / 1M tokens</th><th>Best for</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>text-embedding-3-small</strong></td><td>1536</td><td>$0.0001</td><td>Prototyping, bulk processing, low-latency search</td></tr>
+    <tr><td><strong>text-embedding-3-large</strong></td><td>3072</td><td>$0.0002</td><td>Complex retrieval &amp; clustering needing precision</td></tr>
+    <tr><td><strong>text-embedding-ada-002</strong></td><td>1536</td><td>$0.0001</td><td>Legacy production workloads &amp; existing integrations</td></tr>
+  </tbody>
+</table>
+
+<p>Higher dimensions capture more nuance but cost more to compute, store, and search. <strong>Small is the sensible default</strong>; reach for <strong>large</strong> only when precision clearly matters.</p>
+
+<hr class="divider">
+
+<h2>Batch Embeddings</h2>
+
+<p>Embedding one string at a time is wasteful. Use <code>embed_documents()</code> to vectorize a whole list in a single call — far faster for indexing a corpus.</p>
+
+<pre>texts = [
+    "AI powers modern technology through machine learning and smart data processing",
+    "Embeddings capture semantic meaning to enable intelligent search and recommendations",
+    "Vector databases store high-dimensional embeddings in a structured manner",
+    "Vector databases enable fast and efficient similarity search",
+]
+
+vectors = embeddings.embed_documents(texts)
+print(len(vectors))         # → 4 (one vector per text)
+print(len(vectors[0]))      # → 1536 (dimensions per vector)</pre>
+
+<div class="example-block">
+  <div class="label">embed_query vs embed_documents</div>
+  <p>Use <code>embed_query()</code> for a single search query, and <code>embed_documents()</code> for the batch of texts you're storing. Some models treat the two slightly differently under the hood, so using the right method matters for retrieval quality.</p>
+</div>
+
+<hr class="divider">
+
+<h2>Putting It Together — Semantic Search</h2>
+
+<p>Now we can build the heart of retrieval. Embed a query, embed a set of documents, score every pair with cosine similarity, and return the closest matches. First, notice how <em>paraphrases</em> score highly even with no shared keywords:</p>
+
+<pre>sentences = [
+    "The sun sets behind the distant mountain peaks",
+    "Sunset paints the sky over remote mountain ranges",      # paraphrase ↑
+    "A chef prepares fresh pasta in a small Italian restaurant",
+    "A cook makes homemade noodles at a family-run Italian eatery",  # paraphrase ↑
+    "Astronauts conduct experiments on the International Space Station",
+    "Space station astronauts run scientific tests in orbit", # paraphrase ↑
+]
+
+vecs = embeddings.embed_documents(sentences)
+for i in range(len(vecs)):
+    for j in range(i + 1, len(vecs)):
+        sim = cosine_similarity(vecs[i], vecs[j])
+        print(f"Sentences {i} and {j}: {sim:.4f}")</pre>
+
+<p>Each paraphrase pair scores far higher than unrelated sentences — proof the model captures meaning, not words. Now the full search function:</p>
+
+<pre>def semantic_search(query, sentences, embeddings, top_k=3):
+    """Return the top_k most similar sentences to the query."""
+    query_embedding = embeddings.embed_query(query)
+    document_embeddings = embeddings.embed_documents(sentences)
+
+    scored = []
+    for sentence, doc_emb in zip(sentences, document_embeddings):
+        score = cosine_similarity(query_embedding, doc_emb)
+        scored.append((score, sentence))
+
+    # Sort by similarity, highest first
+    scored.sort(reverse=True, key=lambda x: x[0])
+    return scored[:top_k]
+
+query = "What is the weather like in the mountains?"
+results = semantic_search(query, sentences, embeddings, top_k=3)
+for score, sentence in results:
+    print(f"{score:.4f}  →  {sentence}")</pre>
+
+<p>The query shares almost no words with the documents, yet the two sunset/mountain sentences rise to the top. <strong>This is semantic search</strong> — and it is precisely the retrieval step that powers a RAG pipeline. The next chapter takes these vectors and stores them in a real vector database for search at scale.</p>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+
+<div class="example-block">
+  <div class="label">Remember These Four</div>
+  <p><strong>1.</strong> An <strong>embedding</strong> turns text into a vector of numbers where <em>similar meaning → nearby points</em>.</p>
+  <p><strong>2.</strong> <strong>Cosine similarity</strong> measures the angle between two vectors: ~1 similar, ~0 unrelated, ~-1 opposite.</p>
+  <p><strong>3.</strong> Use an <strong>embedding model</strong> (HuggingFace for local/free, OpenAI for hosted quality) — never compute vectors by hand. Batch with <code>embed_documents()</code>.</p>
+  <p><strong>4.</strong> Semantic search = embed the query, compare to stored vectors, return nearest neighbors. <strong>Vector databases</strong> make this fast at scale.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter3">← Chapter 3: Data Ingestion &amp; Parsing</a>
+    <span></span>
+</nav>
