@@ -258,15 +258,21 @@ body {
     body.sidebar-collapsed .main {
         margin-left: 0;
     }
-    /* Stretch the wrapper to the viewport edges and push the TOC into the
-       far-right corner, well away from the reading column. */
+    /* Stretch to the viewport edges. A flexible spacer on each side keeps the
+       reading column centered, while the TOC gets its own track pinned to the
+       far-right corner — explicit tracks can never overlap. */
     body.sidebar-collapsed .content-wrapper {
+        grid-template-columns: 1fr minmax(0, var(--content-max-wide)) 1fr var(--toc-width);
         max-width: none;
-        gap: 4rem;
+        gap: 3rem;
     }
     body.sidebar-collapsed .content {
+        grid-column: 2;          /* centered between the two flexible spacers */
         max-width: var(--content-max-wide);
-        margin: 0 auto;          /* center the article within its grid column */
+        margin: 0;
+    }
+    body.sidebar-collapsed .toc {
+        grid-column: 4;          /* pinned to the far-right track */
     }
 }
 
