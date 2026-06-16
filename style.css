@@ -370,12 +370,14 @@ body {
     transition: margin-left var(--t-base) var(--ease);
 }
 
-/* Center article + right-hand TOC */
+/* Center article + right-hand TOC.
+   max-width must include the 3rem gap AND the 6rem horizontal padding
+   (border-box), otherwise the inner grid is squeezed and the columns collide. */
 .content-wrapper {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) var(--toc-width);
+    grid-template-columns: minmax(0, var(--content-max)) var(--toc-width);
     gap: 3rem;
-    max-width: calc(var(--content-max) + var(--toc-width) + 3rem);
+    max-width: calc(var(--content-max) + var(--toc-width) + 3rem + 6rem);
     margin: 0 auto;
     padding: 3.25rem 3rem 5rem;
     align-items: start;
