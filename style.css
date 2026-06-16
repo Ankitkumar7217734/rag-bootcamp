@@ -258,9 +258,11 @@ body {
     body.sidebar-collapsed .main {
         margin-left: 0;
     }
-    /* Wider overall layout + roomier reading column */
+    /* Stretch the wrapper to the viewport edges and push the TOC into the
+       far-right corner, well away from the reading column. */
     body.sidebar-collapsed .content-wrapper {
-        max-width: calc(var(--content-max-wide) + var(--toc-width) + 3rem);
+        max-width: none;
+        gap: 4rem;
     }
     body.sidebar-collapsed .content {
         max-width: var(--content-max-wide);
