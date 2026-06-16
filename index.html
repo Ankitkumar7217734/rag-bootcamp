@@ -4,26 +4,50 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RAG Bootcamp</title>
-    <link rel="stylesheet" href="style.css?v=3">
+    <!-- Syntax highlighting theme (IDE-style code colors) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
+    <!-- Top header bar -->
+    <header class="topbar">
+        <a class="topbar-brand" href="#">
+            <span class="topbar-logo"></span>
+            <span class="topbar-title">RAG Bootcamp</span>
+            <span class="topbar-tag">Docs</span>
+        </a>
+        <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation">
+            <span></span><span></span><span></span>
+        </button>
+    </header>
+
     <div class="layout">
         <!-- Sidebar (auto-generated from chapters.js) -->
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <a href="#">
-                    <h2>RAG Bootcamp</h2>
-                    <p>Documentation</p>
-                </a>
-            </div>
-            <ul class="sidebar-nav" id="sidebar-nav"></ul>
+        <aside class="sidebar" id="sidebar">
+            <nav class="sidebar-inner">
+                <p class="sidebar-label">Documentation</p>
+                <ul class="sidebar-nav" id="sidebar-nav"></ul>
+            </nav>
         </aside>
 
-        <!-- Main content area (loaded dynamically) -->
-        <main class="main" id="main-content"></main>
+        <!-- Backdrop for mobile sidebar -->
+        <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+        <!-- Main content area -->
+        <main class="main">
+            <div class="content-wrapper">
+                <!-- Article (loaded dynamically) -->
+                <article class="content" id="main-content"></article>
+
+                <!-- "On this page" table of contents (auto-generated) -->
+                <aside class="toc" id="toc" aria-label="On this page"></aside>
+            </div>
+        </main>
     </div>
 
-    <script src="chapters.js?v=3"></script>
-    <script src="app.js?v=3"></script>
+    <script src="chapters.js?v=7"></script>
+    <!-- highlight.js core (bundles common languages: python, json, sql, js, bash…) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="app.js?v=7"></script>
 </body>
 </html>

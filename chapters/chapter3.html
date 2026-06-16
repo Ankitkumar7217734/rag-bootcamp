@@ -1,0 +1,635 @@
+<h1>Chapter 3: Data Ingestion &amp; Parsing</h1>
+<p style="color:#888; margin-bottom: 2rem;">How raw files — text, PDFs, Word docs, spreadsheets, JSON, and databases — become clean, searchable <code>Document</code> objects ready for a RAG pipeline.</p>
+
+<h2>Overview</h2>
+
+<p>Before RAG can <em>retrieve</em> anything, it first has to <strong>ingest</strong> your data. Ingestion is the very first stage of the pipeline: take messy real-world files in every shape and format, and turn them into a single, uniform structure the rest of the system can work with.</p>
+
+<p>That uniform structure in LangChain is the <strong>Document</strong>. No matter whether the source is a 19-page research PDF, a CSV of products, or a SQL table, the output is always the same: a list of <code>Document</code> objects, each carrying its text and metadata. This chapter walks through how to load and parse <em>every</em> common data source.</p>
+
+<!-- Ingestion & parsing flow diagram -->
+<svg class="diagram-svg" viewBox="0 0 940 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Data ingestion and parsing flow">
+  <defs>
+    <marker id="c3-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+  </defs>
+
+  <!-- Raw sources -->
+  <text x="95" y="28" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="700" font-family="system-ui" letter-spacing="1">RAW SOURCES</text>
+  <rect x="20" y="44" width="150" height="34" rx="6" fill="#16161a" stroke="#36363e" stroke-width="1.5"/>
+  <text x="95" y="66" text-anchor="middle" fill="#b4b4be" font-size="13" font-family="system-ui">.txt&nbsp;&nbsp;.pdf&nbsp;&nbsp;.docx</text>
+  <rect x="20" y="86" width="150" height="34" rx="6" fill="#16161a" stroke="#36363e" stroke-width="1.5"/>
+  <text x="95" y="108" text-anchor="middle" fill="#b4b4be" font-size="13" font-family="system-ui">.csv&nbsp;&nbsp;.xlsx&nbsp;&nbsp;.json</text>
+  <rect x="20" y="128" width="150" height="34" rx="6" fill="#16161a" stroke="#36363e" stroke-width="1.5"/>
+  <text x="95" y="150" text-anchor="middle" fill="#b4b4be" font-size="13" font-family="system-ui">SQL database</text>
+
+  <line x1="172" y1="103" x2="214" y2="103" stroke="#818cf8" stroke-width="2" marker-end="url(#c3-arr)"/>
+
+  <!-- Loader / Parser -->
+  <rect x="218" y="62" width="170" height="82" rx="10" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
+  <text x="303" y="98" text-anchor="middle" fill="#818cf8" font-size="15" font-weight="600" font-family="system-ui">Loader / Parser</text>
+  <text x="303" y="120" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">TextLoader · PyMuPDF…</text>
+
+  <line x1="390" y1="103" x2="432" y2="103" stroke="#818cf8" stroke-width="2" marker-end="url(#c3-arr)"/>
+
+  <!-- Document objects -->
+  <rect x="436" y="62" width="170" height="82" rx="10" fill="#1a1a2e" stroke="#6366f1" stroke-width="2"/>
+  <text x="521" y="92" text-anchor="middle" fill="#6366f1" font-size="15" font-weight="600" font-family="system-ui">Document(s)</text>
+  <text x="521" y="114" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">page_content</text>
+  <text x="521" y="131" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">+ metadata</text>
+
+  <line x1="608" y1="103" x2="650" y2="103" stroke="#818cf8" stroke-width="2" marker-end="url(#c3-arr)"/>
+
+  <!-- Splitter -->
+  <rect x="654" y="62" width="170" height="82" rx="10" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2"/>
+  <text x="739" y="98" text-anchor="middle" fill="#a78bfa" font-size="15" font-weight="600" font-family="system-ui">Text Splitter</text>
+  <text x="739" y="120" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">chunk + overlap</text>
+
+  <!-- Down arrow to chunks -->
+  <line x1="739" y1="146" x2="739" y2="196" stroke="#818cf8" stroke-width="2" marker-end="url(#c3-arr)"/>
+
+  <!-- Chunks ready -->
+  <rect x="610" y="200" width="258" height="62" rx="10" fill="#16161a" stroke="#4ecca3" stroke-width="1.8"/>
+  <text x="739" y="228" text-anchor="middle" fill="#4ecca3" font-size="14" font-weight="600" font-family="system-ui">Clean Chunks</text>
+  <text x="739" y="248" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">ready to embed &amp; index ✓</text>
+</svg>
+
+<div class="example-block">
+  <div class="label">The Golden Rule</div>
+  <p><strong>Garbage in, garbage out.</strong> A RAG system can only retrieve what was ingested well. If parsing drops a table, mangles a paragraph, or loses the source, every answer downstream inherits that flaw. Ingestion is where quality is won or lost.</p>
+</div>
+
+<hr class="divider">
+
+<h2>The Document — RAG's Universal Container</h2>
+
+<p>Every loader in LangChain returns the same object: a <code>Document</code>. It has just two parts:</p>
+
+<ul>
+  <li><strong>page_content</strong> — the actual text (a string).</li>
+  <li><strong>metadata</strong> — a dictionary of extra info: source file, page number, author, date, or anything you add.</li>
+</ul>
+
+<pre>from langchain_core.documents import Document
+
+doc = Document(
+    page_content="This is a simple document. It contains some text "
+                 "to demonstrate the Document class in LangChain.",
+    metadata={
+        "source": "example.txt",
+        "page": 1,
+        "author": "John Doe",
+        "date": "2026-05-20",
+        "custom_field": "custom_value",
+    },
+)
+
+print(doc.page_content)
+print(doc.metadata)</pre>
+
+<p>Metadata is not optional decoration — it is what lets the LLM <strong>cite its sources</strong> later. A retrieved chunk that knows it came from <code>page 42 of the Tesla report</code> produces a trustworthy, auditable answer.</p>
+
+<hr class="divider">
+
+<h2>Text Files (.txt)</h2>
+
+<p>The simplest source. <code>TextLoader</code> reads one file into one <code>Document</code>. The file path is automatically captured in <code>metadata["source"]</code>.</p>
+
+<pre>from langchain_community.document_loaders import TextLoader
+
+loader = TextLoader("data/text_files/coalindia_notice.txt", encoding="utf-8")
+documents = loader.load()
+
+print(f"Loaded {len(documents)} documents.")
+print(documents[0].page_content[:100])
+print(documents[0].metadata)
+# {'source': 'data/text_files/coalindia_notice.txt'}</pre>
+
+<h3>Loading a Whole Folder</h3>
+
+<p>When you have many files, <code>DirectoryLoader</code> loads them all at once using a glob pattern.</p>
+
+<pre>from langchain_community.document_loaders import DirectoryLoader, TextLoader
+
+directory_loader = DirectoryLoader(
+    "data/text_files",
+    glob="**/*.txt",            # every .txt file, recursively
+    loader_cls=TextLoader,
+    show_progress=True,
+    loader_kwargs={"encoding": "utf-8"},
+)
+documents = directory_loader.load()</pre>
+
+<table>
+  <thead>
+    <tr><th>DirectoryLoader</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>✅ Advantages</td><td>Loads many files at once · glob patterns · progress bar · recursive scan</td></tr>
+    <tr><td>❌ Disadvantages</td><td>All files must be the same type · limited per-file error handling · memory-heavy for huge folders</td></tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Text Splitting Strategies</h2>
+
+<p>An LLM (and an embedding model) can only read a limited amount of text at once. A long document must be broken into smaller <strong>chunks</strong>. <em>How</em> you split matters — split badly and you slice sentences in half; split well and each chunk stays meaningful. There are three core strategies.</p>
+
+<h3>1 — CharacterTextSplitter</h3>
+
+<p>Splits on a single separator (e.g. a newline) and counts characters. Simple, but it will <em>not</em> break a long line that has no separator — so chunks can overflow your target size.</p>
+
+<pre>from langchain_classic.text_splitter import CharacterTextSplitter
+
+splitter = CharacterTextSplitter(
+    chunk_size=100,
+    chunk_overlap=20,
+    separator="\n",
+)
+chunks = splitter.split_documents(documents)</pre>
+
+<h3>2 — RecursiveCharacterTextSplitter (recommended)</h3>
+
+<p>The workhorse of RAG. It tries a <em>list</em> of separators in order — paragraphs, then lines, then spaces, then characters — falling back until each chunk fits. This keeps natural units (paragraphs, sentences) together whenever possible.</p>
+
+<pre>from langchain_classic.text_splitter import RecursiveCharacterTextSplitter
+
+text = ("This is a long text without any natural breakpoints. It will be "
+        "split into smaller chunks based on the specified chunk size and overlap.")
+
+splitter = RecursiveCharacterTextSplitter(
+    chunk_size=50,
+    chunk_overlap=10,
+    separators=[""],     # fall all the way back to character-level
+)
+chunks = splitter.split_text(text)
+for c in chunks:
+    print(c)</pre>
+
+<p>Output — notice the <strong>overlap</strong>: the end of one chunk repeats at the start of the next, so meaning is never lost at the seam:</p>
+
+<pre>chunk 1: 'This is a long text without any natural breakpoint'
+chunk 2: 'breakpoints. It will be split into smaller chunks'
+chunk 3: 'er chunks based on the specified chunk size and ov'
+chunk 4: 'ize and overlap.'</pre>
+
+<h3>3 — TokenTextSplitter</h3>
+
+<p>Splits by <strong>tokens</strong> (the units the model actually counts) instead of characters. This is the most accurate way to respect a model's real context limit.</p>
+
+<pre>from langchain_classic.text_splitter import TokenTextSplitter
+
+token_splitter = TokenTextSplitter(chunk_size=10, chunk_overlap=2)
+token_chunks = token_splitter.split_text(text)</pre>
+
+<div class="example-block">
+  <div class="label">Which Should I Use?</div>
+  <p><strong>RecursiveCharacterTextSplitter</strong> is the sensible default for almost all text and PDFs. Reach for <strong>TokenTextSplitter</strong> when you need to pack chunks right up to a model's token limit, and <strong>CharacterTextSplitter</strong> only when your data has one clean, reliable separator.</p>
+</div>
+
+<hr class="divider">
+
+<h2>PDF Documents</h2>
+
+<p>PDFs are the hardest common format. They store text in a complex layout (not a simple stream), may contain scanned images that need OCR, and often leave behind extraction artifacts. LangChain offers several loaders with different trade-offs.</p>
+
+<pre>from langchain_community.document_loaders import (
+    PyPDFLoader,        # fast, simple, page-by-page
+    PyMuPDFLoader,      # accurate, rich metadata, better layouts
+    UnstructuredPDFLoader,  # element-aware, slowest
+)
+
+loader = PyMuPDFLoader("data/pdf/RAG_Research paper.pdf")
+pages = loader.load()
+print(f"Loaded {len(pages)} pages")
+print(pages[0].page_content[:300])</pre>
+
+<table>
+  <thead>
+    <tr><th>Loader</th><th>Built on</th><th>Strengths</th><th>Best for</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>PyPDFLoader</strong></td><td>pypdf</td><td>Fast, lightweight, page-by-page</td><td>Simple, clean PDFs</td></tr>
+    <tr><td><strong>PyMuPDFLoader</strong></td><td>MuPDF</td><td>Accurate, handles complex layouts, rich metadata</td><td>Most real-world PDFs</td></tr>
+    <tr><td><strong>UnstructuredPDFLoader</strong></td><td>unstructured</td><td>Splits into elements (titles, tables…)</td><td>Messy, mixed-content PDFs</td></tr>
+  </tbody>
+</table>
+
+<h3>Cleaning Extraction Artifacts</h3>
+
+<p>Raw PDF text is full of stray whitespace, broken ligatures (<code>ﬁ</code> → <code>fi</code>), and page numbers. A small cleaning function fixes the most common issues.</p>
+
+<pre>import re
+
+def clean_pdf_text(raw_text):
+    # 1. Collapse excessive whitespace and newlines
+    cleaned = " ".join(raw_text.split())
+    # 2. Fix broken ligatures
+    cleaned = cleaned.replace("ﬁ", "fi").replace("ﬂ", "fl")
+    # 3. Remove "page 1 of 10" style footers
+    cleaned = re.sub(r"page \d+ of \d+", "", cleaned, flags=re.IGNORECASE)
+    return cleaned</pre>
+
+<h3>A Production-Grade PDF Processor</h3>
+
+<p>In practice you combine three things: an accurate loader, the cleaning step, and a recursive splitter — plus <strong>enriched metadata</strong> on every chunk (page number, total pages, character count). This class does all of it.</p>
+
+<pre>from typing import List
+from langchain_core.documents import Document
+from langchain_community.document_loaders import PyMuPDFLoader
+from langchain_classic.text_splitter import RecursiveCharacterTextSplitter
+
+class SmartPDFProcessor:
+    """Accurate loading + cleaning + smart chunking with rich metadata."""
+
+    def __init__(self, chunk_size=1000, chunk_overlap=100):
+        self.text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            separators=[" "],
+        )
+
+    def process_pdf(self, pdf_path: str) -> List[Document]:
+        pages = PyMuPDFLoader(pdf_path).load()
+        total_pages = len(pages)
+        processed_chunks = []
+
+        for page_num, page in enumerate(pages):
+            cleaned_text = self._clean_text(page.page_content)
+            if not cleaned_text.strip():        # skip blank pages
+                continue
+
+            chunks = self.text_splitter.create_documents(
+                texts=[cleaned_text],
+                metadatas=[{
+                    **page.metadata,
+                    "page": page_num + 1,
+                    "total_pages": total_pages,
+                    "chunk_method": "smart_pdf_processor",
+                    "char_count": len(cleaned_text),
+                }],
+            )
+            processed_chunks.extend(chunks)
+        return processed_chunks
+
+    def _clean_text(self, raw_text: str) -> str:
+        cleaned = " ".join(raw_text.split())
+        cleaned = cleaned.replace("ﬁ", "fi").replace("ﬂ", "fl")
+        return re.sub(r"page \d+ of \d+", "", cleaned, flags=re.IGNORECASE)
+
+# Usage
+processor = SmartPDFProcessor()
+docs = processor.process_pdf("data/pdf/RAG_Research paper.pdf")
+print(f"Processed PDF into {len(docs)} chunks.")   # → 85 chunks</pre>
+
+<div class="example-block">
+  <div class="label">Example Output Metadata</div>
+  <p>Every resulting chunk carries traceable context, e.g.:</p>
+  <p><code>source: RAG_Research paper.pdf · page: 1 · total_pages: 19 · char_count: 2903 · chunk_method: smart_pdf_processor</code></p>
+</div>
+
+<hr class="divider">
+
+<h2>Microsoft Word Documents (.docx)</h2>
+
+<p>Word files have two loaders, and the choice depends on whether you want plain text or <strong>structure</strong>.</p>
+
+<h3>Method 1 — Docx2txtLoader (whole document)</h3>
+
+<p>Returns the entire document as one clean text blob. Fast and simple.</p>
+
+<pre>from langchain_community.document_loaders import Docx2txtLoader
+
+loader = Docx2txtLoader("data/word_files/proposal.docx")
+documents = loader.load()
+print(documents[0].page_content[:200])
+# Project Proposal: RAG Implementation
+# Executive Summary
+# This proposal outlines the implementation of a ...</pre>
+
+<h3>Method 2 — UnstructuredWordDocumentLoader (by element)</h3>
+
+<p>With <code>mode="elements"</code>, each heading, paragraph, list item, and <strong>table</strong> becomes its own <code>Document</code> with a <code>category</code> in its metadata (<code>Title</code>, <code>NarrativeText</code>, <code>ListItem</code>, <code>Table</code>). This structural awareness is great for precise retrieval.</p>
+
+<pre>from langchain_community.document_loaders import UnstructuredWordDocumentLoader
+
+loader = UnstructuredWordDocumentLoader("data/word_files/proposal.docx", mode="elements")
+docs = loader.load()
+
+for d in docs[:4]:
+    print(d.metadata["category"], "→", d.page_content)
+# Title          → Project Proposal: RAG Implementation
+# Title          → Executive Summary
+# NarrativeText  → This proposal outlines the implementation of a ...
+# Title          → Objectives</pre>
+
+<p>Tables are even preserved as HTML in the metadata, so a row like <em>"Research · 2 weeks · Technology evaluation report"</em> keeps its structure instead of collapsing into a wall of words.</p>
+
+<hr class="divider">
+
+<h2>CSV &amp; Excel Files</h2>
+
+<p>Structured tabular data needs a strategy. Do you want one document <em>per row</em> (great for record lookups) or one document <em>per table</em> (great for summaries)? Here is the sample data we'll use:</p>
+
+<table>
+  <thead>
+    <tr><th>Product</th><th>Category</th><th>Price</th><th>Stock</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Laptop</td><td>Electronics</td><td>$999.99</td><td>50</td></tr>
+    <tr><td>Mouse</td><td>Accessories</td><td>$29.99</td><td>200</td></tr>
+    <tr><td>Keyboard</td><td>Accessories</td><td>$79.99</td><td>150</td></tr>
+    <tr><td>Monitor</td><td>Electronics</td><td>$299.99</td><td>75</td></tr>
+  </tbody>
+</table>
+
+<h3>Method 1 — CSVLoader (one row = one document)</h3>
+
+<pre>from langchain_community.document_loaders import CSVLoader
+
+loader = CSVLoader(
+    file_path="data/structured_files/products.csv",
+    encoding="utf-8",
+    csv_args={"delimiter": ",", "quotechar": '"'},
+)
+docs = loader.load()
+print(docs[0].page_content)
+# Product: Laptop
+# Category: Electronics
+# Price: 999.99
+# Stock: 50
+print(docs[0].metadata)   # {'source': '...products.csv', 'row': 0}</pre>
+
+<h3>Method 2 — Intelligent Processing (richer control)</h3>
+
+<p>Often you want a nicely formatted sentence-like chunk <em>and</em> structured metadata you can filter on later. Build the <code>Document</code> yourself with pandas.</p>
+
+<pre>import pandas as pd
+from typing import List
+from langchain_core.documents import Document
+
+def process_csv_intelligently(filepath: str) -> List[Document]:
+    df = pd.read_csv(filepath)
+    documents = []
+    for idx, row in df.iterrows():
+        content = (
+            f"Product Information:\n"
+            f"  Name: {row['Product']}\n"
+            f"  Category: {row['Category']}\n"
+            f"  Price: ${row['Price']}\n"
+            f"  Stock: {row['Stock']}\n"
+            f"  Description: {row['Description']}"
+        )
+        documents.append(Document(
+            page_content=content,
+            metadata={
+                "source": filepath,
+                "row_index": idx,
+                "product_name": row["Product"],
+                "category": row["Category"],
+                "price": row["Price"],
+                "stock": row["Stock"],
+            },
+        ))
+    return documents</pre>
+
+<table>
+  <thead>
+    <tr><th>Strategy</th><th>Pros</th><th>Cons</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Row-based loader</strong></td><td>Simple · great for record lookups</td><td>Loses table-wide context</td></tr>
+    <tr><td><strong>Intelligent processing</strong></td><td>Preserves relationships · rich metadata · better for Q&amp;A</td><td>More code to write</td></tr>
+  </tbody>
+</table>
+
+<h3>Excel — Multiple Sheets</h3>
+
+<p>Excel files can hold several sheets. Loop over them with pandas and turn each sheet into its own document.</p>
+
+<pre>import pandas as pd
+from langchain_core.documents import Document
+
+def process_excel(filepath: str):
+    documents = []
+    excel_file = pd.ExcelFile(filepath)
+    for sheet_name in excel_file.sheet_names:
+        df = pd.read_excel(excel_file, sheet_name=sheet_name)
+        content = (
+            f"Sheet Name: {sheet_name}\n\n"
+            f"Columns: {', '.join(df.columns)}\n\n"
+            f"Row Count: {len(df)}\n\n"
+            f"{df.to_string(index=False)}"
+        )
+        documents.append(Document(
+            page_content=content,
+            metadata={"source": filepath, "sheet_name": sheet_name,
+                      "columns": df.columns.tolist(), "row_count": len(df)},
+        ))
+    return documents</pre>
+
+<hr class="divider">
+
+<h2>JSON &amp; Nested Data</h2>
+
+<p>JSON is everywhere in APIs and logs, but it is <em>nested</em> — the challenge is flattening it without losing context. Our sample:</p>
+
+<pre>{
+  "company": "TechCorp",
+  "employees": [
+    {
+      "id": 1,
+      "name": "John Doe",
+      "role": "Software Engineer",
+      "skills": ["Python", "JavaScript", "React"],
+      "projects": [
+        {"name": "RAG System",    "status": "In Progress"},
+        {"name": "Data Pipeline", "status": "Completed"}
+      ]
+    }
+  ]
+}</pre>
+
+<h3>Method 1 — JSONLoader with a jq Schema</h3>
+
+<p><code>JSONLoader</code> uses a <strong>jq</strong> query to pluck out exactly the part you want. Here, <code>.employees[]</code> extracts one document per employee.</p>
+
+<pre>from langchain_community.document_loaders import JSONLoader
+
+loader = JSONLoader(
+    file_path="data/json_files/company_data.json",
+    jq_schema=".employees[]",   # one document per employee
+    text_content=False,         # keep the full JSON object
+)
+docs = loader.load()
+print(f"Loaded {len(docs)} employee documents")   # → 2</pre>
+
+<h3>Method 2 — Custom Flattening (context preserved)</h3>
+
+<p>For readable, retrieval-friendly chunks, flatten the nested structure into natural language yourself.</p>
+
+<pre>import json
+from typing import List
+from langchain_core.documents import Document
+
+def process_json_intelligently(filepath: str) -> List[Document]:
+    with open(filepath) as f:
+        data = json.load(f)
+
+    documents = []
+    for emp in data.get("employees", []):
+        content = (
+            f"Employee Profile:\n"
+            f"  Name: {emp['name']}\n"
+            f"  Role: {emp['role']}\n"
+            f"  Skills: {', '.join(emp['skills'])}\n\n"
+            f"  Projects:"
+        )
+        for proj in emp.get("projects", []):
+            content += f"\n  - {proj['name']} (Status: {proj['status']})"
+
+        documents.append(Document(
+            page_content=content,
+            metadata={
+                "source": filepath,
+                "data_type": "employee_profile",
+                "employee_id": emp["id"],
+                "employee_name": emp["name"],
+                "role": emp["role"],
+            },
+        ))
+    return documents</pre>
+
+<p>The result is a clean, self-contained profile per employee — exactly the kind of chunk an LLM can answer questions about:</p>
+
+<pre>Employee Profile:
+  Name: John Doe
+  Role: Software Engineer
+  Skills: Python, JavaScript, React
+
+  Projects:
+  - RAG System (Status: In Progress)
+  - Data Pipeline (Status: Completed)</pre>
+
+<hr class="divider">
+
+<h2>SQL Databases</h2>
+
+<p>Sometimes your knowledge lives in a relational database. We'll use a small SQLite database with two tables — <code>employees</code> and <code>projects</code>:</p>
+
+<table>
+  <thead>
+    <tr><th>id</th><th>name</th><th>role</th><th>department</th><th>salary</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>John Doe</td><td>Senior Developer</td><td>Engineering</td><td>95,000</td></tr>
+    <tr><td>2</td><td>Jane Smith</td><td>Data Scientist</td><td>Analytics</td><td>105,000</td></tr>
+    <tr><td>3</td><td>Mike Johnson</td><td>Product Manager</td><td>Product</td><td>110,000</td></tr>
+    <tr><td>4</td><td>Sarah Williams</td><td>DevOps Engineer</td><td>Engineering</td><td>98,000</td></tr>
+  </tbody>
+</table>
+
+<h3>Method 1 — The SQLDatabase Utility</h3>
+
+<p>LangChain's <code>SQLDatabase</code> inspects schema and sample rows for you — handy for letting an LLM understand the database.</p>
+
+<pre>from langchain_community.utilities import SQLDatabase
+
+db = SQLDatabase.from_uri("sqlite:///data/databases/company.db")
+
+print(db.get_usable_table_names())   # ['employees', 'projects']
+print(db.get_table_info())           # full DDL + 3 sample rows per table</pre>
+
+<h3>Method 2 — Custom SQL → Documents</h3>
+
+<p>For RAG, the powerful move is to turn each table — <em>and the relationships between tables</em> — into documents. A JOIN becomes a human-readable chunk.</p>
+
+<pre>import sqlite3
+from typing import List
+from langchain_core.documents import Document
+
+def sql_to_documents(db_path: str) -> List[Document]:
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    documents = []
+
+    # One document per table
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    for (table_name,) in cursor.fetchall():
+        cursor.execute(f"PRAGMA table_info({table_name});")
+        columns = [col[1] for col in cursor.fetchall()]
+        cursor.execute(f"SELECT * FROM {table_name}")
+        rows = cursor.fetchall()
+
+        content = (f"Table: {table_name}\n"
+                   f"Columns: {', '.join(columns)}\n"
+                   f"Total Records: {len(rows)}\n\nSample Records:\n")
+        for row in rows[:5]:
+            content += f"{dict(zip(columns, row))}\n"
+
+        documents.append(Document(
+            page_content=content,
+            metadata={"source": db_path, "table_name": table_name,
+                      "num_records": len(rows), "data_type": "sql_table"},
+        ))
+
+    # One document for the relationships (a JOIN)
+    cursor.execute("""
+        SELECT e.name, e.role, p.name AS project_name, p.status
+        FROM employees e
+        JOIN projects p ON e.id = p.lead_id
+    """)
+    rel_content = "Employee-Project Relationships:\n\n"
+    for name, role, project, status in cursor.fetchall():
+        rel_content += f"{name} ({role}) leads {project} - Status: {status}\n"
+
+    documents.append(Document(
+        page_content=rel_content,
+        metadata={"source": db_path, "data_type": "sql_relationships"},
+    ))
+
+    conn.close()
+    return documents</pre>
+
+<p>The relationship document reads like plain English — perfect for retrieval:</p>
+
+<pre>Employee-Project Relationships:
+
+John Doe (Senior Developer) leads RAG Implementation - Status: Active
+Jane Smith (Data Scientist) leads Data Pipeline - Status: Completed
+Mike Johnson (Product Manager) leads Customer Portal - Status: Planning
+Jane Smith (Data Scientist) leads ML Platform - Status: Active</pre>
+
+<hr class="divider">
+
+<h2>Best Practices Recap</h2>
+
+<table>
+  <thead>
+    <tr><th>Source</th><th>Recommended Approach</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Text</strong></td><td>TextLoader / DirectoryLoader + RecursiveCharacterTextSplitter</td></tr>
+    <tr><td><strong>PDF</strong></td><td>PyMuPDFLoader, clean artifacts, enrich metadata (the SmartPDFProcessor pattern)</td></tr>
+    <tr><td><strong>Word</strong></td><td>Docx2txt for plain text; Unstructured (elements) when structure matters</td></tr>
+    <tr><td><strong>CSV / Excel</strong></td><td>Row-based for lookups; intelligent processing for Q&amp;A and rich metadata</td></tr>
+    <tr><td><strong>JSON</strong></td><td>JSONLoader + jq for extraction; custom flattening to preserve context</td></tr>
+    <tr><td><strong>SQL</strong></td><td>Turn tables <em>and</em> relationships (JOINs) into natural-language documents</td></tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">Key Takeaways</div>
+  <p><strong>1.</strong> Every source, no matter how different, ends up as a list of <code>Document</code> objects — text plus metadata.</p>
+  <p><strong>2.</strong> Always enrich metadata (source, page, row, table). It powers citations and metadata filtering at retrieval time.</p>
+  <p><strong>3.</strong> Choose your splitter deliberately — <code>RecursiveCharacterTextSplitter</code> with sensible overlap is the safe default.</p>
+  <p><strong>4.</strong> Clean before you chunk. Artifacts removed here never pollute your embeddings later.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter2-1">← Phase 2 &amp; 3: Query Processing &amp; Generation</a>
+    <span></span>
+</nav>

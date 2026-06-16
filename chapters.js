@@ -32,5 +32,10 @@ const chapters = [
                 description: "How a user query becomes a grounded, cited answer — embedding the query, similarity search (cosine vs Euclidean), context augmentation, LLM selection, and the complete end-to-end flow."
             }
         ]
+    },
+    {
+        id: "chapter3",
+        title: "Chapter 3: Data Ingestion & Parsing",
+        description: "Turning raw files into searchable Documents — the LangChain Document object, text/PDF/Word/CSV/Excel/JSON/SQL loaders, text-splitting strategies, artifact cleaning, and metadata enrichment, with code and sample data."
     }
 ];
