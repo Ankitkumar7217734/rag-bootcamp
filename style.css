@@ -35,6 +35,7 @@
     --sidebar-width: 280px;
     --toc-width: 240px;
     --content-max: 760px;
+    --content-max-wide: 920px;   /* wider reading column when sidebar is collapsed */
     --radius-sm: 4px;
     --radius: 8px;
     --radius-lg: 12px;
@@ -247,7 +248,8 @@ body {
 }
 
 /* ---- Desktop collapsed state ----
-   Slide the sidebar away and let the article reclaim the full width. */
+   Slide the sidebar away, let the article reclaim the space, and give the
+   reader a wider, centered column for easier reading. */
 @media (min-width: 861px) {
     body.sidebar-collapsed .sidebar {
         transform: translateX(-100%);
@@ -255,6 +257,14 @@ body {
     }
     body.sidebar-collapsed .main {
         margin-left: 0;
+    }
+    /* Wider overall layout + roomier reading column */
+    body.sidebar-collapsed .content-wrapper {
+        max-width: calc(var(--content-max-wide) + var(--toc-width) + 3rem);
+    }
+    body.sidebar-collapsed .content {
+        max-width: var(--content-max-wide);
+        margin: 0 auto;          /* center the article within its grid column */
     }
 }
 
@@ -366,6 +376,8 @@ body {
 .content {
     min-width: 0;
     max-width: var(--content-max);
+    margin: 0 auto;
+    transition: max-width var(--t-base) var(--ease);
 }
 
 /* Homepage spans the full width (no TOC) */
