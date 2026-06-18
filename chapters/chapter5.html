@@ -1,0 +1,437 @@
+<h1>Chapter 5: Vector Storage &amp; Vector Databases</h1>
+<p style="color:#888; margin-bottom: 2rem;">Embeddings are useless sitting in a Python list. This chapter is about <em>where they live</em> — the stores and databases that hold millions of vectors and find the nearest ones in milliseconds.</p>
+
+<h2>Overview</h2>
+
+<p>Chapter 4 turned text into <strong>vectors</strong> — lists of numbers where similar meaning lands nearby. But computing an embedding is only half the job. To actually <em>retrieve</em>, you need somewhere to keep those vectors and a way to ask, "of all the vectors I've stored, which are closest to this query?" — fast, even across millions of records.</p>
+
+<p>That "somewhere" is a <strong>vector store</strong> or a <strong>vector database</strong>. They take your embedded chunks, build an <strong>index</strong> over them, and answer nearest-neighbour queries in milliseconds. This chapter covers the difference between the two, the single interface LangChain wraps around all of them, and four concrete backends — <strong>ChromaDB</strong>, <strong>FAISS</strong>, <strong>Pinecone</strong>, and <strong>Astra DB</strong> — ending with the payoff: plugging a store into a working RAG chain.</p>
+
+<!-- Embeddings → VectorStore (swappable backends) → Retriever → LLM -->
+<svg class="diagram-svg" viewBox="0 0 940 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Embeddings flow into a vector store, which is backed by swappable databases and feeds a retriever and LLM">
+  <defs>
+    <marker id="c5-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+  </defs>
+
+  <!-- Embeddings -->
+  <text x="95" y="58" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="700" font-family="system-ui" letter-spacing="1">EMBEDDINGS</text>
+  <rect x="20" y="74" width="150" height="64" rx="8" fill="#16161a" stroke="#36363e" stroke-width="1.5"/>
+  <text x="95" y="100" text-anchor="middle" fill="#b4b4be" font-size="13" font-family="monospace">[0.2, 0.5, 0.7]</text>
+  <text x="95" y="122" text-anchor="middle" fill="#76767f" font-size="12" font-family="monospace">[0.1, 0.9, 0.3]</text>
+
+  <line x1="172" y1="106" x2="210" y2="106" stroke="#818cf8" stroke-width="2" marker-end="url(#c5-arr)"/>
+
+  <!-- VectorStore hub -->
+  <rect x="214" y="72" width="300" height="68" rx="10" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
+  <text x="364" y="102" text-anchor="middle" fill="#818cf8" font-size="16" font-weight="600" font-family="system-ui">Vector Store</text>
+  <text x="364" y="124" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">store · index · similarity search</text>
+
+  <line x1="516" y1="106" x2="554" y2="106" stroke="#818cf8" stroke-width="2" marker-end="url(#c5-arr)"/>
+
+  <!-- Retriever -->
+  <rect x="558" y="74" width="150" height="64" rx="10" fill="#16161a" stroke="#4ecca3" stroke-width="1.8"/>
+  <text x="633" y="100" text-anchor="middle" fill="#4ecca3" font-size="14" font-weight="600" font-family="system-ui">Retriever</text>
+  <text x="633" y="122" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">top-k matches</text>
+
+  <line x1="710" y1="106" x2="748" y2="106" stroke="#818cf8" stroke-width="2" marker-end="url(#c5-arr)"/>
+
+  <!-- LLM -->
+  <rect x="752" y="74" width="166" height="64" rx="10" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2"/>
+  <text x="835" y="100" text-anchor="middle" fill="#a78bfa" font-size="15" font-weight="600" font-family="system-ui">LLM</text>
+  <text x="835" y="122" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">grounded answer ✓</text>
+
+  <!-- Swappable backends below the hub -->
+  <line x1="364" y1="140" x2="364" y2="196" stroke="#6366f1" stroke-width="2" marker-end="url(#c5-arr)"/>
+  <text x="364" y="222" text-anchor="middle" fill="#a78bfa" font-size="12" font-weight="700" font-family="system-ui" letter-spacing="1">SWAPPABLE BACKENDS</text>
+  <rect x="120" y="234" width="488" height="46" rx="10" fill="#16161a" stroke="#3a3550" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text x="364" y="262" text-anchor="middle" fill="#b4b4be" font-size="13" font-family="system-ui">Chroma · FAISS · Pinecone · Astra DB · InMemory</text>
+</svg>
+
+<div class="example-block">
+  <div class="label">The Core Idea</div>
+  <p>A vector store does one thing brilliantly: given a query vector, it returns the stored vectors <em>closest</em> to it — ranked nearest neighbours, not exact matches. Everything in this chapter is a variation on "<strong>store the vectors, then search them</strong>." The engines differ in persistence, scale, and features — not in that core job.</p>
+</div>
+
+<hr class="divider">
+
+<h2>Vector Store vs Vector Database</h2>
+
+<p>The two terms get used interchangeably, but there's a useful distinction. A <strong>vector store</strong> is a lightweight library or tool focused on <em>storing and searching vectors efficiently</em> — it finds the K nearest neighbours to a query vector, and not much else. A <strong>vector database</strong> is a full-featured database system designed for <em>vector data at scale</em> — adding metadata filters, database operations (CRUD), replication, sharding, and high availability on top of that search.</p>
+
+<table>
+  <thead>
+    <tr><th></th><th>Vector Store</th><th>Vector Database</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>What it is</strong></td><td>Lightweight library for storing &amp; searching vectors</td><td>Full database system for vector data at scale</td></tr>
+    <tr><td><strong>Core function</strong></td><td>Simple K-nearest-neighbour search</td><td>Advanced search with filters, metadata &amp; CRUD</td></tr>
+    <tr><td><strong>Architecture</strong></td><td>In-memory or local file, single machine</td><td>Distributed — replication, sharding, high availability</td></tr>
+    <tr><td><strong>Scale</strong></td><td>~1M vectors</td><td>Billions+</td></tr>
+    <tr><td><strong>Query speed</strong></td><td>Microseconds (in-memory)</td><td>Milliseconds (network + scale)</td></tr>
+    <tr><td><strong>Setup time</strong></td><td>Minutes</td><td>Hours / days</td></tr>
+    <tr><td><strong>Cost</strong></td><td>Free / $</td><td>$$$ / $$$$</td></tr>
+    <tr><td><strong>Deployment</strong></td><td>Local</td><td>Cloud / managed</td></tr>
+    <tr><td><strong>Examples</strong></td><td>FAISS, Annoy, ScaNN, NMSLIB</td><td>Pinecone, Weaviate, Qdrant, Milvus, Astra DB</td></tr>
+    <tr><td><strong>Best for</strong></td><td>Prototypes, research, &lt; 1M vectors</td><td>Production, enterprise, billions of vectors</td></tr>
+  </tbody>
+</table>
+
+<p>Notice the counter-intuitive row: a vector store is often <em>faster</em> — microseconds, because everything sits in local memory — while a database answers in milliseconds, the price of scaling to billions of vectors across a network. You trade raw latency for scale, durability, and features.</p>
+
+<div class="example-block">
+  <div class="label">The Blurry Middle — ChromaDB</div>
+  <p>The line isn't sharp. <strong>ChromaDB</strong> is the classic straddler: it runs as a tiny local file like a store, yet offers persistence, metadata, and live updates like a database. Don't over-think the label — choose based on what your workload needs: just fast search over a fixed set of vectors, or a living datastore you keep writing to, filtering, and scaling.</p>
+</div>
+
+<p>So which side should you reach for? These two checklists mirror the PDF's decision guide:</p>
+
+<table>
+  <thead>
+    <tr><th>Use a Vector Store when…</th><th>Use a Vector Database when…</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Building a proof of concept or learning</td><td>Building production applications</td></tr>
+    <tr><td>Working with fewer than ~1 million vectors</td><td>Scaling beyond millions of vectors</td></tr>
+    <tr><td>You need the fastest possible search speed</td><td>You require high availability &amp; reliability</td></tr>
+    <tr><td>You have a limited budget</td><td>You need advanced filtering &amp; metadata search</td></tr>
+    <tr><td>You want full control over the implementation</td><td>You have multiple users / tenants</td></tr>
+    <tr><td>Building an embedded, single-machine app</td><td>You want managed infrastructure</td></tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">The Simple Rule</div>
+  <p>Start with a <strong>vector store</strong> for prototyping and learning. Graduate to a <strong>vector database</strong> when you need production-scale features, reliability, and advanced querying capabilities.</p>
+</div>
+
+<hr class="divider">
+
+<h2>One Interface, Many Engines</h2>
+
+<p>Here is the single most useful thing to know in this chapter: <strong>LangChain gives every vector store the same interface</strong>. Whether you choose Chroma, FAISS, Pinecone, or Astra, you call the same handful of methods. Switching engines is usually a one-line import change — your retrieval code stays put.</p>
+
+<table>
+  <thead>
+    <tr><th>Method</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>.from_documents(docs, embedding)</code></td><td>Embed a list of <code>Document</code>s and build the index in one call</td></tr>
+    <tr><td><code>.add_documents(docs)</code></td><td>Embed and insert more documents into an existing store</td></tr>
+    <tr><td><code>.similarity_search(query, k)</code></td><td>Return the <code>k</code> documents closest in meaning to the query</td></tr>
+    <tr><td><code>.similarity_search_with_score(query, k)</code></td><td>Same, but also return each match's distance score</td></tr>
+    <tr><td><code>.as_retriever(...)</code></td><td>Wrap the store as a <strong>retriever</strong> — the piece a RAG chain plugs into</td></tr>
+  </tbody>
+</table>
+
+<p>Learn these five once and you've learned every backend below. The rest is just configuration.</p>
+
+<hr class="divider">
+
+<h2>ChromaDB — A Local-First Vector Database</h2>
+
+<p><strong>ChromaDB</strong> is the workhorse for getting started: open-source, runs locally, and — crucially — <strong>persists to disk</strong>, so you embed your documents once and reopen the database later without paying to re-embed. Let's walk the full pipeline: load → split → embed → store → search.</p>
+
+<h3>Build and Persist the Store</h3>
+
+<p>We pick up where Chapter 3 left off — raw files become <code>Document</code>s, which we split into chunks, embed, and hand to Chroma. The <code>persist_directory</code> is what makes it durable.</p>
+
+<pre>from langchain_community.document_loaders import DirectoryLoader, TextLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.vectorstores import Chroma
+import os, dotenv
+
+dotenv.load_dotenv()
+
+# 1. Load raw text files into Document objects
+loader = DirectoryLoader("data", glob="*.txt", loader_cls=TextLoader)
+docs = loader.load()
+
+# 2. Split into overlapping chunks
+splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+chunks = splitter.split_documents(docs)
+
+# 3. Choose an embedding model
+embeddings = OpenAIEmbeddings(
+    model="text-embedding-3-small",
+    api_key=os.getenv("openai_api_key"),
+)
+
+# 4. Embed every chunk and store it — persisted to ./chroma_db
+vector_store = Chroma.from_documents(
+    documents=chunks,
+    embedding=embeddings,
+    persist_directory="./chroma_db",
+    collection_name="rag_collection",
+)
+
+print(f"Stored {vector_store._collection.count()} vectors")</pre>
+
+<p>That one <code>from_documents</code> call did a lot: it embedded each chunk, wrote the vectors plus their text and metadata to <code>./chroma_db</code>, and built an index for fast search. Reopen the folder later and the data is already there — no re-embedding.</p>
+
+<h3>Search by Meaning</h3>
+
+<p>Now the database earns its keep. Ask a question in plain English and get back the chunks whose <em>meaning</em> is closest — even when they share no keywords with the query.</p>
+
+<pre>query = "What are the types of machine learning?"
+results = vector_store.similarity_search(query, k=3)
+
+for doc in results:
+    print(doc.page_content[:100], "...")</pre>
+
+<p>To see <em>how</em> close each match is, ask for scores. Chroma returns a <strong>distance</strong>, so <strong>lower is better</strong> (0 would be identical):</p>
+
+<pre>query = "What is NLP?"
+results = vector_store.similarity_search_with_score(query, k=3)
+
+for doc, score in results:
+    print(f"{score:.4f}  →  {doc.page_content[:80]}...")
+    # lower distance = more similar</pre>
+
+<div class="example-block">
+  <div class="label">Distance vs Similarity</div>
+  <p>Watch the direction of the number. <code>similarity_search_with_score</code> on Chroma and FAISS returns a <strong>distance</strong> (lower = closer). Some managed databases instead return a <strong>similarity</strong> (higher = closer). Always check which one your backend gives before you sort or threshold on it.</p>
+</div>
+
+<h3>Add Documents Later</h3>
+
+<p>A real knowledge base grows. Because Chroma is a database, you can insert new documents into the existing store without rebuilding it — embed and append:</p>
+
+<pre>from langchain_core.documents import Document
+
+new_doc = Document(
+    page_content="Reinforcement learning trains an agent to make decisions "
+                 "by interacting with an environment to maximize rewards.",
+    metadata={"source": "manual_addition", "topic": "reinforcement_learning"},
+)
+
+new_chunks = splitter.split_documents([new_doc])
+vector_store.add_documents(new_chunks)
+
+print(f"Total vectors now: {vector_store._collection.count()}")</pre>
+
+<hr class="divider">
+
+<h2>FAISS — In-Memory Speed</h2>
+
+<p><strong>FAISS</strong> (Facebook AI Similarity Search) is the speed specialist. It's a <em>vector store</em> in the strict sense — an in-memory index built for blazing-fast nearest-neighbour search over millions of vectors, with optional GPU acceleration. It doesn't persist on its own; <strong>you</strong> save and load it.</p>
+
+<pre>from langchain_community.vectorstores import FAISS
+
+# Build the index in memory (same interface as Chroma)
+vector_store = FAISS.from_documents(documents=chunks, embedding=embeddings)
+print(f"{vector_store.index.ntotal} vectors indexed")
+
+# Persistence is explicit — write the index to disk yourself
+vector_store.save_local("faiss_index")
+
+# Reload later. allow_dangerous_deserialization is required because the
+# index is a pickle — only load files you created and trust.
+vector_store = FAISS.load_local(
+    "faiss_index",
+    embeddings,
+    allow_dangerous_deserialization=True,
+)
+print(f"Loaded {vector_store.index.ntotal} vectors")</pre>
+
+<p>Search works exactly like Chroma — same method names — and you can narrow results with a <strong>metadata filter</strong>, so only chunks tagged a certain way are eligible:</p>
+
+<pre>query = "What is deep learning?"
+
+# Plain top-k search
+results = vector_store.similarity_search(query, k=3)
+
+# Only search chunks whose metadata topic == "DL"
+filtered = vector_store.similarity_search(query, k=3, filter={"topic": "DL"})</pre>
+
+<div class="example-block">
+  <div class="label">Chroma or FAISS?</div>
+  <p>Reach for <strong>FAISS</strong> when raw search speed over a large, mostly-static set of vectors is the priority and you're happy managing save/load yourself. Reach for <strong>Chroma</strong> when you want a real local database — automatic persistence, easy updates, and metadata baked in — with very little setup.</p>
+</div>
+
+<hr class="divider">
+
+<h2>From Store to Retriever</h2>
+
+<p>A vector store knows how to search, but a RAG chain doesn't talk to it directly — it talks to a <strong>retriever</strong>. Every store converts to one with <code>.as_retriever()</code>, and that's where you choose <em>how</em> it searches.</p>
+
+<pre>retriever = vector_store.as_retriever(
+    search_type="similarity",      # how to search
+    search_kwargs={"k": 3},        # how many to return
+)
+
+# A retriever takes a plain string and returns Documents
+docs = retriever.invoke("What is deep learning?")</pre>
+
+<p>The <code>search_type</code> controls the retrieval strategy:</p>
+
+<table>
+  <thead>
+    <tr><th>search_type</th><th>Behaviour</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>similarity</code></td><td>Plain top-<code>k</code> nearest neighbours (the default)</td></tr>
+    <tr><td><code>similarity_score_threshold</code></td><td>Only return matches above a score — drops weak, irrelevant hits</td></tr>
+    <tr><td><code>mmr</code></td><td>Maximal Marginal Relevance — diversifies results so the <code>k</code> chunks aren't near-duplicates</td></tr>
+  </tbody>
+</table>
+
+<pre># Drop anything below a relevance threshold
+retriever = vector_store.as_retriever(
+    search_type="similarity_score_threshold",
+    search_kwargs={"k": 3, "score_threshold": 0.5},
+)
+
+# Or diversify the results with MMR
+retriever = vector_store.as_retriever(
+    search_type="mmr",
+    search_kwargs={"k": 3},
+)</pre>
+
+<hr class="divider">
+
+<h2>Wiring a Store Into RAG</h2>
+
+<p>This is the moment everything has been building toward. Take the retriever, feed its results to a prompt, and let an LLM answer — grounded in your stored documents. The cleanest way to express this is <strong>LCEL</strong> (LangChain Expression Language), piping components with <code>|</code>:</p>
+
+<pre>from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
+from langchain_groq import ChatGroq
+
+llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0,
+               api_key=os.getenv("groq_api_key"))
+
+prompt = ChatPromptTemplate.from_template(
+    "Answer the question using only the context below.\n"
+    "If the answer isn't in the context, say you don't know.\n\n"
+    "Context: {context}\n"
+    "Question: {question}"
+)
+
+# Join retrieved Documents into a single context string
+def format_docs(docs):
+    return "\n\n".join(doc.page_content for doc in docs)
+
+# The retriever pulls context; the question passes straight through
+rag_chain = (
+    {"context": retriever | format_docs, "question": RunnablePassthrough()}
+    | prompt
+    | llm
+    | StrOutputParser()
+)
+
+print(rag_chain.invoke("What is deep learning?"))</pre>
+
+<p>Read the chain top to bottom: the user's question goes to the <code>retriever</code>, which searches the vector store and returns the nearest chunks; <code>format_docs</code> stitches them into a <code>context</code> string; the <code>prompt</code> fuses context and question; the <code>llm</code> answers; and <code>StrOutputParser</code> hands back clean text. <strong>The vector store is the retrieval engine at the heart of it.</strong></p>
+
+<hr class="divider">
+
+<h2>Managed Cloud Databases — Pinecone &amp; Astra DB</h2>
+
+<p>Local stores are perfect for development. In production — millions of vectors, many users, zero ops — you reach for a <strong>managed cloud vector database</strong>. The headline feature: the LangChain interface is <em>identical</em>, so the RAG chain above doesn't change at all.</p>
+
+<h3>Pinecone</h3>
+
+<p>Pinecone is a fully-managed, serverless vector database. You create an index once (declaring its dimension and distance metric), then use the same <code>add_documents</code> / <code>similarity_search</code> calls.</p>
+
+<pre>from pinecone import Pinecone, ServerlessSpec
+from langchain_pinecone import PineconeVectorStore
+
+pc = Pinecone(api_key=os.getenv("pinecone_api_key"))
+
+# Create the index once (dimension must match your embedding model)
+if not pc.has_index("rag"):
+    pc.create_index(
+        name="rag",
+        dimension=1024,
+        metric="cosine",
+        spec=ServerlessSpec(cloud="aws", region="us-east-1"),
+    )
+
+vector_store = PineconeVectorStore(index=pc.Index("rag"), embedding=embeddings)
+vector_store.add_documents(documents)
+
+# Same interface, with optional metadata filtering
+results = vector_store.similarity_search("Will it be hot tomorrow?",
+                                         k=2, filter={"source": "news"})</pre>
+
+<h3>Astra DB (DataStax)</h3>
+
+<p>Astra DB is DataStax's serverless database, built on Apache Cassandra and tuned for low-latency AI workloads. You point the store at your endpoint and token — again, the same methods.</p>
+
+<pre>from langchain_astradb import AstraDBVectorStore
+
+vector_store = AstraDBVectorStore(
+    embedding=embeddings,
+    collection_name="astra_vector_langchain",
+    api_endpoint=os.getenv("ASTRA_DB_API_ENDPOINT"),
+    token=os.getenv("ASTRA_DB_APPLICATION_TOKEN"),
+)
+
+vector_store.add_documents(documents)
+results = vector_store.similarity_search("What is the weather?", k=3)</pre>
+
+<div class="example-block">
+  <div class="label">Keep Secrets Out of Code</div>
+  <p>API keys, endpoints, and tokens belong in environment variables loaded from a <code>.env</code> file — never hard-coded and never committed to git. Notice every example above reads them with <code>os.getenv(...)</code>. The embedding model's <strong>dimension</strong> must also match the index (e.g. <code>1024</code> here), or inserts will be rejected.</p>
+</div>
+
+<hr class="divider">
+
+<h2>InMemoryVectorStore — The Simplest Option</h2>
+
+<p>When you just need to prototype or write a quick test, <code>InMemoryVectorStore</code> is the lightest possible choice. Under the hood it's a dictionary plus NumPy cosine similarity — nothing is persisted, and it disappears when your program exits.</p>
+
+<pre>from langchain_core.vectorstores import InMemoryVectorStore
+
+vector_store = InMemoryVectorStore(embedding=embeddings)
+vector_store.add_documents(documents)
+
+results = vector_store.similarity_search("how's the weather forecast", k=2)
+
+# It becomes a retriever exactly like every other store
+retriever = vector_store.as_retriever(search_kwargs={"k": 2})</pre>
+
+<p>Same five methods, zero setup. It's the fastest way to confirm a RAG flow works before committing to a real database.</p>
+
+<hr class="divider">
+
+<h2>Choosing a Vector Store</h2>
+
+<p>With the same interface everywhere, the choice comes down to <em>operational</em> needs — persistence, scale, and who runs it — not your application code.</p>
+
+<table>
+  <thead>
+    <tr><th>If you need…</th><th>Reach for</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>A throwaway demo or unit tests</td><td><strong>InMemoryVectorStore</strong></td></tr>
+    <tr><td>Fast local search over many static vectors</td><td><strong>FAISS</strong></td></tr>
+    <tr><td>A local database with persistence &amp; metadata</td><td><strong>ChromaDB</strong></td></tr>
+    <tr><td>Managed, serverless, production scale</td><td><strong>Pinecone</strong></td></tr>
+    <tr><td>Enterprise cloud with ultra-low latency</td><td><strong>Astra DB</strong></td></tr>
+  </tbody>
+</table>
+
+<p>A common path: prototype with Chroma or FAISS locally, then switch to Pinecone or Astra for production by changing a single import — because the retriever, the chain, and everything downstream stay exactly the same.</p>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+
+<div class="example-block">
+  <div class="label">Remember These Four</div>
+  <p><strong>1.</strong> A <strong>vector store</strong> does similarity search; a <strong>vector database</strong> adds durable persistence, metadata filtering, live updates, and scale.</p>
+  <p><strong>2.</strong> LangChain gives every backend the <strong>same interface</strong> — <code>from_documents</code>, <code>add_documents</code>, <code>similarity_search</code>, <code>as_retriever</code> — so engines are swappable with a one-line import change.</p>
+  <p><strong>3.</strong> <strong>ChromaDB</strong> is the local-first workhorse (persists to disk); <strong>FAISS</strong> is the in-memory speed king (you save/load it); <strong>Pinecone</strong> and <strong>Astra DB</strong> are managed cloud for production.</p>
+  <p><strong>4.</strong> <code>.as_retriever()</code> turns any store into the retrieval half of RAG — pick <code>similarity</code>, <code>similarity_score_threshold</code>, or <code>mmr</code> — and LCEL pipes it straight into the LLM.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter4">← Chapter 4: Vector Embeddings &amp; Vector Databases</a>
+    <span></span>
+</nav>

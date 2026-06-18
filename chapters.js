@@ -42,5 +42,10 @@ const chapters = [
         id: "chapter4",
         title: "Chapter 4: Vector Embeddings & Vector Databases",
         description: "How text becomes numbers — embeddings that capture meaning, cosine similarity, the movie/Netflix feature analogy, HuggingFace vs OpenAI embedding models, batch embeddings, and building semantic search."
+    },
+    {
+        id: "chapter5",
+        title: "Chapter 5: Vector Storage & Vector Databases",
+        description: "Where embeddings live — vector stores vs vector databases, the unified LangChain interface, ChromaDB persistence, FAISS speed, retrievers and search types, managed cloud (Pinecone, Astra DB), and wiring a store into a RAG chain."
     }
 ];
