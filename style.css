@@ -247,13 +247,68 @@ body {
     border-color: var(--border);
 }
 
+/* Arrow handle that opens/closes the sidebar — a pull-tab riding its right
+   edge. Stays visible when the sidebar is collapsed so it can reopen it.
+   Shown on desktop only; mobile keeps the top-bar hamburger + drawer. */
+.sidebar-handle {
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: var(--sidebar-width);
+    transform: translateY(-50%);
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 56px;
+    z-index: 150;
+    color: var(--text-secondary);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-left: none;
+    border-radius: 0 var(--radius) var(--radius) 0;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+    transition: left var(--t-base) var(--ease),
+                color var(--t-base) var(--ease),
+                background-color var(--t-base) var(--ease),
+                border-color var(--t-base) var(--ease);
+}
+
+.sidebar-handle:hover {
+    color: var(--text-primary);
+    background: var(--bg-card-hover);
+    border-color: var(--border-accent);
+}
+
+.sidebar-handle svg {
+    transition: transform var(--t-base) var(--ease);
+}
+
 /* ---- Desktop collapsed state ----
    Slide the sidebar away, let the article reclaim the space, and give the
    reader a wider, centered column for easier reading. */
 @media (min-width: 861px) {
+    /* On desktop the arrow handle is the sidebar toggle, replacing the
+       top-bar hamburger and the in-sidebar × (one control, both ways). */
+    .sidebar-handle {
+        display: flex;
+    }
+    .sidebar-toggle,
+    .sidebar-close {
+        display: none;
+    }
+
     body.sidebar-collapsed .sidebar {
         transform: translateX(-100%);
         transition: transform var(--t-base) var(--ease);
+    }
+    /* Collapsed: the handle slides to the screen edge and the chevron
+       flips from ◀ (close) to ▶ (open). */
+    body.sidebar-collapsed .sidebar-handle {
+        left: 0;
+    }
+    body.sidebar-collapsed .sidebar-handle svg {
+        transform: rotate(180deg);
     }
     body.sidebar-collapsed .main {
         margin-left: 0;

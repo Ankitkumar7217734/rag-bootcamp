@@ -326,6 +326,7 @@ function openSidebar() {
         document.body.classList.remove('sidebar-collapsed');
         try { localStorage.setItem(SIDEBAR_PREF_KEY, 'false'); } catch (e) { /* ignore */ }
     }
+    syncSidebarHandle();
 }
 
 function closeSidebar() {
@@ -340,6 +341,7 @@ function closeSidebar() {
         document.body.classList.add('sidebar-collapsed');
         try { localStorage.setItem(SIDEBAR_PREF_KEY, 'true'); } catch (e) { /* ignore */ }
     }
+    syncSidebarHandle();
 }
 
 function toggleSidebar() {
@@ -354,14 +356,27 @@ function toggleSidebar() {
     }
 }
 
+/* Keep the sidebar handle's accessibility state in sync with the sidebar.
+   The chevron's visual direction is flipped in CSS via body.sidebar-collapsed. */
+function syncSidebarHandle() {
+    const handle = document.getElementById('sidebar-handle');
+    if (!handle) return;
+    const open = !document.body.classList.contains('sidebar-collapsed');
+    handle.setAttribute('aria-expanded', String(open));
+    handle.setAttribute('aria-label', open ? 'Close sidebar' : 'Open sidebar');
+}
+
 function wireSidebarToggle() {
     const toggle = document.getElementById('sidebar-toggle');
     const closeBtn = document.getElementById('sidebar-close');
     const backdrop = document.getElementById('sidebar-backdrop');
+    const handle = document.getElementById('sidebar-handle');
 
     if (toggle) toggle.addEventListener('click', toggleSidebar);
     if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
     if (backdrop) backdrop.addEventListener('click', closeSidebar);
+    // The arrow handle lives on the sidebar edge and toggles it both ways.
+    if (handle) handle.addEventListener('click', toggleSidebar);
 
     // Escape closes the sidebar
     document.addEventListener('keydown', (e) => {
@@ -374,6 +389,8 @@ function wireSidebarToggle() {
     if (collapsed && !isMobileViewport()) {
         document.body.classList.add('sidebar-collapsed');
     }
+
+    syncSidebarHandle();
 }
 
 // Initialize
