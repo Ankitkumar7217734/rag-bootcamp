@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"UserPromptSubmit\",\"additionalContext\":\"Reminder: Before acting on this request, read CLAUDE.md in the project root and follow its workflow — read every source file the user provided (PDF, .ipynb notebooks, .txt/data) in full, then build or edit chapters to match the documented structure, components, and design system.\"}}'",
+            "statusMessage": "Reminding to read CLAUDE.md"
+          }
+        ]
+      }
+    ]
+  }
+}
