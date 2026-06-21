@@ -6,19 +6,22 @@
     <title>RAG Bootcamp</title>
     <!-- Syntax highlighting theme (IDE-style code colors) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
-    <link rel="stylesheet" href="style.css?v=14">
+    <link rel="stylesheet" href="style.css?v=15">
 </head>
 <body>
     <!-- Top header bar -->
     <header class="topbar">
+        <!-- Hamburger — opens/closes the sidebar on every screen size -->
+        <button class="sidebar-toggle" id="sidebar-toggle" type="button"
+                aria-label="Toggle navigation" aria-controls="sidebar" aria-expanded="true">
+            <span></span><span></span><span></span>
+        </button>
+        <!-- Brand text doubles as the "go home" button -->
         <a class="topbar-brand" href="#">
             <span class="topbar-logo"></span>
             <span class="topbar-title">RAG Bootcamp</span>
             <span class="topbar-tag">Docs</span>
         </a>
-        <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation">
-            <span></span><span></span><span></span>
-        </button>
     </header>
 
     <div class="layout">
@@ -56,9 +59,9 @@
         </main>
     </div>
 
-    <script src="chapters.js?v=14"></script>
+    <script src="chapters.js?v=15"></script>
     <!-- highlight.js core (bundles common languages: python, json, sql, js, bash…) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <script src="app.js?v=14"></script>
+    <script src="app.js?v=15"></script>
 </body>
 </html>

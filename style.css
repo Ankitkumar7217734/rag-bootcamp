@@ -154,7 +154,6 @@ body {
 /* Hamburger — toggles the sidebar on every screen size */
 .sidebar-toggle {
     display: flex;
-    margin-left: auto;
     flex-direction: column;
     justify-content: center;
     gap: 4px;
@@ -288,12 +287,9 @@ body {
    Slide the sidebar away, let the article reclaim the space, and give the
    reader a wider, centered column for easier reading. */
 @media (min-width: 861px) {
-    /* On desktop the arrow handle is the sidebar toggle, replacing the
-       top-bar hamburger and the in-sidebar × (one control, both ways). */
-    .sidebar-handle {
-        display: flex;
-    }
-    .sidebar-toggle,
+    /* The top-bar hamburger is the single sidebar toggle on every screen size,
+       so the desktop-only arrow handle and the in-sidebar × are retired here. */
+    .sidebar-handle,
     .sidebar-close {
         display: none;
     }

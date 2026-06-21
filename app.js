@@ -356,14 +356,20 @@ function toggleSidebar() {
     }
 }
 
-/* Keep the sidebar handle's accessibility state in sync with the sidebar.
-   The chevron's visual direction is flipped in CSS via body.sidebar-collapsed. */
+/* Keep the toggle controls' accessibility state in sync with the sidebar.
+   Open state depends on the viewport: a slide-in drawer (.open) on mobile, the
+   collapsed class on desktop. The chevron's visual direction is flipped in CSS. */
 function syncSidebarHandle() {
-    const handle = document.getElementById('sidebar-handle');
-    if (!handle) return;
-    const open = !document.body.classList.contains('sidebar-collapsed');
-    handle.setAttribute('aria-expanded', String(open));
-    handle.setAttribute('aria-label', open ? 'Close sidebar' : 'Open sidebar');
+    const open = isMobileViewport()
+        ? document.getElementById('sidebar').classList.contains('open')
+        : !document.body.classList.contains('sidebar-collapsed');
+
+    [document.getElementById('sidebar-toggle'),
+     document.getElementById('sidebar-handle')].forEach(btn => {
+        if (!btn) return;
+        btn.setAttribute('aria-expanded', String(open));
+        btn.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation');
+    });
 }
 
 function wireSidebarToggle() {
