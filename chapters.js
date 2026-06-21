@@ -52,5 +52,27 @@ const chapters = [
         id: "chapter6",
         title: "Chapter 6: Advanced Chunking & Preprocessing — Semantic Chunking",
         description: "Splitting documents by meaning instead of character count — why fixed-size chunking breaks ideas, the five-step semantic chunking algorithm (segment, embed, compare, merge, form chunks), a from-scratch threshold chunker, LangChain's SemanticChunker and its breakpoint types, and plugging semantic chunks into a RAG pipeline."
+    },
+    {
+        id: "chapter7",
+        title: "Chapter 7: Hybrid Search Strategies",
+        description: "Getting the most out of retrieval — combining dense (embeddings) and sparse (BM25/TF-IDF) search with a weighted hybrid score and EnsembleRetriever, two-stage re-ranking with cross-encoders and LLMs, and MMR for diversity-aware results that balance relevance against redundancy.",
+        children: [
+            {
+                id: "chapter7-1",
+                title: "Combining Dense & Sparse Retrieval",
+                description: "Fusing keyword search (BM25/TF-IDF, exact matches) with semantic search (embeddings, meaning) via the weighted hybrid score and LangChain's EnsembleRetriever."
+            },
+            {
+                id: "chapter7-2",
+                title: "Re-Ranking Techniques",
+                description: "The two-stage pattern — a fast retriever fetches a shortlist, then a slow, accurate cross-encoder or LLM re-scores and reorders it so the best documents land on top."
+            },
+            {
+                id: "chapter7-3",
+                title: "MMR — Maximal Marginal Relevance",
+                description: "Diversity-aware retrieval that balances relevance against redundancy, dropping near-duplicate chunks so the LLM gets coverage instead of repetition."
+            }
+        ]
     }
 ];

@@ -1,0 +1,177 @@
+<h1>Combining Dense &amp; Sparse Retrieval</h1>
+<p style="color:#888; margin-bottom: 2rem;">The first hybrid strategy — fuse keyword search and semantic search so you get the exact-match power of one and the meaning-awareness of the other.</p>
+
+<h2>Two Ways to Search Text</h2>
+
+<p>There are two fundamentally different ways to search text, and each is blind where the other sees clearly. <strong>Hybrid retrieval</strong> runs both and blends their scores.</p>
+
+<h3>Sparse Retrieval — Exact Keywords</h3>
+
+<p><strong>Sparse retrieval</strong> matches <em>exact words</em> using classic information-retrieval techniques like <strong>TF-IDF</strong> and <strong>BM25</strong>. Text is turned into a <strong>sparse matrix</strong> — a huge vector that is mostly zeros, with a non-zero entry only for the words actually present. For the sentence "I want to have food", over a vocabulary it looks like:</p>
+
+<pre>"I want to have food"  →  [1, 0, 0, 0, 1, 0, ...]   # mostly zeros = "sparse"</pre>
+
+<p>Sparse search is exact-match: it shines when the query and document share literal terms (a product code, a rare medical word like "osteoporosis", an API name), but it has <em>no concept of meaning</em> — "build app" and "create LLM system" look completely unrelated to it.</p>
+
+<h3>Dense Retrieval — Semantic Meaning</h3>
+
+<p><strong>Dense retrieval</strong> is what we built in Chapters 4–5: embed the text into a <strong>dense vector</strong> (every dimension carries a number) and compare with <strong>cosine similarity</strong>, backed by FAISS or ChromaDB. It captures <em>meaning</em>, so it matches paraphrases and synonyms — but it can overlook an exact keyword that a user specifically typed.</p>
+
+<table>
+  <thead>
+    <tr><th></th><th>Sparse (BM25 / TF-IDF)</th><th>Dense (Embeddings)</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Matches on</strong></td><td>Exact keywords</td><td>Semantic meaning</td></tr>
+    <tr><td><strong>Representation</strong></td><td>Sparse matrix (mostly zeros)</td><td>Dense vector</td></tr>
+    <tr><td><strong>Strength</strong></td><td>Rare terms, codes, exact phrasing</td><td>Synonyms, paraphrasing, intent</td></tr>
+    <tr><td><strong>Weakness</strong></td><td>No understanding of meaning</td><td>Can miss specific keywords</td></tr>
+    <tr><td><strong>Backed by</strong></td><td>BM25, TF-IDF, BoW</td><td>FAISS, ChromaDB + cosine similarity</td></tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Hybrid = Sparse + Dense</h2>
+
+<p><strong>Hybrid retrieval</strong> runs both and blends their scores, so you get the semantic power of embeddings <em>and</em> the exact match of keywords — best of both worlds. The standard recipe is a weighted sum:</p>
+
+<!-- Hybrid retrieval: query fans out to sparse + dense, scores blended by alpha -->
+<svg class="diagram-svg" viewBox="0 0 940 410" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A query is sent to both a sparse BM25 retriever and a dense FAISS retriever; their scores are blended by a weight alpha into a hybrid score, producing ranked results">
+  <defs>
+    <marker id="c7a-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+  </defs>
+
+  <!-- Query -->
+  <rect x="395" y="20" width="150" height="46" rx="8" fill="#1a1a2e" stroke="#ef6461" stroke-width="2"/>
+  <text x="470" y="48" text-anchor="middle" fill="#ef6461" font-size="15" font-weight="600" font-family="system-ui">Query</text>
+
+  <!-- split lines -->
+  <line x1="470" y1="66" x2="250" y2="118" stroke="#818cf8" stroke-width="2" marker-end="url(#c7a-arr)"/>
+  <line x1="470" y1="66" x2="690" y2="118" stroke="#818cf8" stroke-width="2" marker-end="url(#c7a-arr)"/>
+
+  <!-- Sparse box -->
+  <rect x="70" y="122" width="350" height="92" rx="10" fill="#16161a" stroke="#fbbf24" stroke-width="1.8"/>
+  <text x="245" y="150" text-anchor="middle" fill="#fbbf24" font-size="15" font-weight="700" font-family="system-ui">Sparse Retrieval</text>
+  <text x="245" y="174" text-anchor="middle" fill="#b4b4be" font-size="13" font-family="system-ui">BM25 · TF-IDF — exact keywords</text>
+  <text x="245" y="196" text-anchor="middle" fill="#76767f" font-size="12" font-family="monospace">sparse matrix → score_sparse</text>
+
+  <!-- Dense box -->
+  <rect x="520" y="122" width="350" height="92" rx="10" fill="#16161a" stroke="#4ecca3" stroke-width="1.8"/>
+  <text x="695" y="150" text-anchor="middle" fill="#4ecca3" font-size="15" font-weight="700" font-family="system-ui">Dense Retrieval</text>
+  <text x="695" y="174" text-anchor="middle" fill="#b4b4be" font-size="13" font-family="system-ui">Embeddings · FAISS — meaning</text>
+  <text x="695" y="196" text-anchor="middle" fill="#76767f" font-size="12" font-family="monospace">cosine sim → score_dense</text>
+
+  <!-- to hybrid -->
+  <line x1="245" y1="214" x2="400" y2="276" stroke="#818cf8" stroke-width="2" marker-end="url(#c7a-arr)"/>
+  <line x1="695" y1="214" x2="540" y2="276" stroke="#818cf8" stroke-width="2" marker-end="url(#c7a-arr)"/>
+
+  <!-- Hybrid score -->
+  <rect x="300" y="280" width="340" height="72" rx="10" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2"/>
+  <text x="470" y="308" text-anchor="middle" fill="#a78bfa" font-size="15" font-weight="700" font-family="system-ui">Hybrid Score</text>
+  <text x="470" y="334" text-anchor="middle" fill="#b4b4be" font-size="13" font-family="monospace">a·score_dense + (1−a)·score_sparse</text>
+
+  <!-- to results -->
+  <line x1="470" y1="352" x2="470" y2="378" stroke="#818cf8" stroke-width="2" marker-end="url(#c7a-arr)"/>
+  <text x="470" y="400" text-anchor="middle" fill="#76767f" font-size="13" font-family="system-ui">Ranked results → context for the LLM</text>
+</svg>
+
+<pre>Score_hybrid = α · Score_dense + (1 − α) · Score_sparse
+
+  Score_dense  = cosine similarity(query, vector store)
+  Score_sparse = TF-IDF / BM25(query, document)
+  α            = weight (e.g. 0.5 = equal blend)</pre>
+
+<p>The weight <code>α</code> (alpha) tunes the balance: <code>α = 1</code> is pure semantic search, <code>α = 0</code> is pure keyword search, <code>α = 0.5</code> weighs them equally.</p>
+
+<div class="example-block">
+  <div class="label">Worked Example — α = 0.5</div>
+  <p>Query: <em>"build application using LLM"</em>. Suppose dense and sparse each score three documents:</p>
+</div>
+
+<table>
+  <thead>
+    <tr><th>Doc</th><th>Dense score</th><th>Sparse score</th><th>Hybrid (α = 0.5)</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>D1</strong> "LangChain helps build LLM apps"</td><td>0.85</td><td>0.60</td><td><strong>0.725</strong></td></tr>
+    <tr><td><strong>D2</strong> "Pinecone is used for vector search"</td><td>0.40</td><td>0.20</td><td>0.300</td></tr>
+    <tr><td><strong>D3</strong> "Eiffel Tower is in Paris"</td><td>0.10</td><td>0.10</td><td>0.100</td></tr>
+  </tbody>
+</table>
+
+<p>D1 wins on both axes (<code>0.5×0.85 + 0.5×0.60 = 0.725</code>) and ends up clearly on top — the hybrid score rewards a document that is both semantically on-topic <em>and</em> shares the literal keywords "build", "LLM".</p>
+
+<hr class="divider">
+
+<h2>Hybrid Retrieval in LangChain</h2>
+
+<p>LangChain wraps this in <code>EnsembleRetriever</code>: give it a dense retriever and a sparse (<code>BM25Retriever</code>) one, plus weights, and it fuses their rankings for you.</p>
+
+<pre>from langchain_community.vectorstores import FAISS
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.retrievers import BM25Retriever
+from langchain_classic.retrievers import EnsembleRetriever
+from langchain_core.documents import Document
+
+docs = [
+    Document(page_content="LangChain is a framework for building applications powered by large language models"),
+    Document(page_content="RAG stands for Retrieval Augmented Generation which combines retrieval with LLM generation"),
+    Document(page_content="LangChain supports agents, chains, memory, and retrieval components"),
+    Document(page_content="Vector databases like FAISS and ChromaDB store embeddings for semantic search"),
+    Document(page_content="Hybrid search combines dense retrieval using embeddings with sparse retrieval using BM25"),
+]
+
+# Dense retriever — FAISS + OpenAI embeddings (semantic)
+embeddings_model = OpenAIEmbeddings(model="text-embedding-3-small",
+                                    dimensions=1536, api_key=openai_api_key)
+dense_vectorstore = FAISS.from_documents(docs, embeddings_model)
+dense_retriever = dense_vectorstore.as_retriever()
+
+# Sparse retriever — BM25 (exact keywords)
+sparse_retriever = BM25Retriever.from_documents(docs)
+sparse_retriever.k = 3
+
+# Hybrid — blend them 70% dense / 30% sparse
+hybrid_retriever = EnsembleRetriever(
+    retrievers=[dense_retriever, sparse_retriever],
+    weights=[0.7, 0.3],
+)
+
+results = hybrid_retriever.invoke("How can I build an application using LLMs?")
+for i, doc in enumerate(results):
+    print(f"\ndoc {i}:\n{doc.page_content}")</pre>
+
+<p>The <code>weights=[0.7, 0.3]</code> argument is exactly the <code>α</code> from the formula — here favouring semantic meaning while still letting exact keywords break ties. Dropping the <code>hybrid_retriever</code> into the same LCEL RAG chain from Chapter 5 needs no other change.</p>
+
+<hr class="divider">
+
+<h2>Why Combine Them — The Payoff</h2>
+
+<table>
+  <thead>
+    <tr><th>#</th><th>Benefit</th><th>Why it matters</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td><strong>Boosts recall</strong></td><td>BM25 catches exact matches dense misses; dense captures meaning when keywords differ. Together you miss less.</td></tr>
+    <tr><td>2</td><td><strong>Handles synonyms &amp; rephrasing</strong></td><td>Semantic search matches "create app" to "build LLM system"; BM25 still catches the literal "LLM".</td></tr>
+    <tr><td>3</td><td><strong>More robust</strong></td><td>Serves both keyword searchers and natural-language phrasers.</td></tr>
+    <tr><td>4</td><td><strong>Respects lexical importance</strong></td><td>BM25 weights rare technical/legal/medical terms heavily.</td></tr>
+    <tr><td>5</td><td><strong>Bridges document diversity</strong></td><td>Adapts to mixed corpora — clean docs and messy ones alike.</td></tr>
+    <tr><td>6</td><td><strong>Easy to tune</strong></td><td>One weight: <code>score = 0.7·dense + 0.3·sparse</code>.</td></tr>
+    <tr><td>7</td><td><strong>Tolerates misspellings</strong></td><td>Dense models handle typos like "llm aplication" that BM25 fails on.</td></tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">Key Takeaway</div>
+  <p>Hybrid retrieval = <strong>dense + sparse</strong>, blended by a single weight <code>α</code>. It lifts <em>recall</em> by covering both meaning and exact keywords. In LangChain it's one object — <code>EnsembleRetriever(retrievers=[dense, sparse], weights=[...])</code>.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter7">← Chapter 7: Hybrid Search Strategies</a>
+    <a href="#chapter7-2" class="next">2 · Re-Ranking Techniques →</a>
+</nav>

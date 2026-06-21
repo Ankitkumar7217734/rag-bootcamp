@@ -1,0 +1,73 @@
+<h1>Chapter 7: Hybrid Search Strategies</h1>
+<p style="color:#888; margin-bottom: 2rem;">Plain semantic search is good, not great. This chapter is about squeezing the best retrieval out of your data — by <em>combining</em> search methods, <em>re-ordering</em> results with a smarter model, and <em>diversifying</em> them so the LLM sees the whole picture, not the same fact five times.</p>
+
+<h2>Overview</h2>
+
+<p>Chapters 4–6 built a working retriever: embed the chunks, store the vectors, search by meaning. That gets you a long way — but production RAG systems rarely stop at a single similarity search. They layer on <strong>hybrid search strategies</strong> to lift both <em>recall</em> (finding everything relevant) and <em>precision</em> (ranking the best of it at the top).</p>
+
+<p>This chapter splits into three sub-chapters, one per strategy, each solving a different weakness of plain vector search:</p>
+
+<table>
+  <thead>
+    <tr><th>#</th><th>Strategy</th><th>Problem it solves</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>1</strong></td><td><strong>Dense + Sparse Retrieval</strong></td><td>Embeddings miss exact keywords; keyword search misses meaning. Combine both.</td></tr>
+    <tr><td><strong>2</strong></td><td><strong>Re-Ranking</strong></td><td>A fast retriever's top-k is roughly relevant but poorly ordered. Re-score it with an accurate model.</td></tr>
+    <tr><td><strong>3</strong></td><td><strong>MMR</strong></td><td>Top results are often near-duplicates. Pick relevant <em>and</em> diverse documents.</td></tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">The Core Idea</div>
+  <p>Each strategy is a different lever on the same goal: <strong>get the most relevant, most useful, least redundant context in front of the LLM.</strong> Better context in → better answer out. They're independent and stack together — many real pipelines use all three.</p>
+</div>
+
+<hr class="divider">
+
+<h2>Explore Each Strategy</h2>
+
+<p>Work through the three sub-chapters in order — each is self-contained with its own diagram, worked example, and LangChain code:</p>
+
+<ul>
+  <li><strong><a href="#chapter7-1">1 · Combining Dense &amp; Sparse Retrieval →</a></strong><br>
+      Sparse (BM25/TF-IDF, exact keywords) + dense (embeddings, meaning), the <code>Score = α·dense + (1−α)·sparse</code> formula, and LangChain's <code>EnsembleRetriever</code>.</li>
+  <li><strong><a href="#chapter7-2">2 · Re-Ranking Techniques →</a></strong><br>
+      The two-stage pattern: a fast retriever fetches a shortlist, then a slow, accurate cross-encoder or LLM re-scores and reorders it.</li>
+  <li><strong><a href="#chapter7-3">3 · MMR — Maximal Marginal Relevance →</a></strong><br>
+      Diversity-aware retrieval that balances relevance against redundancy with <code>MMR(d) = λ·sim(d,q) − (1−λ)·max sim(d,s)</code>.</li>
+</ul>
+
+<hr class="divider">
+
+<h2>Putting It Together</h2>
+
+<p>These three strategies are not alternatives — they're layers. A strong production retrieval stage often chains all of them:</p>
+
+<pre>Hybrid retrieve (dense + sparse)   →   broad, high-recall shortlist
+        ↓
+Re-rank (cross-encoder / LLM)      →   precise ordering, noise removed
+        ↓
+MMR / diversity filter             →   drop near-duplicates
+        ↓
+Top-n context  →  LLM  →  grounded, well-rounded answer</pre>
+
+<p>Hybrid lifts <em>recall</em>, re-ranking lifts <em>precision</em>, and MMR lifts <em>coverage</em> — each addressing a different failure mode of plain vector search.</p>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+
+<div class="example-block">
+  <div class="label">Remember These Four</div>
+  <p><strong>1.</strong> <strong>Hybrid retrieval</strong> blends <em>dense</em> (embeddings, meaning) and <em>sparse</em> (BM25/TF-IDF, exact keywords) with <code>Score = α·dense + (1−α)·sparse</code> — LangChain's <code>EnsembleRetriever</code> does it with a weight list.</p>
+  <p><strong>2.</strong> <strong>Re-ranking</strong> is a two-stage pattern: a fast retriever fetches a top-k shortlist, then a slow, accurate <em>cross-encoder or LLM</em> re-scores and reorders it so the best documents land on top.</p>
+  <p><strong>3.</strong> <strong>MMR</strong> balances relevance and diversity via <code>MMR(d) = λ·sim(d,q) − (1−λ)·max sim(d,s)</code>, dropping near-duplicates — use <code>search_type="mmr"</code> with <code>lambda_mult</code> as the <code>λ</code> dial.</p>
+  <p><strong>4.</strong> They <strong>stack</strong>: hybrid boosts recall, re-ranking boosts precision, MMR boosts coverage — combine them for the strongest, least-redundant context into the LLM.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter6">← Chapter 6: Advanced Chunking &amp; Preprocessing</a>
+    <a href="#chapter7-1" class="next">1 · Combining Dense &amp; Sparse Retrieval →</a>
+</nav>
