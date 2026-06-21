@@ -1,0 +1,399 @@
+<h1>Chapter 6: Advanced Chunking &amp; Preprocessing — Semantic Chunking</h1>
+<p style="color:#888; margin-bottom: 2rem;">A chunk cut in the wrong place poisons everything downstream. This chapter is about splitting documents by <em>meaning</em> instead of by character count — so each chunk is a complete, self-contained thought.</p>
+
+<h2>Overview</h2>
+
+<p>Everything so far has assumed your documents are already sliced into chunks. Chapter 3 used a <code>RecursiveCharacterTextSplitter</code> with a <code>chunk_size</code> and <code>chunk_overlap</code> — fixed knobs that cut text every N characters. That works, but it's blind: it counts characters, not ideas. A 500-character window can slice a sentence in half, split a definition from its example, or glue two unrelated topics into one chunk.</p>
+
+<p><strong>Semantic chunking</strong> fixes this. Instead of splitting by length, it splits by <em>meaning</em> — using embedding similarity between sentences to decide where one idea ends and the next begins. The result is chunks that are coherent, not cut off mid-thought.</p>
+
+<div class="example-block">
+  <div class="label">Why Chunking Quality Decides Everything</div>
+  <p><strong>Better chunks → better retrieval → better grounding → better answers.</strong> Retrieval can only return what chunking produced. If a chunk is half an idea, the LLM gets half a context — and hallucinates the rest. Good chunks are <strong>self-contained</strong>, <strong>contextually rich</strong>, and <strong>logically separated</strong>.</p>
+</div>
+
+<hr class="divider">
+
+<h2>The Problem with Fixed-Size Chunking</h2>
+
+<p>Classic splitting takes two parameters and never looks at the text itself:</p>
+
+<table>
+  <thead>
+    <tr><th>Parameter</th><th>Meaning</th><th>Typical value</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>chunk_size</code></td><td>Max characters (or tokens) per chunk</td><td>500</td></tr>
+    <tr><td><code>chunk_overlap</code></td><td>Characters repeated between neighbouring chunks to preserve context</td><td>50</td></tr>
+  </tbody>
+</table>
+
+<p>The overlap is a band-aid — it duplicates a little text at each boundary hoping a split idea survives in one of the two chunks. But the cut point is still arbitrary. Consider a document that drifts across three topics:</p>
+
+<pre>1. LangChain is a framework for building LLM-powered apps.
+2. It integrates with tools like OpenAI and Pinecone.
+3. The Eiffel Tower is located in Paris.
+4. France is a popular tourist destination.</pre>
+
+<p>A fixed-size splitter might pack sentences 2 and 3 into the same chunk simply because they fit the character budget — fusing "LLM tooling" with "Paris landmarks." Semantic chunking instead notices that sentence 3 is <em>about something else</em> and starts a fresh chunk there:</p>
+
+<pre>Chunk 1: ["LangChain is a framework...", "It integrates with tools..."]
+Chunk 2: ["The Eiffel Tower is located in Paris.",
+          "France is a popular tourist destination."]</pre>
+
+<p>Same input, but now each chunk holds <strong>one coherent idea</strong> — exactly what makes retrieval accurate.</p>
+
+<hr class="divider">
+
+<h2>How Semantic Chunking Works</h2>
+
+<p>The whole technique is five steps. Segment the document into sentences, embed each one, measure how similar each sentence is to its neighbour, and start a new chunk wherever that similarity drops below a threshold.</p>
+
+<!-- Sentences → embed → similarity vs threshold → merge → chunks -->
+<svg class="diagram-svg" viewBox="0 0 940 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Sentences are embedded, adjacent similarities compared to a threshold, then merged into semantic chunks">
+  <defs>
+    <marker id="c6-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+  </defs>
+
+  <!-- Step labels -->
+  <text x="90"  y="34" text-anchor="middle" fill="#4ecca3" font-size="12" font-weight="700" font-family="system-ui" letter-spacing="1">1 · SEGMENT</text>
+  <text x="300" y="34" text-anchor="middle" fill="#818cf8" font-size="12" font-weight="700" font-family="system-ui" letter-spacing="1">2 · EMBED</text>
+  <text x="540" y="34" text-anchor="middle" fill="#fbbf24" font-size="12" font-weight="700" font-family="system-ui" letter-spacing="1">3 · COMPARE</text>
+  <text x="820" y="34" text-anchor="middle" fill="#a78bfa" font-size="12" font-weight="700" font-family="system-ui" letter-spacing="1">4·5 · MERGE → CHUNKS</text>
+
+  <!-- Sentences -->
+  <rect x="20" y="58"  width="140" height="34" rx="6" fill="#16161a" stroke="#36363e" stroke-width="1.5"/>
+  <text x="90" y="80" text-anchor="middle" fill="#b4b4be" font-size="12" font-family="system-ui">S1</text>
+  <rect x="20" y="100" width="140" height="34" rx="6" fill="#16161a" stroke="#36363e" stroke-width="1.5"/>
+  <text x="90" y="122" text-anchor="middle" fill="#b4b4be" font-size="12" font-family="system-ui">S2</text>
+  <rect x="20" y="142" width="140" height="34" rx="6" fill="#16161a" stroke="#36363e" stroke-width="1.5"/>
+  <text x="90" y="164" text-anchor="middle" fill="#b4b4be" font-size="12" font-family="system-ui">S3</text>
+  <rect x="20" y="184" width="140" height="34" rx="6" fill="#16161a" stroke="#36363e" stroke-width="1.5"/>
+  <text x="90" y="206" text-anchor="middle" fill="#b4b4be" font-size="12" font-family="system-ui">S4</text>
+
+  <line x1="162" y1="138" x2="216" y2="138" stroke="#818cf8" stroke-width="2" marker-end="url(#c6-arr)"/>
+
+  <!-- Embeddings -->
+  <rect x="220" y="58"  width="160" height="34" rx="6" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="300" y="80" text-anchor="middle" fill="#9aa0ff" font-size="11" font-family="monospace">[0.91, 0.12, …]</text>
+  <rect x="220" y="100" width="160" height="34" rx="6" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="300" y="122" text-anchor="middle" fill="#9aa0ff" font-size="11" font-family="monospace">[0.88, 0.15, …]</text>
+  <rect x="220" y="142" width="160" height="34" rx="6" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="300" y="164" text-anchor="middle" fill="#9aa0ff" font-size="11" font-family="monospace">[0.10, 0.95, …]</text>
+  <rect x="220" y="184" width="160" height="34" rx="6" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="300" y="206" text-anchor="middle" fill="#9aa0ff" font-size="11" font-family="monospace">[0.12, 0.92, …]</text>
+
+  <line x1="382" y1="138" x2="436" y2="138" stroke="#818cf8" stroke-width="2" marker-end="url(#c6-arr)"/>
+
+  <!-- Similarity comparisons -->
+  <text x="540" y="84"  text-anchor="middle" fill="#4ecca3" font-size="13" font-family="monospace">sim(S1,S2) = 0.95 ✓</text>
+  <text x="540" y="126" text-anchor="middle" fill="#ef6461" font-size="13" font-family="monospace">sim(S2,S3) = 0.20 ✗</text>
+  <text x="540" y="168" text-anchor="middle" fill="#4ecca3" font-size="13" font-family="monospace">sim(S3,S4) = 0.93 ✓</text>
+  <rect x="446" y="190" width="188" height="30" rx="6" fill="#16161a" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text x="540" y="210" text-anchor="middle" fill="#fbbf24" font-size="12" font-family="monospace">threshold = 0.80</text>
+
+  <line x1="648" y1="138" x2="702" y2="138" stroke="#818cf8" stroke-width="2" marker-end="url(#c6-arr)"/>
+
+  <!-- Chunks -->
+  <rect x="712" y="64" width="200" height="60" rx="8" fill="#16161a" stroke="#4ecca3" stroke-width="1.8"/>
+  <text x="812" y="88"  text-anchor="middle" fill="#4ecca3" font-size="12" font-weight="700" font-family="system-ui">Chunk 1</text>
+  <text x="812" y="108" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">S1 + S2</text>
+  <rect x="712" y="150" width="200" height="60" rx="8" fill="#16161a" stroke="#a78bfa" stroke-width="1.8"/>
+  <text x="812" y="174" text-anchor="middle" fill="#a78bfa" font-size="12" font-weight="700" font-family="system-ui">Chunk 2</text>
+  <text x="812" y="194" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">S3 + S4</text>
+
+  <!-- Break annotation -->
+  <text x="470" y="300" text-anchor="start" fill="#76767f" font-size="12" font-family="system-ui">Similarity falls below the threshold between S2 and S3 →</text>
+  <text x="470" y="320" text-anchor="start" fill="#b4b4be" font-size="12" font-family="system-ui">that drop is the <tspan fill="#ef6461" font-weight="700">break point</tspan> where a new chunk starts.</text>
+</svg>
+
+<h3>Step 1 — Document Segmentation</h3>
+<p>Split the document into its smallest natural units — usually <strong>sentences</strong> (or paragraphs). This is the granularity at which we'll decide boundaries.</p>
+
+<h3>Step 2 — Sentence Embedding</h3>
+<p>Convert each sentence into a <strong>vector representation</strong> using an embedding model — OpenAI, a HuggingFace model, or a Sentence-Transformer. Now every sentence is a point in meaning-space, and sentences about the same topic sit close together (Chapter 4).</p>
+
+<h3>Step 3 — Semantic Similarity Check</h3>
+<p>Walk through adjacent sentences and compute the <strong>cosine similarity</strong> between each neighbouring pair of embeddings. A high score means the two sentences are about the same thing; a low score means the topic just changed.</p>
+
+<h3>Step 4 — Merging of Sentences</h3>
+<p>Merge adjacent sentences into the same chunk <em>as long as</em> their similarity stays at or above a <strong>threshold</strong>. The threshold is the one dial you tune — common values sit around <code>0.75</code>–<code>0.95</code>.</p>
+
+<table>
+  <thead>
+    <tr><th>Threshold</th><th>Effect</th><th>Result</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>High</strong> (e.g. 0.95)</td><td>Only near-identical sentences merge</td><td>Many small, tightly-focused chunks</td></tr>
+    <tr><td><strong>Medium</strong> (e.g. 0.80)</td><td>Related sentences merge, topic shifts break</td><td>Balanced, coherent chunks</td></tr>
+    <tr><td><strong>Low</strong> (e.g. 0.60)</td><td>Loosely related sentences merge</td><td>Fewer, larger chunks (risk of mixing topics)</td></tr>
+  </tbody>
+</table>
+
+<h3>Step 5 — Form Chunks</h3>
+<p>Wherever similarity falls below the threshold, close the current chunk and start a new one. Each finished group of merged sentences becomes one semantic chunk, ready to embed and store.</p>
+
+<div class="example-block">
+  <div class="label">Worked Example</div>
+  <p>For sentences S1–S4 with a threshold of <code>0.80</code>: <code>sim(S1,S2)=0.95</code> ≥ 0.80 → merge. <code>sim(S2,S3)=0.20</code> &lt; 0.80 → <strong>break</strong>. <code>sim(S3,S4)=0.93</code> ≥ 0.80 → merge. The result is <code>[S1, S2]</code> as Chunk 1 and <code>[S3, S4]</code> as Chunk 2 — the topic shift at S3 became the boundary.</p>
+</div>
+
+<hr class="divider">
+
+<h2>Building a Semantic Chunker from Scratch</h2>
+
+<p>The clearest way to understand the algorithm is to write it. The core is a single pass over the sentences, comparing each to the one before it.</p>
+
+<pre>from langchain_openai import OpenAIEmbeddings
+from sklearn.metrics.pairwise import cosine_similarity
+import os, dotenv
+
+dotenv.load_dotenv()
+
+embeddings = OpenAIEmbeddings(
+    model="text-embedding-3-small",
+    dimensions=1536,
+    api_key=os.getenv("openai_api_key"),
+)
+
+text = """
+langchain is a framework for building applications with LangChain.
+langchain provides modular abstractions to combine LLM elements with tools like OpenAI and Pinecone.
+You can create chains, agents, memory, and retrieval.
+The Eiffel Tower in Paris.
+France is a popular tourist destination.
+"""
+
+# Step 1: split into sentences
+sentences = [s.strip() for s in text.split("\n") if s.strip()]
+
+# Step 2: embed each sentence
+sentence_embeddings = embeddings.embed_documents(sentences)
+
+# Step 3: parameters
+threshold = 0.7
+chunks = []
+current_chunk = [sentences[0]]
+
+# Step 4: walk adjacent pairs, merge while similar
+for i in range(1, len(sentences)):
+    sim = cosine_similarity(
+        [sentence_embeddings[i - 1]],
+        [sentence_embeddings[i]],
+    )[0][0]
+
+    if sim >= threshold:
+        current_chunk.append(sentences[i])      # same topic → keep merging
+    else:
+        chunks.append(" ".join(current_chunk))  # topic shift → close chunk
+        current_chunk = [sentences[i]]
+
+# Step 5: don't forget the final chunk
+chunks.append(" ".join(current_chunk))
+
+for i, c in enumerate(chunks, 1):
+    print(f"Chunk {i}: {c}\n")</pre>
+
+<p>The logic is exactly the five steps: embed, compare each neighbour, append when similar, and cut a new chunk when the similarity drops below <code>threshold</code>. The line after the loop matters — without it the last group of sentences never gets flushed.</p>
+
+<div class="example-block">
+  <div class="label">Watch the Final Flush</div>
+  <p>The loop only closes a chunk when it sees a topic <em>change</em>. The very last chunk never hits a break, so you must append <code>current_chunk</code> once more after the loop ends — a classic off-by-one that silently drops your final sentences if you forget it.</p>
+</div>
+
+<hr class="divider">
+
+<h2>Wrapping It as a Reusable Chunker</h2>
+
+<p>To use semantic chunking inside a real pipeline, wrap the algorithm in a class that speaks LangChain's language — taking <code>Document</code> objects in and returning chunked <code>Document</code>s out, so it slots in wherever a text splitter would.</p>
+
+<pre>from langchain_core.documents import Document
+from openai import OpenAI
+from sklearn.metrics.pairwise import cosine_similarity
+import os
+
+
+class ThresholdSemanticChunker:
+    def __init__(self, model_name="text-embedding-3-small", threshold=0.7):
+        self.client = OpenAI(api_key=os.getenv("openai_api_key"))
+        self.model_name = model_name
+        self.threshold = threshold
+
+    def _get_embeddings(self, texts):
+        response = self.client.embeddings.create(input=texts, model=self.model_name)
+        return [item.embedding for item in response.data]
+
+    def chunk(self, text):
+        sentences = [s.strip() for s in text.split(".") if s.strip()]
+        sentence_embeddings = self._get_embeddings(sentences)
+
+        chunks = []
+        current_chunk = [sentences[0]]
+        for i in range(1, len(sentences)):
+            sim = cosine_similarity(
+                [sentence_embeddings[i - 1]],
+                [sentence_embeddings[i]],
+            )[0][0]
+            if sim >= self.threshold:
+                current_chunk.append(sentences[i])
+            else:
+                chunks.append(". ".join(current_chunk) + ".")
+                current_chunk = [sentences[i]]
+        chunks.append(". ".join(current_chunk) + ".")
+        return chunks
+
+    def split_documents(self, docs):
+        result = []
+        for doc in docs:
+            for chunk in self.chunk(doc.page_content):
+                # carry the original metadata onto every derived chunk
+                result.append(Document(page_content=chunk, metadata=doc.metadata))
+        return result</pre>
+
+<p>Because it exposes <code>split_documents</code> — the same method name as LangChain's built-in splitters — you can drop it straight into the ingestion pipeline from Chapter 3:</p>
+
+<pre>doc = Document(page_content=sample_text)
+
+chunker = ThresholdSemanticChunker(threshold=0.7)
+chunks = chunker.split_documents([doc])
+
+for c in chunks:
+    print(c.page_content)</pre>
+
+<div class="example-block">
+  <div class="label">Preserve the Metadata</div>
+  <p>Notice <code>split_documents</code> copies <code>doc.metadata</code> onto each new chunk. Chunking must never lose the source, page number, or tags attached to the original document — that metadata is what powers filtering and citations later in the RAG chain.</p>
+</div>
+
+<hr class="divider">
+
+<h2>The Easy Way — LangChain's <code>SemanticChunker</code></h2>
+
+<p>You don't have to hand-roll this in production. LangChain ships a battle-tested <code>SemanticChunker</code> in <code>langchain_experimental</code> that does the embedding, comparison, and splitting for you — you just hand it an embedding model.</p>
+
+<pre>from langchain_openai import OpenAIEmbeddings
+from langchain_experimental.text_splitter import SemanticChunker
+from langchain_community.document_loaders import TextLoader
+
+# Load a document
+loader = TextLoader("langchain_intro.txt")
+documents = loader.load()
+
+# Create the semantic chunker
+embeddings = OpenAIEmbeddings(
+    model="text-embedding-3-small",
+    api_key=os.getenv("openai_api_key"),
+)
+chunker = SemanticChunker(embeddings, breakpoint_threshold_type="percentile")
+
+chunks = chunker.split_documents(documents)
+for i, chunk in enumerate(chunks, 1):
+    print(f"\nchunk {i}:\n{chunk.page_content}")</pre>
+
+<p>Instead of a single fixed number, <code>SemanticChunker</code> decides the break point <em>statistically</em> from the distribution of similarities in your document. The <code>breakpoint_threshold_type</code> chooses how:</p>
+
+<table>
+  <thead>
+    <tr><th>breakpoint_threshold_type</th><th>How it picks a break point</th><th>Tends to produce</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>percentile</code> <em>(default)</em></td><td>Break where the distance is above the Nth percentile of all gaps</td><td>Balanced, robust default</td></tr>
+    <tr><td><code>standard_deviation</code></td><td>Break where the distance exceeds mean + N·σ</td><td>Fewer breaks — only sharp topic shifts</td></tr>
+    <tr><td><code>interquartile</code></td><td>Break using the interquartile range of distances</td><td>Resistant to outlier sentences</td></tr>
+    <tr><td><code>gradient</code></td><td>Break on the <em>rate of change</em> of similarity — good for dense, technical text</td><td>Sensitive to gradual drift</td></tr>
+  </tbody>
+</table>
+
+<p>For the LangChain-and-Eiffel-Tower text, the chunker correctly groups the three LangChain sentences together and splits off the two Paris/France sentences — without you ever setting a character count.</p>
+
+<hr class="divider">
+
+<h2>Plugging Semantic Chunks into a RAG Pipeline</h2>
+
+<p>Semantic chunking is a drop-in replacement for the splitting step — everything downstream (embed → store → retrieve → generate) is unchanged from Chapter 5. Here is the full modular flow, from chunks to a grounded answer:</p>
+
+<pre>from langchain_community.vectorstores import FAISS
+from langchain_openai import OpenAIEmbeddings
+from langchain.chat_models import init_chat_model
+from langchain_core.prompts import PromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnableMap
+
+# 1. Semantic chunks → vector store
+embeddings = OpenAIEmbeddings(model="text-embedding-3-small",
+                              api_key=os.getenv("openai_api_key"))
+vectorstore = FAISS.from_documents(chunks, embeddings)
+retriever = vectorstore.as_retriever()
+
+# 2. Prompt grounded strictly in retrieved context
+prompt = PromptTemplate.from_template(
+    """Answer the question based only on the following context:
+
+{context}
+
+Question: {question}
+
+Answer:"""
+)
+
+# 3. LCEL chain: retrieve → prompt → LLM → text
+llm = init_chat_model(model="groq:llama-3.3-70b-versatile", temperature=0)
+
+rag_chain = (
+    RunnableMap({
+        "context": lambda x: retriever.invoke(x["question"]),
+        "question": lambda x: x["question"],
+    })
+    | prompt
+    | llm
+    | StrOutputParser()
+)
+
+result = rag_chain.invoke({"question": "what is langchain used for"})
+print(result)</pre>
+
+<p>Because the chunks are semantically coherent, the retriever returns <em>whole ideas</em> rather than fragments — so the LLM answers from complete context instead of stitching together half-sentences.</p>
+
+<hr class="divider">
+
+<h2>When to Use Semantic Chunking</h2>
+
+<p>Semantic chunking is more accurate, but it isn't free — it calls an embedding model for every sentence during ingestion, which costs time and money that fixed-size splitting doesn't.</p>
+
+<table>
+  <thead>
+    <tr><th></th><th>Fixed-size chunking</th><th>Semantic chunking</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Splits on</strong></td><td>Character / token count</td><td>Meaning (embedding similarity)</td></tr>
+    <tr><td><strong>Boundary quality</strong></td><td>Arbitrary — can cut mid-idea</td><td>Aligned with topic shifts</td></tr>
+    <tr><td><strong>Speed</strong></td><td>Instant</td><td>Slower — embeds every sentence</td></tr>
+    <tr><td><strong>Cost</strong></td><td>Free</td><td>Embedding API calls at ingest time</td></tr>
+    <tr><td><strong>Best for</strong></td><td>Uniform text, quick prototypes, huge corpora</td><td>Mixed-topic docs where retrieval quality matters</td></tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">A Practical Rule</div>
+  <p>Reach for <strong>semantic chunking</strong> when documents weave through several topics and answer quality is the priority — knowledge bases, research papers, long articles. Stick with <strong>fixed-size chunking</strong> for uniform, single-topic text or when you're ingesting at massive scale and the per-sentence embedding cost adds up. Many teams do both: a fast splitter for bulk content, semantic chunking for the high-value documents.</p>
+</div>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+
+<div class="example-block">
+  <div class="label">Remember These Four</div>
+  <p><strong>1.</strong> <strong>Semantic chunking</strong> splits a document by <em>meaning</em>, not character count — keeping each chunk a complete, self-contained idea instead of a fragment cut off mid-thought.</p>
+  <p><strong>2.</strong> The algorithm is five steps: <strong>segment</strong> into sentences → <strong>embed</strong> each → <strong>compare</strong> adjacent cosine similarities → <strong>merge</strong> while above a <strong>threshold</strong> → start a new chunk at every drop.</p>
+  <p><strong>3.</strong> The <strong>threshold</strong> is the dial: higher = more, smaller chunks; lower = fewer, larger chunks. LangChain's <code>SemanticChunker</code> picks it statistically via <code>breakpoint_threshold_type</code> (<code>percentile</code>, <code>standard_deviation</code>, <code>interquartile</code>, <code>gradient</code>).</p>
+  <p><strong>4.</strong> It's a <strong>drop-in</strong> for the splitting step — embed, store, retrieve, and generate stay exactly as in Chapter 5 — but it trades ingest-time speed and embedding cost for sharper retrieval, so use it where quality matters most.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter5">← Chapter 5: Vector Storage &amp; Vector Databases</a>
+    <span></span>
+</nav>

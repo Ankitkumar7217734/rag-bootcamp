@@ -47,5 +47,10 @@ const chapters = [
         id: "chapter5",
         title: "Chapter 5: Vector Storage & Vector Databases",
         description: "Where embeddings live — vector stores vs vector databases, the unified LangChain interface, ChromaDB persistence, FAISS speed, retrievers and search types, managed cloud (Pinecone, Astra DB), and wiring a store into a RAG chain."
+    },
+    {
+        id: "chapter6",
+        title: "Chapter 6: Advanced Chunking & Preprocessing — Semantic Chunking",
+        description: "Splitting documents by meaning instead of character count — why fixed-size chunking breaks ideas, the five-step semantic chunking algorithm (segment, embed, compare, merge, form chunks), a from-scratch threshold chunker, LangChain's SemanticChunker and its breakpoint types, and plugging semantic chunks into a RAG pipeline."
     }
 ];
