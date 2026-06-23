@@ -1,0 +1,127 @@
+<h1>Chapter 8: Query Enhancement</h1>
+<p style="color:#888; margin-bottom: 2rem;"><em>Garbage in, garbage out — but for retrieval. Before you ever search the vector store, it pays to fix the <strong>question</strong> first.</em></p>
+
+<h2>Overview</h2>
+
+<p>Every chapter so far has worked on the <em>documents</em> side of RAG — how to chunk them, embed them, store them, and retrieve them well. This chapter flips to the other side of the pipeline: the <strong>query</strong> itself.</p>
+
+<p>In a RAG pipeline, <strong>the quality of the query sent to the retriever determines how good the retrieved context is</strong> — and therefore how accurate the LLM's final answer will be. A short, vague, or awkwardly-worded question retrieves weak context no matter how good your vector store is. That's where <strong>query enhancement</strong> comes in.</p>
+
+<div class="example-block">
+  <div class="label">What is Query Enhancement?</div>
+  <p>Query enhancement refers to techniques that <strong>improve or reformulate the user's query</strong> before retrieval, so the system pulls back better, more relevant documents from the knowledge base.</p>
+</div>
+
+<p>It's especially useful when:</p>
+<ul>
+  <li>The original query is <strong>short, ambiguous, or under-specified</strong>.</li>
+  <li>You want to <strong>broaden the scope</strong> to catch synonyms, related phrases, or spelling variants.</li>
+  <li>There's a <strong>language mismatch</strong> between how users ask and how documents are written.</li>
+</ul>
+
+<p>This chapter covers the three techniques from the notes, each reshaping the query in a different way:</p>
+
+<table>
+  <thead>
+    <tr><th>#</th><th>Technique</th><th>The core move</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>1</strong></td><td><strong>Query Expansion</strong></td><td>Rewrite one query into a richer, broader version that catches more relevant docs.</td></tr>
+    <tr><td><strong>2</strong></td><td><strong>Query Decomposition</strong></td><td>Break one complex question into simple sub-questions, answer each, then combine.</td></tr>
+    <tr><td><strong>3</strong></td><td><strong>HyDE</strong></td><td>Generate a hypothetical <em>answer</em> with an LLM and embed <em>that</em> to search.</td></tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">The Core Idea</div>
+  <p>All three share one principle: <strong>better queries → better retrieved chunks → better grounded LLM answers.</strong> Where Chapter 7 improved <em>how we search</em>, this chapter improves <em>what we search with</em>.</p>
+</div>
+
+<hr class="divider">
+
+<h2>Where It Fits in the Pipeline</h2>
+
+<p>Query enhancement sits at the very front of retrieval — between the user and the retriever. The raw query is transformed (by an LLM + prompt chain) into an enhanced query, which is what actually hits the vector store:</p>
+
+<!-- Query enhancement pipeline: raw query -> enhancement (LLM+prompt) -> enhanced query -> retriever -> vectorstore -> reranker -> LLM -->
+<svg class="diagram-svg" viewBox="0 0 940 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A raw user query passes through a query-enhancement step powered by an LLM and prompt, producing an enhanced query that is sent to the retriever, which searches the vector store and returns top-k documents to a re-ranker and then the LLM">
+  <defs>
+    <marker id="c8-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+  </defs>
+
+  <!-- Raw query -->
+  <rect x="30" y="40" width="150" height="52" rx="9" fill="#1a1a2e" stroke="#ef6461" stroke-width="2"/>
+  <text x="105" y="71" text-anchor="middle" fill="#ef6461" font-size="14" font-weight="600" font-family="system-ui">User Query</text>
+
+  <line x1="180" y1="66" x2="246" y2="66" stroke="#818cf8" stroke-width="2" marker-end="url(#c8-arr)"/>
+
+  <!-- Enhancement -->
+  <rect x="248" y="38" width="180" height="56" rx="9" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2"/>
+  <text x="338" y="62" text-anchor="middle" fill="#a78bfa" font-size="13.5" font-weight="700" font-family="system-ui">Query Enhancement</text>
+  <text x="338" y="81" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">expand · decompose · HyDE</text>
+
+  <!-- LLM + prompt feeding enhancement -->
+  <rect x="228" y="150" width="220" height="46" rx="9" fill="#16161a" stroke="#4ecca3" stroke-width="1.6"/>
+  <text x="338" y="178" text-anchor="middle" fill="#4ecca3" font-size="12.5" font-family="monospace">LLM + Prompt ⇒ chain</text>
+  <line x1="338" y1="150" x2="338" y2="96" stroke="#4ecca3" stroke-width="1.8" marker-end="url(#c8-arr)"/>
+  <text x="455" y="128" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">enhances the query</text>
+
+  <line x1="428" y1="66" x2="494" y2="66" stroke="#818cf8" stroke-width="2" marker-end="url(#c8-arr)"/>
+  <text x="461" y="55" text-anchor="middle" fill="#fbbf24" font-size="10.5" font-family="system-ui">enhanced</text>
+
+  <!-- Retriever -->
+  <rect x="496" y="38" width="170" height="56" rx="9" fill="#16161a" stroke="#a78bfa" stroke-width="1.8"/>
+  <text x="581" y="62" text-anchor="middle" fill="#a78bfa" font-size="13.5" font-weight="700" font-family="system-ui">Retriever</text>
+  <text x="581" y="81" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">FAISS / hybrid</text>
+
+  <!-- Vector store above retriever -->
+  <rect x="496" y="150" width="170" height="46" rx="9" fill="#16161a" stroke="#4ecca3" stroke-width="1.8"/>
+  <text x="581" y="178" text-anchor="middle" fill="#4ecca3" font-size="13" font-weight="700" font-family="system-ui">Vector Store</text>
+  <line x1="581" y1="150" x2="581" y2="96" stroke="#4ecca3" stroke-width="1.8" marker-end="url(#c8-arr)"/>
+
+  <line x1="666" y1="66" x2="732" y2="66" stroke="#818cf8" stroke-width="2" marker-end="url(#c8-arr)"/>
+  <text x="699" y="55" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">top-k</text>
+
+  <!-- LLM -->
+  <rect x="734" y="40" width="150" height="52" rx="9" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
+  <text x="809" y="64" text-anchor="middle" fill="#818cf8" font-size="14" font-weight="600" font-family="system-ui">LLM</text>
+  <text x="809" y="83" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">grounded answer</text>
+
+  <line x1="809" y1="92" x2="809" y2="240" stroke="#818cf8" stroke-width="2" marker-end="url(#c8-arr)"/>
+  <text x="809" y="262" text-anchor="middle" fill="#76767f" font-size="13" font-family="system-ui">Output ✓</text>
+</svg>
+
+<hr class="divider">
+
+<h2>Explore Each Technique</h2>
+
+<p>Work through the three sub-chapters in order — each is self-contained with its own diagram, comparison tables, and LangChain code:</p>
+
+<ul>
+  <li><strong><a href="#chapter8-1">1 · Query Expansion →</a></strong><br>
+      Reformulate a short or vague query into a richer one — covering synonyms, related phrases, and variants — so the retriever catches more relevant chunks.</li>
+  <li><strong><a href="#chapter8-2">2 · Query Decomposition →</a></strong><br>
+      Split a complex, multi-part question into atomic sub-questions, retrieve and answer each, then synthesise a final answer. Enables multi-hop reasoning.</li>
+  <li><strong><a href="#chapter8-3">3 · HyDE — Hypothetical Document Embeddings →</a></strong><br>
+      Generate a hypothetical answer with an LLM and embed <em>that</em> instead of the question, bridging the vocabulary gap between queries and documents.</li>
+</ul>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+
+<div class="example-block">
+  <div class="label">Remember These Four</div>
+  <p><strong>1.</strong> <strong>Query enhancement</strong> improves retrieval by fixing the <em>question</em> before it reaches the retriever — better queries in, better context out.</p>
+  <p><strong>2.</strong> <strong>Query Expansion</strong> rewrites one query into a broader, richer version to catch synonyms and related phrasing.</p>
+  <p><strong>3.</strong> <strong>Query Decomposition</strong> breaks a complex question into sub-questions answered individually, then combined — great for multi-hop and comparison queries.</p>
+  <p><strong>4.</strong> <strong>HyDE</strong> embeds a hypothetical <em>answer</em> rather than the question, matching documents on answer-style content and bridging vocabulary mismatch.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter7-3">← MMR — Maximal Marginal Relevance</a>
+    <a href="#chapter8-1" class="next">1 · Query Expansion →</a>
+</nav>

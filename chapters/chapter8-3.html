@@ -1,0 +1,211 @@
+<h1>HyDE — Hypothetical Document Embeddings</h1>
+<p style="color:#888; margin-bottom: 2rem;">The third technique, and the cleverest — don't search with the question at all. Have an LLM <em>imagine the answer</em> first, then search with that. Answers look like documents; questions don't.</p>
+
+<h2>What is HyDE?</h2>
+
+<p><strong>HyDE (Hypothetical Document Embeddings)</strong> is a retrieval technique where, instead of embedding the user's query directly, you first <strong>generate a hypothetical answer (document)</strong> to the query using an LLM — and then embed <em>that hypothetical document</em> to search your vector store.</p>
+
+<p>Why does this help? Because of a subtle mismatch: a <em>question</em> ("When was Steve Jobs fired from Apple?") and the <em>passage that answers it</em> ("Jobs was ousted from Apple in September 1985 after a boardroom struggle…") use very different words. Embedding the question searches for text that looks like a question. Embedding a hypothetical <em>answer</em> searches for text that looks like an answer — which is exactly what your documents are.</p>
+
+<div class="example-block">
+  <div class="label">The Core Idea</div>
+  <p>HyDE bridges the gap between <strong>user intent</strong> and <strong>relevant content</strong> by matching on answer-style text rather than question-style text. The hypothetical answer doesn't even need to be factually correct — it just needs to <em>look like</em> the right kind of document so the embedding lands near the real ones.</p>
+</div>
+
+<p>It's especially useful when:</p>
+<ol>
+  <li><strong>Queries are short</strong> — too little signal to embed well.</li>
+  <li><strong>There's a language mismatch</strong> between the query and the documents.</li>
+  <li>You want to retrieve based on <strong>answer content, not question words</strong>.</li>
+</ol>
+
+<hr class="divider">
+
+<h2>How HyDE Works</h2>
+
+<p>The query goes to an LLM that writes a hypothetical answer. That answer — not the original query — is embedded and sent to the retriever. The retriever returns the real top-k documents, which the LLM then uses to produce the grounded final answer.</p>
+
+<!-- HyDE flow: query -> LLM generates hypothetical answer -> embed -> retriever -> top-k -> LLM -> output -->
+<svg class="diagram-svg" viewBox="0 0 940 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A query is sent to an LLM that generates a hypothetical answer, which is embedded and used by the retriever to fetch the real top-k documents, which the final LLM uses to produce the output">
+  <defs>
+    <marker id="c8c-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+  </defs>
+
+  <!-- outer RAG frame -->
+  <rect x="14" y="30" width="912" height="200" rx="12" fill="none" stroke="#4ecca3" stroke-width="1.5" stroke-dasharray="6 5"/>
+  <text x="48" y="52" fill="#4ecca3" font-size="13" font-weight="700" font-family="system-ui" letter-spacing="1">RAG + HyDE</text>
+
+  <!-- Query -->
+  <rect x="40" y="92" width="130" height="50" rx="9" fill="#1a1a2e" stroke="#ef6461" stroke-width="2"/>
+  <text x="105" y="122" text-anchor="middle" fill="#ef6461" font-size="14" font-weight="600" font-family="system-ui">Query</text>
+
+  <line x1="170" y1="117" x2="226" y2="117" stroke="#818cf8" stroke-width="2" marker-end="url(#c8c-arr)"/>
+
+  <!-- HyDE / LLM generates hypothetical answer -->
+  <rect x="228" y="84" width="200" height="66" rx="9" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
+  <text x="328" y="108" text-anchor="middle" fill="#818cf8" font-size="14" font-weight="700" font-family="system-ui">HyDE — LLM</text>
+  <text x="328" y="127" text-anchor="middle" fill="#b4b4be" font-size="11.5" font-family="system-ui">generate hypothetical</text>
+  <text x="328" y="142" text-anchor="middle" fill="#b4b4be" font-size="11.5" font-family="system-ui">answer (document)</text>
+
+  <!-- embed label -->
+  <line x1="428" y1="117" x2="494" y2="117" stroke="#818cf8" stroke-width="2" marker-end="url(#c8c-arr)"/>
+  <text x="461" y="106" text-anchor="middle" fill="#fbbf24" font-size="10.5" font-family="system-ui">⇒ embed</text>
+
+  <!-- Retriever -->
+  <rect x="496" y="84" width="170" height="66" rx="9" fill="#16161a" stroke="#a78bfa" stroke-width="1.8"/>
+  <text x="581" y="114" text-anchor="middle" fill="#a78bfa" font-size="13.5" font-weight="700" font-family="system-ui">Retriever</text>
+  <text x="581" y="133" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">search vector store</text>
+
+  <line x1="666" y1="117" x2="732" y2="117" stroke="#818cf8" stroke-width="2" marker-end="url(#c8c-arr)"/>
+  <text x="699" y="106" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">top-k</text>
+
+  <!-- final LLM -->
+  <rect x="734" y="84" width="150" height="66" rx="9" fill="#1a1a2e" stroke="#ef6461" stroke-width="2"/>
+  <text x="809" y="114" text-anchor="middle" fill="#ef6461" font-size="14" font-weight="700" font-family="system-ui">LLM</text>
+  <text x="809" y="133" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">real docs → answer</text>
+
+  <line x1="809" y1="150" x2="809" y2="196" stroke="#818cf8" stroke-width="2" marker-end="url(#c8c-arr)"/>
+  <text x="809" y="216" text-anchor="middle" fill="#76767f" font-size="13" font-family="system-ui">Output ✓</text>
+
+  <!-- note under HyDE -->
+  <text x="328" y="178" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">hypothetical answer ⇒ embedding</text>
+</svg>
+
+<hr class="divider">
+
+<h2>HyDE from Scratch</h2>
+
+<p>The manual version makes the idea concrete: write a function that asks the LLM for a hypothetical answer, then feed that text (not the query) to the retriever.</p>
+
+<pre>from langchain_core.output_parsers import StrOutputParser
+from langchain.prompts.chat import SystemMessagePromptTemplate, ChatPromptTemplate
+
+def get_hyde_doc(query):
+    template = """Imagine you are an expert writing a detailed explanation
+    on the topic: '{query}'. Create a hypothetical answer for the topic."""
+
+    system_message_prompt = SystemMessagePromptTemplate.from_template(template=template)
+    chat_prompt = ChatPromptTemplate.from_messages([system_message_prompt])
+    messages = chat_prompt.format_prompt(query=query).to_messages()
+    response = llm.invoke(messages)
+    return response.content   # the hypothetical document
+
+# Generate a hypothetical answer
+query = "When was Steve Jobs fired from Apple?"
+print(get_hyde_doc(query=query))
+# → "## The Fall and Rise of a Tech Titan ... ousted on September 17, 1985 ..."
+
+# Retrieve using the hypothetical answer, NOT the raw query
+matched_docs = base_retriever.invoke(get_hyde_doc(query))
+print(matched_docs)</pre>
+
+<p>The LLM's generated paragraph reads like an encyclopedia entry — so when embedded, it lands right next to the real Wikipedia passages about Jobs' departure, which a bare question embedding might have missed.</p>
+
+<h3>LangChain's Built-In HyDE Embedder</h3>
+
+<p>LangChain ships <code>HypotheticalDocumentEmbedder</code>, which wraps the whole "generate → embed" step into a drop-in embedding function. You hand it an LLM and a base embeddings model, and it transparently does HyDE for every query.</p>
+
+<pre>from langchain.chains.hyde.base import HypotheticalDocumentEmbedder
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import Chroma
+
+# Base embeddings (the real vectoriser)
+base_embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+
+# HyDE embedder using a built-in prompt template ('web_search')
+hyde_embedding_function = HypotheticalDocumentEmbedder.from_llm(
+    llm=llm,
+    base_embeddings=base_embeddings,
+    prompt_key="web_search",
+)
+
+# Store documents using the HyDE embedding function
+vectorstore = Chroma.from_documents(
+    documents=chunks,
+    embedding=hyde_embedding_function,
+    persist_directory="output/langchain",
+)
+
+# Now similarity_search transparently uses HyDE under the hood
+matched_docs = vectorstore.similarity_search(
+    "What memory modules does LangChain provide?", k=4
+)</pre>
+
+<p>The <code>prompt_key</code> selects one of LangChain's built-in HyDE prompt templates. Per the source code (the <code>PROMPT_MAP</code>), the options are:</p>
+
+<table>
+  <thead>
+    <tr><th>Built-in <code>prompt_key</code> values</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>web_search</code> · <code>sci_fact</code> · <code>arguana</code> · <code>trec_covid</code></td></tr>
+    <tr><td><code>fiqa</code> · <code>dbpedia_entity</code> · <code>trec_news</code> · <code>mr_tydi</code></td></tr>
+  </tbody>
+</table>
+
+<p>Prefer your own wording? Pass a <code>custom_prompt</code> instead of a <code>prompt_key</code>:</p>
+
+<pre>from langchain.prompts import PromptTemplate
+
+custom = PromptTemplate.from_template(
+    "Generate a concise hypothetical answer for this topic: {query}"
+)
+
+hyde_embedding_function = HypotheticalDocumentEmbedder.from_llm(
+    llm=llm,
+    base_embeddings=base_embeddings,
+    custom_prompt=custom,
+)</pre>
+
+<hr class="divider">
+
+<h2>Why Use HyDE?</h2>
+
+<table>
+  <thead>
+    <tr><th>Problem</th><th>How HyDE helps</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>User query and documents use different words</td><td>Embeds answer-style content instead of the question</td></tr>
+    <tr><td>Query is too vague</td><td>LLM-generated answer gives richer semantics</td></tr>
+    <tr><td>Better grounding needed</td><td>Embeds what the answer might look like</td></tr>
+    <tr><td>Zero-shot retrieval</td><td>Works well even without prior training</td></tr>
+  </tbody>
+</table>
+
+<h3>Benefits of HyDE</h3>
+
+<table>
+  <thead>
+    <tr><th>Feature</th><th>Why it helps</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Semantic intent modelling</strong></td><td>Better than literal keyword matching</td></tr>
+    <tr><td><strong>LLM-aware retrieval</strong></td><td>Query is expanded into more context</td></tr>
+    <tr><td><strong>Generalisation</strong></td><td>Works even if document phrasing differs from the question</td></tr>
+    <tr><td><strong>Plug-and-play</strong></td><td>No retraining; works with OpenAI, Cohere, Hugging Face</td></tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">The Catch</div>
+  <p>HyDE adds an <strong>extra LLM call before every retrieval</strong> (to generate the hypothetical answer), so it costs more latency and tokens. And if the LLM hallucinates wildly off-topic, the embedding can drift. It shines on short or vocabulary-mismatched queries — for already-rich queries, plain embedding may be enough.</p>
+</div>
+
+<div class="example-block">
+  <div class="label">Key Takeaway</div>
+  <p>HyDE embeds a <strong>hypothetical answer</strong> instead of the question, so retrieval matches on answer-style content. Build it by hand (generate → embed → retrieve) or use LangChain's <code>HypotheticalDocumentEmbedder</code> as a drop-in embedding function with a <code>prompt_key</code> or <code>custom_prompt</code>.</p>
+</div>
+
+<div class="example-block">
+  <div class="label">Chapter 8 Recap — All Three Techniques</div>
+  <p><strong>Query Expansion</strong> broadens one query; <strong>Query Decomposition</strong> splits a complex query into sub-questions; <strong>HyDE</strong> swaps the question for a hypothetical answer. All three reshape the query <em>before</em> retrieval so the LLM gets better context — better queries in, better answers out.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter8-2">← 2 · Query Decomposition</a>
+    <span></span>
+</nav>

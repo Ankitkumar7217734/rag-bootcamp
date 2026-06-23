@@ -1,0 +1,200 @@
+<h1>Query Decomposition</h1>
+<p style="color:#888; margin-bottom: 2rem;">The second technique — when one question secretly contains several, split it. Break a complex query into atomic sub-questions, answer each on its own, then stitch the answers back together.</p>
+
+<h2>What is Query Decomposition?</h2>
+
+<p><strong>Query decomposition</strong> is the process of taking a complex, multi-part question and breaking it into simpler, <em>atomic</em> sub-questions that can each be retrieved and answered individually.</p>
+
+<p>Consider: <em>"How does LangChain use memory and agents compared to CrewAI?"</em> That single sentence is really asking three or four different things at once. A single retrieval will pull a muddle of partially-relevant chunks. Decomposition splits it into focused sub-questions, each of which retrieves clean, on-point context.</p>
+
+<h3>Why Use Query Decomposition?</h3>
+
+<ul>
+  <li><strong>Complex queries often involve multiple concepts</strong> — one search can't serve them all.</li>
+  <li><strong>LLMs or retrievers may miss parts</strong> of a multi-part question.</li>
+  <li>It enables <strong>multi-hop reasoning</strong> — answering in steps.</li>
+  <li>It allows <strong>parallelism</strong>, especially in multi-agent frameworks (each sub-question is independent).</li>
+</ul>
+
+<hr class="divider">
+
+<h2>How Query Decomposition Works</h2>
+
+<p>A <strong>decomposer</strong> (an LLM + prompt) splits the user query into sub-questions. Each sub-question runs through its <em>own</em> retriever → LLM call, producing a partial answer. Finally an <strong>answer combiner / synthesiser</strong> merges the partial answers into one final response.</p>
+
+<!-- Query decomposition fan-out: query -> decomposer -> sub-questions -> per-sub retriever+LLM -> combiner -> final answer -->
+<svg class="diagram-svg" viewBox="0 0 940 430" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A user query enters a decomposer which splits it into three sub-questions; each sub-question flows through its own retriever and LLM call to a partial answer, and all partial answers feed an answer combiner that produces the final answer">
+  <defs>
+    <marker id="c8b-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+  </defs>
+
+  <!-- User query -->
+  <rect x="380" y="16" width="180" height="46" rx="9" fill="#1a1a2e" stroke="#fbbf24" stroke-width="2"/>
+  <text x="470" y="44" text-anchor="middle" fill="#fbbf24" font-size="14" font-weight="600" font-family="system-ui">User Query (complex)</text>
+
+  <line x1="470" y1="62" x2="470" y2="86" stroke="#818cf8" stroke-width="2" marker-end="url(#c8b-arr)"/>
+
+  <!-- Decomposer -->
+  <rect x="350" y="88" width="240" height="50" rx="9" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2"/>
+  <text x="470" y="111" text-anchor="middle" fill="#a78bfa" font-size="14" font-weight="700" font-family="system-ui">Decomposer</text>
+  <text x="470" y="129" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">LLM + prompt → split into sub-Qs</text>
+
+  <!-- fan-out to 3 sub-questions -->
+  <line x1="410" y1="138" x2="170" y2="172" stroke="#818cf8" stroke-width="2" marker-end="url(#c8b-arr)"/>
+  <line x1="470" y1="138" x2="470" y2="172" stroke="#818cf8" stroke-width="2" marker-end="url(#c8b-arr)"/>
+  <line x1="530" y1="138" x2="770" y2="172" stroke="#818cf8" stroke-width="2" marker-end="url(#c8b-arr)"/>
+
+  <!-- Sub-question columns -->
+  <!-- col 1 -->
+  <rect x="70" y="174" width="200" height="40" rx="7" fill="#16161a" stroke="#4ecca3" stroke-width="1.7"/>
+  <text x="170" y="199" text-anchor="middle" fill="#4ecca3" font-size="12.5" font-weight="600" font-family="system-ui">Sub-Q 1</text>
+  <!-- col 2 -->
+  <rect x="370" y="174" width="200" height="40" rx="7" fill="#16161a" stroke="#4ecca3" stroke-width="1.7"/>
+  <text x="470" y="199" text-anchor="middle" fill="#4ecca3" font-size="12.5" font-weight="600" font-family="system-ui">Sub-Q 2</text>
+  <!-- col 3 -->
+  <rect x="670" y="174" width="200" height="40" rx="7" fill="#16161a" stroke="#4ecca3" stroke-width="1.7"/>
+  <text x="770" y="199" text-anchor="middle" fill="#4ecca3" font-size="12.5" font-weight="600" font-family="system-ui">Sub-Q 3</text>
+
+  <!-- to retrievers -->
+  <line x1="170" y1="214" x2="170" y2="240" stroke="#818cf8" stroke-width="2" marker-end="url(#c8b-arr)"/>
+  <line x1="470" y1="214" x2="470" y2="240" stroke="#818cf8" stroke-width="2" marker-end="url(#c8b-arr)"/>
+  <line x1="770" y1="214" x2="770" y2="240" stroke="#818cf8" stroke-width="2" marker-end="url(#c8b-arr)"/>
+
+  <!-- Retrievers -->
+  <rect x="100" y="242" width="140" height="38" rx="7" fill="#16161a" stroke="#a78bfa" stroke-width="1.6"/>
+  <text x="170" y="266" text-anchor="middle" fill="#a78bfa" font-size="12" font-family="system-ui">Retriever</text>
+  <rect x="400" y="242" width="140" height="38" rx="7" fill="#16161a" stroke="#a78bfa" stroke-width="1.6"/>
+  <text x="470" y="266" text-anchor="middle" fill="#a78bfa" font-size="12" font-family="system-ui">Retriever</text>
+  <rect x="700" y="242" width="140" height="38" rx="7" fill="#16161a" stroke="#a78bfa" stroke-width="1.6"/>
+  <text x="770" y="266" text-anchor="middle" fill="#a78bfa" font-size="12" font-family="system-ui">Retriever</text>
+
+  <!-- to LLM calls (with top-k / context label) -->
+  <line x1="170" y1="280" x2="170" y2="306" stroke="#818cf8" stroke-width="2" marker-end="url(#c8b-arr)"/>
+  <line x1="470" y1="280" x2="470" y2="306" stroke="#818cf8" stroke-width="2" marker-end="url(#c8b-arr)"/>
+  <line x1="770" y1="280" x2="770" y2="306" stroke="#818cf8" stroke-width="2" marker-end="url(#c8b-arr)"/>
+  <text x="225" y="298" text-anchor="middle" fill="#76767f" font-size="9.5" font-family="system-ui">top-k</text>
+
+  <!-- LLM calls -->
+  <rect x="100" y="308" width="140" height="40" rx="7" fill="#1a1a2e" stroke="#ef6461" stroke-width="1.7"/>
+  <text x="170" y="328" text-anchor="middle" fill="#ef6461" font-size="12" font-weight="600" font-family="system-ui">LLM Call</text>
+  <text x="170" y="342" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">answer 1</text>
+  <rect x="400" y="308" width="140" height="40" rx="7" fill="#1a1a2e" stroke="#ef6461" stroke-width="1.7"/>
+  <text x="470" y="328" text-anchor="middle" fill="#ef6461" font-size="12" font-weight="600" font-family="system-ui">LLM Call</text>
+  <text x="470" y="342" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">answer 2</text>
+  <rect x="700" y="308" width="140" height="40" rx="7" fill="#1a1a2e" stroke="#ef6461" stroke-width="1.7"/>
+  <text x="770" y="328" text-anchor="middle" fill="#ef6461" font-size="12" font-weight="600" font-family="system-ui">LLM Call</text>
+  <text x="770" y="342" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">answer 3</text>
+
+  <!-- converge to combiner -->
+  <line x1="170" y1="348" x2="400" y2="378" stroke="#818cf8" stroke-width="2" marker-end="url(#c8b-arr)"/>
+  <line x1="470" y1="348" x2="470" y2="378" stroke="#818cf8" stroke-width="2" marker-end="url(#c8b-arr)"/>
+  <line x1="770" y1="348" x2="540" y2="378" stroke="#818cf8" stroke-width="2" marker-end="url(#c8b-arr)"/>
+
+  <!-- Combiner -->
+  <rect x="300" y="380" width="340" height="40" rx="9" fill="#1a1a2e" stroke="#fbbf24" stroke-width="2"/>
+  <text x="470" y="405" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700" font-family="system-ui">Answer Combiner / Synthesiser → Final Answer</text>
+</svg>
+
+<hr class="divider">
+
+<h2>Query Decomposition in LangChain</h2>
+
+<p>First, a <strong>decomposition chain</strong> — a prompt that asks the LLM to split the question into 2–4 sub-questions:</p>
+
+<pre>from langchain.prompts import PromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_classic.text_splitter import RecursiveCharacterTextSplitter
+from langchain_classic.document_loaders import TextLoader
+from langchain.chains.combine_documents import create_stuff_documents_chain
+
+# Step 1: Load, chunk, embed, build an MMR retriever
+loader = TextLoader("langchain_crewai_dataset.txt")
+docs = loader.load()
+splitter = RecursiveCharacterTextSplitter(chunk_size=300, chunk_overlap=50)
+chunks = splitter.split_documents(docs)
+
+embedding = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+vectorstore = FAISS.from_documents(chunks, embedding)
+retriever = vectorstore.as_retriever(
+    search_type="mmr", search_kwargs={"k": 4, "lambda_mult": 0.7}
+)
+
+# Step 3: Query decomposition chain
+decomposition_prompt = PromptTemplate.from_template("""
+You are an AI assistant. Decompose the following complex question into 2 to 4
+smaller sub-questions for better document retrieval.
+
+Question: "{question}"
+
+Sub-questions:
+""")
+decomposition_chain = decomposition_prompt | llm | StrOutputParser()</pre>
+
+<p>Next, a <strong>per-sub-question QA chain</strong>, and a pipeline that loops over each sub-question — retrieve, answer, collect:</p>
+
+<pre># Step 4: QA chain run once per sub-question
+qa_prompt = PromptTemplate.from_template("""
+Use the context below to answer the question.
+
+Context:
+{context}
+
+Question: {input}
+""")
+qa_chain = create_stuff_documents_chain(llm=llm, prompt=qa_prompt)
+
+# Step 5: Full decomposition RAG pipeline
+def full_query_decomposition_rag_pipeline(user_query):
+    # 1. Decompose into sub-questions
+    sub_qs_text = decomposition_chain.invoke({"question": user_query})
+    sub_questions = [
+        q.strip("-•1234567890. ").strip()
+        for q in sub_qs_text.split("\n") if q.strip()
+    ]
+
+    # 2. Retrieve + answer each sub-question independently
+    results = []
+    for subq in sub_questions:
+        docs = retriever.invoke(subq)
+        result = qa_chain.invoke({"input": subq, "context": docs})
+        results.append(f"Q: {subq}\nA: {result}")
+
+    # 3. Combine the partial answers
+    return "\n\n".join(results)
+
+# Step 6: Run
+query = "How does LangChain use memory and agents compared to CrewAI?"
+final_answer = full_query_decomposition_rag_pipeline(query)
+print("✅ Final Answer:\n")
+print(final_answer)</pre>
+
+<div class="example-block">
+  <div class="label">Parsing Gotcha</div>
+  <p>The decomposer returns sub-questions as free-form text (often a numbered or bulleted list, sometimes with a preamble like "Here's a breakdown:"). The list-comprehension strips bullet characters and numbering — but a stray preamble line can sneak in as a bogus "sub-question." In production, prompt the LLM for a strict format (e.g. JSON) or filter out non-question lines before looping.</p>
+</div>
+
+<hr class="divider">
+
+<h2>The Trade-Off</h2>
+
+<p>Decomposition is powerful but not free. Its <strong>major disadvantage</strong> is cost and latency:</p>
+
+<div class="example-block">
+  <div class="label">Major Disadvantage — More Calls</div>
+  <p>One decomposed query becomes <strong>many LLM calls and many retrieval calls</strong> — one decomposition call, then a retrieve + answer pair per sub-question, plus an optional synthesis call. For a 4-way split that's ~9 model/retriever round-trips instead of 2. More accuracy on complex questions, but slower and more expensive. Reserve it for genuinely multi-part queries.</p>
+</div>
+
+<div class="example-block">
+  <div class="label">Key Takeaway</div>
+  <p>Query decomposition splits a complex question into atomic sub-questions, answers each with its own retrieval, then combines them. It unlocks <strong>multi-hop reasoning</strong> and parallelism — at the cost of extra LLM and retrieval calls.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter8-1">← 1 · Query Expansion</a>
+    <a href="#chapter8-3" class="next">3 · HyDE — Hypothetical Document Embeddings →</a>
+</nav>

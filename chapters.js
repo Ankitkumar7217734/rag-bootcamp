@@ -74,5 +74,27 @@ const chapters = [
                 description: "Diversity-aware retrieval that balances relevance against redundancy, dropping near-duplicate chunks so the LLM gets coverage instead of repetition."
             }
         ]
+    },
+    {
+        id: "chapter8",
+        title: "Chapter 8: Query Enhancement",
+        description: "Improving the query before it hits the retriever — query expansion (rewrite one query into a richer one), query decomposition (split a complex question into sub-questions answered individually), and HyDE (embed a hypothetical LLM-generated answer instead of the question).",
+        children: [
+            {
+                id: "chapter8-1",
+                title: "Query Expansion",
+                description: "Reformulate a short or vague query into a richer one — covering synonyms, related phrases, and variants — so the retriever catches more relevant chunks."
+            },
+            {
+                id: "chapter8-2",
+                title: "Query Decomposition",
+                description: "Break a complex, multi-part question into atomic sub-questions, retrieve and answer each individually, then synthesise a final answer — enabling multi-hop reasoning."
+            },
+            {
+                id: "chapter8-3",
+                title: "HyDE — Hypothetical Document Embeddings",
+                description: "Generate a hypothetical answer with an LLM and embed that instead of the question, matching documents on answer-style content to bridge the query–document vocabulary gap."
+            }
+        ]
     }
 ];
