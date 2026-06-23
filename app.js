@@ -25,16 +25,45 @@ function buildSidebar() {
     nav.innerHTML = '';
 
     chapters.forEach(ch => {
-        // Parent chapter
         const li = document.createElement('li');
-        const a = document.createElement('a');
-        a.href = `#${ch.id}`;
-        a.textContent = ch.title;
-        li.appendChild(a);
-        nav.appendChild(li);
 
-        // Sub-chapters (indented)
-        if (ch.children) {
+        if (ch.children && ch.children.length) {
+            // Parent chapter WITH sub-chapters: a collapsible group.
+            // Sub-chapters are hidden by default and revealed when the parent
+            // is opened (via navigation or the chevron toggle).
+            li.classList.add('nav-group');
+
+            // Row holds the chapter link plus a chevron that toggles the group.
+            const row = document.createElement('div');
+            row.className = 'nav-group-row';
+
+            const a = document.createElement('a');
+            a.href = `#${ch.id}`;
+            a.textContent = ch.title;
+            row.appendChild(a);
+
+            const toggle = document.createElement('button');
+            toggle.className = 'subnav-toggle';
+            toggle.type = 'button';
+            toggle.setAttribute('aria-label', `Toggle ${ch.title} sub-chapters`);
+            toggle.setAttribute('aria-expanded', 'false');
+            toggle.innerHTML =
+                '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">' +
+                '<path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" ' +
+                'stroke-linecap="round" stroke-linejoin="round"/></svg>';
+            // The chevron toggles the group without navigating.
+            toggle.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setGroupExpanded(li, !li.classList.contains('expanded'));
+            });
+            row.appendChild(toggle);
+
+            li.appendChild(row);
+
+            // Nested list of sub-chapters
+            const subUl = document.createElement('ul');
+            subUl.className = 'subnav';
             ch.children.forEach(sub => {
                 const subLi = document.createElement('li');
                 subLi.classList.add('sub-item');
@@ -42,10 +71,26 @@ function buildSidebar() {
                 subA.href = `#${sub.id}`;
                 subA.textContent = sub.title;
                 subLi.appendChild(subA);
-                nav.appendChild(subLi);
+                subUl.appendChild(subLi);
             });
+            li.appendChild(subUl);
+        } else {
+            // Leaf chapter (no children)
+            const a = document.createElement('a');
+            a.href = `#${ch.id}`;
+            a.textContent = ch.title;
+            li.appendChild(a);
         }
+
+        nav.appendChild(li);
     });
+}
+
+/* Expand or collapse a sidebar group, keeping the chevron's aria state in sync. */
+function setGroupExpanded(group, expanded) {
+    group.classList.toggle('expanded', expanded);
+    const toggle = group.querySelector('.subnav-toggle');
+    if (toggle) toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
 }
 
 function buildHomepage() {
@@ -280,14 +325,22 @@ function wireTOCInteractions(headings) {
 }
 
 function updateSidebarActive(activeId) {
+    // Mark the <li> whose OWN link matches as active. Use direct-child links so
+    // a parent group isn't flagged active just because it contains the link.
     const items = document.querySelectorAll('#sidebar-nav li');
     items.forEach(li => {
-        const link = li.querySelector('a');
-        if (link && link.getAttribute('href') === `#${activeId}`) {
-            li.classList.add('active');
-        } else {
-            li.classList.remove('active');
-        }
+        const link = li.classList.contains('nav-group')
+            ? li.querySelector(':scope > .nav-group-row > a')
+            : li.querySelector(':scope > a');
+        const isActive = link && link.getAttribute('href') === `#${activeId}`;
+        li.classList.toggle('active', !!isActive);
+    });
+
+    // Open only the group that contains the active page; collapse the rest so
+    // sub-chapters are never shown by default.
+    document.querySelectorAll('#sidebar-nav .nav-group').forEach(group => {
+        const containsActive = !!group.querySelector(`a[href="#${activeId}"]`);
+        setGroupExpanded(group, containsActive);
     });
 }
 

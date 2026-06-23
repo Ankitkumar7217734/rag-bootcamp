@@ -360,11 +360,75 @@ body {
     background: var(--accent-faint);
 }
 
-.sidebar-nav li.active a {
+/* Active highlight applies only to the li's OWN link (direct child), so an
+   active parent group never visually highlights its nested sub-chapters. */
+.sidebar-nav li.active > a,
+.sidebar-nav li.active > .nav-group-row > a {
     color: var(--text-primary);
     background: var(--accent-soft);
     border-left-color: var(--accent);
     font-weight: 600;
+}
+
+/* ---- Collapsible group (parent chapter + sub-chapters) ---- */
+.sidebar-nav .nav-group-row {
+    display: flex;
+    align-items: center;
+}
+
+.sidebar-nav .nav-group-row a {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Chevron button that opens/closes the sub-chapter list */
+.subnav-toggle {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    margin-right: 0.4rem;
+    padding: 0;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: color var(--t-base) var(--ease),
+                background-color var(--t-base) var(--ease);
+}
+
+.subnav-toggle:hover {
+    color: var(--text-primary);
+    background: var(--accent-faint);
+}
+
+.subnav-toggle svg {
+    transition: transform var(--t-base) var(--ease);
+}
+
+/* Rotate the chevron from ▶ to ▼ when the group is expanded */
+.sidebar-nav .nav-group.expanded .subnav-toggle svg {
+    transform: rotate(90deg);
+}
+
+/* Nested sub-chapter list — collapsed by default, revealed when expanded */
+.sidebar-nav .subnav {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    transition: max-height var(--t-base) var(--ease),
+                opacity var(--t-base) var(--ease);
+}
+
+.sidebar-nav .nav-group.expanded .subnav {
+    max-height: 40rem;
+    opacity: 1;
 }
 
 .sidebar-nav li.sub-item {
