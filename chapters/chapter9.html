@@ -1,0 +1,557 @@
+<h1>Chapter 9: Multimodal RAG — Going Beyond Text</h1>
+<p style="color:#888; margin-bottom: 2rem;"><em>Documents aren't just walls of text. Charts, diagrams, screenshots, and photos carry critical information — and a RAG pipeline that ignores them leaves answers half-blind.</em></p>
+
+<h2>Overview</h2>
+
+<p>Every chapter so far has worked with <strong>text</strong> — text chunks, text embeddings, text retrieval. But real-world documents are <strong>multimodal</strong>: a PDF report has bar charts next to bullet points; a product catalog pairs descriptions with photos; a research paper includes figures, tables, and equations alongside prose.</p>
+
+<p>A standard text-only RAG pipeline <strong>drops all images on the floor</strong>. It strips out charts, screenshots, and diagrams, then answers questions using only the words. When a user asks <em>"What does the revenue chart show?"</em>, text-only RAG is guessing from nearby captions — it never actually <strong>sees</strong> the chart.</p>
+
+<p><strong>Multimodal RAG</strong> fixes this. It extracts <em>both</em> text and images from documents, embeds them into a <strong>shared vector space</strong> using a model that understands both modalities (like CLIP), and retrieves them together. Then a vision-capable LLM like GPT-4V reads the retrieved text <em>and</em> images to produce a fully-grounded answer.</p>
+
+<div class="example-block">
+  <div class="label">What is Multimodal RAG?</div>
+  <p>Multimodal RAG extends retrieval-augmented generation to handle <strong>text AND images</strong> in a unified pipeline. A multimodal embedding model (CLIP) maps both into the same vector space; a vision-capable LLM (GPT-4V) processes both modalities to generate answers grounded in the full document — not just its words.</p>
+</div>
+
+<!-- Multimodal RAG pipeline diagram: PDF → text extraction + image extraction → CLIP embeddings → unified FAISS → retrieval → GPT-4V → answer -->
+<svg class="diagram-svg" viewBox="0 0 940 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Multimodal RAG pipeline: a PDF document is split into text and images, both get embedded by CLIP into a unified FAISS vector store, then a user query retrieves the top-k multimodal chunks which are sent to GPT-4V with a vision prompt to produce a grounded answer">
+  <defs>
+    <marker id="c9-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+    <marker id="c9-arr-g" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#4ecca3"/>
+    </marker>
+  </defs>
+
+  <!-- PDF Document -->
+  <rect x="20" y="115" width="130" height="56" rx="9" fill="#1a1a2e" stroke="#ef6461" stroke-width="2"/>
+  <text x="85" y="140" text-anchor="middle" fill="#ef6461" font-size="13.5" font-weight="700" font-family="system-ui">PDF Document</text>
+  <text x="85" y="158" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">text + images</text>
+
+  <!-- Split into two paths -->
+  <line x1="150" y1="125" x2="200" y2="80" stroke="#4ecca3" stroke-width="2" marker-end="url(#c9-arr-g)"/>
+  <line x1="150" y1="158" x2="200" y2="195" stroke="#a78bfa" stroke-width="2" marker-end="url(#c9-arr)"/>
+
+  <!-- Text extraction -->
+  <rect x="202" y="52" width="150" height="56" rx="9" fill="#16161a" stroke="#4ecca3" stroke-width="2"/>
+  <text x="277" y="76" text-anchor="middle" fill="#4ecca3" font-size="13" font-weight="700" font-family="system-ui">Text Extraction</text>
+  <text x="277" y="94" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">PyMuPDF / fitz</text>
+
+  <!-- Image extraction -->
+  <rect x="202" y="167" width="150" height="56" rx="9" fill="#16161a" stroke="#a78bfa" stroke-width="2"/>
+  <text x="277" y="191" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="700" font-family="system-ui">Image Extraction</text>
+  <text x="277" y="209" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">PIL + base64 encode</text>
+
+  <!-- CLIP Text Embedding (same level as Text Extraction) -->
+  <rect x="372" y="52" width="160" height="56" rx="9" fill="#1a1a2e" stroke="#4ecca3" stroke-width="1.6"/>
+  <text x="452" y="76" text-anchor="middle" fill="#4ecca3" font-size="12" font-weight="700" font-family="system-ui">CLIP Text Embedding</text>
+  <text x="452" y="93" text-anchor="middle" fill="#76767f" font-size="10" font-family="monospace">embed_text()</text>
+  <line x1="352" y1="80" x2="372" y2="80" stroke="#4ecca3" stroke-width="2" marker-end="url(#c9-arr-g)"/>
+
+  <!-- CLIP Image Embedding (same level as Image Extraction) -->
+  <rect x="372" y="167" width="160" height="56" rx="9" fill="#1a1a2e" stroke="#a78bfa" stroke-width="1.6"/>
+  <text x="452" y="191" text-anchor="middle" fill="#a78bfa" font-size="12" font-weight="700" font-family="system-ui">CLIP Image Embedding</text>
+  <text x="452" y="208" text-anchor="middle" fill="#76767f" font-size="10" font-family="monospace">embed_image()</text>
+  <line x1="352" y1="195" x2="372" y2="195" stroke="#a78bfa" stroke-width="2" marker-end="url(#c9-arr)"/>
+
+  <!-- Unified Vector Store -->
+  <rect x="565" y="88" width="150" height="96" rx="9" fill="#1a1a2e" stroke="#818cf8" stroke-width="2.5"/>
+  <text x="640" y="120" text-anchor="middle" fill="#818cf8" font-size="12.5" font-weight="700" font-family="system-ui">Unified FAISS</text>
+  <text x="640" y="141" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">Vector Store</text>
+  <text x="640" y="158" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">(512-dim CLIP)</text>
+  <text x="640" y="175" text-anchor="middle" fill="#fbbf24" font-size="10" font-family="system-ui">text + image vectors</text>
+
+  <!-- Arrows from CLIP into unified store -->
+  <line x1="532" y1="80" x2="565" y2="110" stroke="#4ecca3" stroke-width="2" marker-end="url(#c9-arr-g)"/>
+  <line x1="532" y1="195" x2="565" y2="155" stroke="#a78bfa" stroke-width="2" marker-end="url(#c9-arr)"/>
+
+  <!-- Query on the right -->
+  <rect x="555" y="220" width="170" height="40" rx="8" fill="#16161a" stroke="#fbbf24" stroke-width="1.6"/>
+  <text x="640" y="245" text-anchor="middle" fill="#fbbf24" font-size="12" font-weight="600" font-family="system-ui">User Query</text>
+  <line x1="640" y1="220" x2="640" y2="186" stroke="#fbbf24" stroke-width="1.8" stroke-dasharray="5,3"/>
+
+  <line x1="715" y1="136" x2="760" y2="136" stroke="#818cf8" stroke-width="2" marker-end="url(#c9-arr)"/>
+  <text x="738" y="125" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">top-k</text>
+
+  <!-- GPT-4V -->
+  <rect x="762" y="95" width="155" height="82" rx="9" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
+  <text x="840" y="124" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="700" font-family="system-ui">GPT-4V</text>
+  <text x="840" y="144" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">multimodal LLM</text>
+  <text x="840" y="162" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">text + base64 images</text>
+
+  <line x1="840" y1="177" x2="840" y2="275" stroke="#818cf8" stroke-width="2" marker-end="url(#c9-arr)"/>
+  <text x="840" y="297" text-anchor="middle" fill="#76767f" font-size="13" font-family="system-ui">Grounded Answer ✓</text>
+</svg>
+
+<hr class="divider">
+
+<h2>Why Multimodal RAG Matters</h2>
+
+<p>Consider a financial analyst asking <em>"What was the Q3 revenue trend?"</em> about a PDF report. A text-only RAG would retrieve paragraphs mentioning Q3 revenue and generate an answer from those words alone. But the report's bar chart — showing three quarters of accelerating growth with exact figures — carries far more information than any sentence. Without it, the answer is incomplete at best, misleading at worst.</p>
+
+<table>
+  <thead>
+    <tr><th>Scenario</th><th>Text-only RAG</th><th>Multimodal RAG</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>PDF with charts</strong></td><td>Reads captions only; guesses about the chart</td><td>Reads text AND sees the chart image</td></tr>
+    <tr><td><strong>Product catalog (photos)</strong></td><td>Retrieves descriptions but can't "see" products</td><td>Retrieves descriptions AND product photos</td></tr>
+    <tr><td><strong>Medical report (scans)</strong></td><td>Processes text findings; drops images</td><td>Processes text AND includes scan images in context</td></tr>
+    <tr><td><strong>Technical manual (diagrams)</strong></td><td>Gets step-by-step text; misses the diagram</td><td>Retrieves steps AND the architecture diagram</td></tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">The Core Idea</div>
+  <p>Multimodal RAG uses a <strong>unified embedding model (CLIP)</strong> that maps text and images into the <strong>same 512-dimensional vector space</strong>. A query about either modality can retrieve the other — ask in words, get back charts. Show an image, get back related text. Then a <strong>vision-capable LLM (GPT-4V)</strong> reads both together to answer.</p>
+</div>
+
+<hr class="divider">
+
+<h2>The CLIP Model — A Shared Space for Text and Images</h2>
+
+<p>CLIP (Contrastive Language-Image Pre-training) is the engine that makes multimodal RAG possible. It was trained on <strong>400 million image-text pairs</strong> from the internet, learning to map images and their captions to nearby points in a shared vector space.</p>
+
+<h3>How CLIP Works</h3>
+
+<p>CLIP has two encoders — one for text, one for images — that produce embeddings in the <strong>same 512-dimensional space</strong>. During training, it pushes matching (image, caption) pairs together and pulls non-matching pairs apart using a contrastive loss:</p>
+
+<svg class="diagram-svg" viewBox="0 0 940 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="CLIP architecture: a text encoder and an image encoder each produce a 512-dimensional vector. Matching pairs (image+correct caption) are pushed together; non-matching pairs are pushed apart.">
+  <defs>
+    <marker id="c9b-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+  </defs>
+
+  <!-- Text side -->
+  <rect x="30" y="40" width="200" height="52" rx="9" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2"/>
+  <text x="130" y="62" text-anchor="middle" fill="#4ecca3" font-size="13" font-weight="700" font-family="system-ui">Text Encoder</text>
+  <text x="130" y="80" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="monospace">Transformer (12 layers)</text>
+
+  <line x1="230" y1="66" x2="310" y2="66" stroke="#818cf8" stroke-width="2" marker-end="url(#c9b-arr)"/>
+
+  <!-- Text embedding -->
+  <rect x="312" y="38" width="140" height="56" rx="9" fill="#16161a" stroke="#4ecca3" stroke-width="1.6"/>
+  <text x="382" y="62" text-anchor="middle" fill="#4ecca3" font-size="12" font-weight="700" font-family="system-ui">Text Vector</text>
+  <text x="382" y="80" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="monospace">512-dim · L2 norm</text>
+
+  <!-- Image side -->
+  <rect x="30" y="140" width="200" height="52" rx="9" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2"/>
+  <text x="130" y="162" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="700" font-family="system-ui">Vision Encoder</text>
+  <text x="130" y="180" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="monospace">ViT-B/32 (12 layers)</text>
+
+  <line x1="230" y1="166" x2="310" y2="166" stroke="#818cf8" stroke-width="2" marker-end="url(#c9b-arr)"/>
+
+  <!-- Image embedding -->
+  <rect x="312" y="138" width="140" height="56" rx="9" fill="#16161a" stroke="#a78bfa" stroke-width="1.6"/>
+  <text x="382" y="162" text-anchor="middle" fill="#a78bfa" font-size="12" font-weight="700" font-family="system-ui">Image Vector</text>
+  <text x="382" y="180" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="monospace">512-dim · L2 norm</text>
+
+  <!-- Shared space box -->
+  <rect x="510" y="55" width="190" height="120" rx="9" fill="#1a1a2e" stroke="#818cf8" stroke-width="2.5" stroke-dasharray="6,3"/>
+  <text x="605" y="88" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="700" font-family="system-ui">Shared Vector Space</text>
+  <text x="605" y="107" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="monospace">R⁵¹²</text>
+  <text x="605" y="130" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">text ↔ image retrieval</text>
+  <text x="605" y="150" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">cosine similarity</text>
+
+  <!-- Arrows into shared space -->
+  <line x1="452" y1="66" x2="510" y2="100" stroke="#4ecca3" stroke-width="2" marker-end="url(#c9b-arr)"/>
+  <line x1="452" y1="166" x2="510" y2="140" stroke="#a78bfa" stroke-width="2" marker-end="url(#c9b-arr)"/>
+
+  <!-- Contrastive pairs labels -->
+  <rect x="735" y="55" width="180" height="52" rx="8" fill="#16161a" stroke="#4ecca3" stroke-width="1.4"/>
+  <text x="825" y="78" text-anchor="middle" fill="#4ecca3" font-size="12" font-weight="600" font-family="system-ui">Matching Pair ✓</text>
+  <text x="825" y="96" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">cosine → 1.0 (together)</text>
+  <line x1="700" y1="81" x2="735" y2="81" stroke="#4ecca3" stroke-width="1.5" stroke-dasharray="4,3"/>
+
+  <rect x="735" y="123" width="180" height="52" rx="8" fill="#16161a" stroke="#ef6461" stroke-width="1.4"/>
+  <text x="825" y="146" text-anchor="middle" fill="#ef6461" font-size="12" font-weight="600" font-family="system-ui">Non-Matching Pair ✗</text>
+  <text x="825" y="164" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">cosine → 0.0 (apart)</text>
+  <line x1="700" y1="149" x2="735" y2="149" stroke="#ef6461" stroke-width="1.5" stroke-dasharray="4,3"/>
+</svg>
+
+<h3>Initialising CLIP</h3>
+
+<p>We use the <code>openai/clip-vit-base-patch32</code> variant — a ViT-B/32 vision encoder paired with a 12-layer text transformer, producing 512-dimensional embeddings. Both encoders are loaded together and set to eval mode:</p>
+
+<pre>from transformers import CLIPProcessor, CLIPModel
+
+clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+clip_model.eval()</pre>
+
+<table>
+  <thead>
+    <tr><th>Component</th><th>Architecture</th><th>Output</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Vision Encoder</strong></td><td>ViT-B/32 — 12 transformer layers, patch size 32×32</td><td>768-dim → projected to <strong>512-dim</strong></td></tr>
+    <tr><td><strong>Text Encoder</strong></td><td>12-layer transformer, max 77 tokens</td><td>512-dim → projected to <strong>512-dim</strong></td></tr>
+    <tr><td><strong>Shared Space</strong></td><td>Both projected into R⁵¹²</td><td>L2-normalised for cosine similarity</td></tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Step 1 — Extracting Text and Images from PDFs</h2>
+
+<p>The pipeline starts with <strong>PyMuPDF (fitz)</strong>, a fast PDF library that can extract both text content and embedded images. For each page, we do two things:</p>
+
+<ol>
+  <li><strong>Extract text</strong> with <code>page.get_text()</code>, then chunk it with <code>RecursiveCharacterTextSplitter</code>.</li>
+  <li><strong>Extract images</strong> with <code>page.get_images(full=True)</code>, convert each to a PIL image, and encode it as base64 for later use with GPT-4V.</li>
+</ol>
+
+<pre>import fitz  # PyMuPDF
+from langchain_core.documents import Document
+from langchain_classic.text_splitter import RecursiveCharacterTextSplitter
+from PIL import Image
+import base64, io
+
+pdf_path = "multimodal_sample.pdf"
+doc = fitz.open(pdf_path)
+
+all_docs = []
+all_embeddings = []
+image_data_store = {}
+
+splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
+
+for i, page in enumerate(doc):
+    # --- Process text ---
+    text = page.get_text()
+    if text.strip():
+        temp_doc = Document(page_content=text, metadata={"page": i, "type": "text"})
+        text_chunks = splitter.split_documents([temp_doc])
+        for chunk in text_chunks:
+            embedding = embed_text(chunk.page_content)
+            all_embeddings.append(embedding)
+            all_docs.append(chunk)
+
+    # --- Process images ---
+    for img_index, img in enumerate(page.get_images(full=True)):
+        xref = img[0]
+        base_image = doc.extract_image(xref)
+        image_bytes = base_image["image"]
+
+        pil_image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        image_id = f"page_{i}_img_{img_index}"
+
+        # Store as base64 for GPT-4V
+        buffered = io.BytesIO()
+        pil_image.save(buffered, format="PNG")
+        img_base64 = base64.b64encode(buffered.getvalue()).decode()
+        image_data_store[image_id] = img_base64
+
+        # Embed image using CLIP
+        embedding = embed_image(pil_image)
+        all_embeddings.append(embedding)
+
+        image_doc = Document(
+            page_content=f"[Image: {image_id}]",
+            metadata={"page": i, "type": "image", "image_id": image_id}
+        )
+        all_docs.append(image_doc)
+
+doc.close()</pre>
+
+<div class="example-block">
+  <div class="label">Three Critical Actions Per Image</div>
+  <p><strong>1.</strong> Convert the raw PDF image bytes to a <strong>PIL Image</strong> (RGB).</p>
+  <p><strong>2.</strong> Encode the PIL image as <strong>base64</strong> and store it — GPT-4V requires base64-encoded images.</p>
+  <p><strong>3.</strong> Run the image through CLIP to get a <strong>512-dim embedding</strong> for retrieval.</p>
+</div>
+
+<p>Each image gets a <code>Document</code> with type <code>"image"</code> and an <code>image_id</code> key in metadata. The <code>image_data_store</code> dictionary maps those IDs to the actual base64 bytes so we can reconstruct the multimodal message later.</p>
+
+<hr class="divider">
+
+<h2>Step 2 — Embedding Text and Images with CLIP</h2>
+
+<p>Both modalities go through CLIP to produce <strong>L2-normalised 512-dimensional vectors</strong>. Normalisation ensures cosine similarity between any two vectors falls in [−1, 1], making cross-modal comparison straightforward.</p>
+
+<h3>Text Embedding</h3>
+
+<pre>import torch
+
+def embed_text(text):
+    """Embed text using CLIP — returns L2-normalised 512-dim vector."""
+    inputs = clip_processor(
+        text=[text], return_tensors="pt", padding=True, truncation=True
+    )
+    with torch.no_grad():
+        outputs = clip_model.get_text_features(**inputs)
+        if hasattr(outputs, 'last_hidden_state'):
+            features = outputs.last_hidden_state[:, 0, :]
+        else:
+            features = outputs
+        features = features / features.norm(dim=-1, keepdim=True)
+        return features.squeeze().numpy()</pre>
+
+<h3>Image Embedding</h3>
+
+<pre>def embed_image(image):
+    """Embed a PIL image using CLIP — returns L2-normalised 512-dim vector."""
+    inputs = clip_processor(images=image, return_tensors="pt")
+    with torch.no_grad():
+        outputs = clip_model.get_image_features(**inputs)
+        if hasattr(outputs, 'last_hidden_state'):
+            features = outputs.last_hidden_state[:, 0, :]
+        else:
+            features = outputs
+        features = features / features.norm(dim=-1, keepdim=True)
+        return features.squeeze().numpy()</pre>
+
+<div class="example-block">
+  <div class="label">Why Normalise?</div>
+  <p>L2 normalisation projects every vector onto the unit hypersphere, making <strong>cosine similarity</strong> equivalent to a simple dot product. This is critical for unified retrieval — without it, an image vector with large magnitudes could dominate text vectors in similarity search, breaking cross-modal retrieval.</p>
+</div>
+
+<hr class="divider">
+
+<h2>Step 3 — Building the Unified FAISS Vector Store</h2>
+
+<p>Once all text chunks and images have CLIP embeddings, we build a single FAISS index that holds <strong>both modalities side by side</strong>. The key insight: since both are in the same 512-dimensional space, FAISS doesn't need to know which is which — it just does nearest-neighbour search.</p>
+
+<pre>import numpy as np
+from langchain_community.vectorstores import FAISS
+
+embeddings_array = np.array(all_embeddings)
+
+vector_store = FAISS.from_embeddings(
+    text_embeddings=[
+        (doc.page_content, emb)
+        for doc, emb in zip(all_docs, embeddings_array)
+    ],
+    embedding=None,  # using precomputed CLIP embeddings
+    metadatas=[doc.metadata for doc in all_docs]
+)</pre>
+
+<table>
+  <thead>
+    <tr><th>What's in the Store</th><th>Embedding</th><th>Metadata</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Text chunk</strong> (e.g. "Annual Revenue Overview...")</td><td>CLIP text vector (512-dim)</td><td><code>{"page": 0, "type": "text"}</code></td></tr>
+    <tr><td><strong>Image chunk</strong> (e.g. "[Image: page_0_img_0]")</td><td>CLIP image vector (512-dim)</td><td><code>{"page": 0, "type": "image", "image_id": "page_0_img_0"}</code></td></tr>
+  </tbody>
+</table>
+
+<p>The page content for images is a placeholder like <code>[Image: page_0_img_0]</code> — it won't be shown to the LLM directly. The actual base64 image data lives in <code>image_data_store</code>, keyed by <code>image_id</code>. The metadata <code>"type"</code> field tells us which kind of document we got back after retrieval.</p>
+
+<hr class="divider">
+
+<h2>Step 4 — Multimodal Retrieval</h2>
+
+<p>Retrieval is a single vector search. The user's question is embedded with CLIP's text encoder and searched against the unified FAISS index. The top-k results are a <strong>mix of text and image documents</strong> — whichever are most relevant to the query:</p>
+
+<pre>def retrieve_multimodal(query, k=5):
+    """Unified retrieval using CLIP embeddings for both text and images."""
+    query_embedding = embed_text(query)
+    results = vector_store.similarity_search_by_vector(
+        embedding=query_embedding,
+        k=k
+    )
+    return results</pre>
+
+<div class="example-block">
+  <div class="label">The Magic of Unified Embeddings</div>
+  <p>Because CLIP maps text and images into the <strong>same space</strong>, a text query like <em>"revenue chart"</em> can retrieve an image of a bar chart — even though the query is words and the result is pixels. No separate index, no modality switching. The similarity is computed in the shared 512-dimensional space where both live.</p>
+</div>
+
+<hr class="divider">
+
+<h2>Step 5 — Building the Multimodal Message for GPT-4V</h2>
+
+<p>Retrieval gives us a list of Documents — some are <code>"text"</code>, some are <code>"image"</code>. The final step is to assemble them into a <strong>single multimodal prompt</strong> that GPT-4V can process. Text chunks become text content blocks; image chunks are resolved through <code>image_data_store</code> and sent as base64 <code>image_url</code> blocks:</p>
+
+<pre>from langchain_classic.schema.messages import HumanMessage
+
+def create_multimodal_message(query, retrieved_docs):
+    """Create a multimodal message with both text and images for GPT-4V."""
+    content = []
+
+    content.append({
+        "type": "text",
+        "text": f"Question: {query}\n\nContext:\n"
+    })
+
+    text_docs = [d for d in retrieved_docs if d.metadata.get("type") == "text"]
+    image_docs = [d for d in retrieved_docs if d.metadata.get("type") == "image"]
+
+    # Add text context
+    if text_docs:
+        text_context = "\n\n".join([
+            f"[Page {doc.metadata['page']}]: {doc.page_content}"
+            for doc in text_docs
+        ])
+        content.append({
+            "type": "text",
+            "text": f"Text excerpts:\n{text_context}\n"
+        })
+
+    # Add images as base64 data URIs
+    for doc in image_docs:
+        image_id = doc.metadata.get("image_id")
+        if image_id and image_id in image_data_store:
+            content.append({
+                "type": "text",
+                "text": f"\n[Image from page {doc.metadata['page']}]:\n"
+            })
+            content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/png;base64,{image_data_store[image_id]}"
+                }
+            })
+
+    content.append({
+        "type": "text",
+        "text": "\n\nPlease answer the question based on the provided text and images."
+    })
+
+    return HumanMessage(content=content)</pre>
+
+<table>
+  <thead>
+    <tr><th>Content Block Type</th><th>What It Carries</th><th>How GPT-4V Sees It</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>"text"</code></td><td>Query, text excerpts, page markers, instructions</td><td>As natural language tokens</td></tr>
+    <tr><td><code>"image_url"</code></td><td>Base64-encoded PNG (data URI)</td><td>As pixels — the vision encoder reads the chart directly</td></tr>
+  </tbody>
+</table>
+
+<p>The message is a single <code>HumanMessage</code> with a <strong>list of content blocks</strong>. This is the standard OpenAI multimodal chat format: the model processes text blocks with its language head and image blocks with its vision encoder, fusing both into a unified understanding.</p>
+
+<hr class="divider">
+
+<h2>Step 6 — The Complete Multimodal RAG Pipeline</h2>
+
+<p>Putting it all together — retrieve, assemble the multimodal message, and invoke GPT-4V:</p>
+
+<pre>from langchain.chat_models import init_chat_model
+
+llm = init_chat_model("openai:gpt-4.1")
+
+def multimodal_pdf_rag_pipeline(query):
+    """Main pipeline for multimodal RAG."""
+    # Step 1: Retrieve relevant documents (text + images)
+    context_docs = retrieve_multimodal(query, k=5)
+
+    # Step 2: Build multimodal message
+    message = create_multimodal_message(query, context_docs)
+
+    # Step 3: Get response from GPT-4V
+    response = llm.invoke([message])
+
+    # Print what was retrieved
+    print(f"\nRetrieved {len(context_docs)} documents:")
+    for doc in context_docs:
+        doc_type = doc.metadata.get("type", "unknown")
+        page = doc.metadata.get("page", "?")
+        if doc_type == "text":
+            preview = doc.page_content[:100] + "..."
+            print(f"  - Text from page {page}: {preview}")
+        else:
+            print(f"  - Image from page {page}")
+
+    return response.content</pre>
+
+<h3>Example Run — Revenue Report with Chart</h3>
+
+<pre>queries = [
+    "What does the chart on page 1 show about revenue trends?",
+    "Summarize the main findings from the document",
+    "What visual elements are present in the document?"
+]
+
+for query in queries:
+    print(f"\nQuery: {query}")
+    print("-" * 50)
+    answer = multimodal_pdf_rag_pipeline(query)
+    print(f"Answer: {answer}")
+    print("=" * 70)</pre>
+
+<div class="example-block">
+  <div class="label">Sample Output — "What does the chart show?"</div>
+  <p><strong>Retrieved:</strong> 2 documents — 1 text chunk (Annual Revenue Overview paragraph) + 1 image (bar chart)</p>
+  <p><strong>Answer:</strong> "The chart on page 1 shows that revenue increased steadily over the three quarters. Q1 had the lowest revenue (blue bar), Q2 saw a higher revenue (green bar), and Q3 had the highest revenue (red bar). The most significant jump in revenue occurred between Q2 and Q3, indicating strong growth in the third quarter. This matches the text, which mentions steady growth with exponential revenue growth in Q3 due to global expansion."</p>
+  <p>Notice how GPT-4V <strong>describes the bar colours and relative heights</strong> — information only available in the image, not in the text. That's the power of multimodal RAG.</p>
+</div>
+
+<hr class="divider">
+
+<h2>The Complete Pipeline — End-to-End Flow</h2>
+
+<table>
+  <thead>
+    <tr><th>Step</th><th>What Happens</th><th>Key Component</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>1. Parse PDF</strong></td><td>Extract text + images from every page</td><td>PyMuPDF (fitz)</td></tr>
+    <tr><td><strong>2. Chunk Text</strong></td><td>Split text into overlapping chunks</td><td>RecursiveCharacterTextSplitter</td></tr>
+    <tr><td><strong>3. Embed Text</strong></td><td>Produce 512-dim L2-normalised vectors</td><td>CLIP text encoder</td></tr>
+    <tr><td><strong>4. Embed Images</strong></td><td>Produce 512-dim L2-normalised vectors</td><td>CLIP vision encoder (ViT-B/32)</td></tr>
+    <tr><td><strong>5. Store Base64</strong></td><td>Keep image bytes for GPT-4V</td><td>image_data_store dict</td></tr>
+    <tr><td><strong>6. Build Index</strong></td><td>Create unified FAISS vector store</td><td>FAISS.from_embeddings()</td></tr>
+    <tr><td><strong>7. Embed Query</strong></td><td>Encode user question with CLIP text encoder</td><td>embed_text(query)</td></tr>
+    <tr><td><strong>8. Retrieve</strong></td><td>Top-k similarity search (text + images mixed)</td><td>similarity_search_by_vector()</td></tr>
+    <tr><td><strong>9. Build Prompt</strong></td><td>Assemble multimodal HumanMessage</td><td>text blocks + image_url blocks</td></tr>
+    <tr><td><strong>10. Generate</strong></td><td>GPT-4V reads text AND sees images, produces answer</td><td>llm.invoke([message])</td></tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Why CLIP Over Separate Embedders?</h2>
+
+<p>You could embed text with a text model and images with an image model, but that gives you <strong>two incompatible vector spaces</strong> — a text query can only search text, and an image query can only search images. CLIP's entire value proposition is the <strong>shared space</strong>:</p>
+
+<table>
+  <thead>
+    <tr><th>Approach</th><th>Text Query → Image?</th><th>Image Query → Text?</th><th>Unified Index?</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Separate embedders</strong> (e.g. text-embedding-3 + ResNet)</td><td>✗ — different vector spaces</td><td>✗ — different vector spaces</td><td>✗ — need two stores</td></tr>
+    <tr><td><strong>CLIP (unified)</strong></td><td>✓ — same 512-dim space</td><td>✓ — same 512-dim space</td><td>✓ — single FAISS index</td></tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Limitations and Considerations</h2>
+
+<table>
+  <thead>
+    <tr><th>Limitation</th><th>Details</th><th>Mitigation</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>CLIP context window</strong></td><td>Text encoder has a <strong>77-token limit</strong> — longer text is truncated</td><td>Chunk text before embedding; each chunk gets its own vector</td></tr>
+    <tr><td><strong>Model cost</strong></td><td>GPT-4V is more expensive than text-only GPT-4 (more input tokens for images)</td><td>Limit <code>k</code> in retrieval; consider sending only the most relevant image</td></tr>
+    <tr><td><strong>Base64 overhead</strong></td><td>Base64 encoding increases image size by ~33%</td><td>Resize large images before encoding; use PNG for charts (lossless, small)</td></tr>
+    <tr><td><strong>Image relevance</strong></td><td>CLIP was trained on natural photos, not charts/diagrams specifically</td><td>Still works well in practice; fine-tune CLIP on domain images if needed</td></tr>
+    <tr><td><strong>PDF image extraction</strong></td><td>Not all PDFs store images as extractable objects (some are vector graphics)</td><td>Fall back to page-as-image rendering with pdf2image for complex layouts</td></tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+
+<div class="example-block">
+  <div class="label">Remember These Five</div>
+  <p><strong>1.</strong> <strong>Multimodal RAG</strong> extends retrieval to handle text AND images in a single pipeline — no more dropping charts and diagrams on the floor.</p>
+  <p><strong>2.</strong> <strong>CLIP</strong> is the engine: a dual-encoder model that maps text and images into the <strong>same 512-dimensional vector space</strong>, enabling cross-modal retrieval with a single FAISS index.</p>
+  <p><strong>3.</strong> <strong>PDF processing</strong> with PyMuPDF extracts both text (chunked with overlap) and images (converted to PIL, then base64). Each gets a CLIP embedding and a LangChain Document.</p>
+  <p><strong>4.</strong> <strong>GPT-4V</strong> (or any vision-capable LLM) receives a multimodal message — text blocks for the query and retrieved passages, <code>image_url</code> blocks for retrieved charts — and fuses both to generate a fully-grounded answer.</p>
+  <p><strong>5.</strong> The pipeline is <strong>ten steps end-to-end</strong>: parse → chunk → embed text → embed images → store base64 → build FAISS → embed query → retrieve → build multimodal prompt → generate. The magic is that steps 3 and 4 produce vectors in the <strong>same space</strong>.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter8-3">← 3 · HyDE — Hypothetical Document Embeddings</a>
+    <span></span>
+</nav>
