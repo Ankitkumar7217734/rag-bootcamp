@@ -96,5 +96,10 @@ const chapters = [
                 description: "Generate a hypothetical answer with an LLM and embed that instead of the question, matching documents on answer-style content to bridge the query–document vocabulary gap."
             }
         ]
+    },
+    {
+        id: "chapter9",
+        title: "Chapter 9: Multimodal RAG — Going Beyond Text",
+        description: "Extending RAG to handle text AND images in a unified pipeline — CLIP embeddings for shared vector space, PDF parsing with PyMuPDF, unified FAISS index, GPT-4V for multimodal answer generation, and the complete ten-step end-to-end flow."
     }
 ];
