@@ -1,7 +1,33 @@
-# CLAUDE.md — RAG Bootcamp Docs Site
+# CLAUDE.md
 
-Guidance for Claude when building new chapters for this site. **Read this file
-first, every time**, then follow the workflow below before writing any code.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+> RAG Bootcamp Docs Site. The day-to-day task here is **building new chapters**
+> from the user's source notes. **Read this file first, every time**, then follow
+> the workflow below before writing any code.
+
+---
+
+## Commands
+
+No build, no dependencies, no test suite — it's static files. The only thing you
+must do is serve over HTTP, because `app.js` loads chapters with `fetch` and
+opening `index.html` from `file://` will silently fail to load any chapter.
+
+```bash
+python3 -m http.server 8000      # then open http://localhost:8000
+# or: npx serve .
+```
+
+Before finishing a chapter, sanity-check it (this is the only "lint" the repo
+has — see the verify step in the workflow):
+
+```bash
+grep -rn $'�' chapters/      # find corrupted chars (esp. inside inline SVG); should be empty
+```
+
+Published via GitHub Pages at https://ankitkumar7217734.github.io/rag-bootcamp/
+(`.nojekyll` is present so Pages serves the files as-is).
 
 ---
 
@@ -20,6 +46,46 @@ matches the existing ones.
 
 ---
 
+## How the runtime works (the one thing that ties the files together)
+
+`chapters.js` is the **single source of truth** — a flat `chapters` array where
+each entry may carry a `children` array of sub-chapters. The sidebar, homepage
+cards, and routing are all *generated* from it; registering a chapter there is
+the only wiring step. There is no central route table to update.
+
+`app.js` (loaded after `chapters.js`) is the whole engine, ~460 lines, no
+dependencies except highlight.js from a CDN:
+
+- **Routing is hash-based.** `handleRoute()` runs on `DOMContentLoaded` and on
+  every `hashchange`. It reads `location.hash`, looks the id up in the flattened
+  page list (`getAllPages()` walks `children`), and either `fetch`es
+  `chapters/<id>.html` into `#main-content` or renders the homepage. An unknown
+  hash falls through to the homepage; a fetch failure renders an inline
+  "Page not found" view.
+- **After each chapter injects**, `loadChapter()` runs a fixed post-process
+  pipeline: `buildTOC` (scans `h2`/`h3`, assigns stable ids, wires an
+  `IntersectionObserver` scroll-spy) → `highlightCode` (highlight.js,
+  language auto-detected) → `addCopyButtons` (wraps each `<pre>` in a
+  `.code-block` and floats a Copy button) → `wrapScrollables` (wraps each
+  `<table>` and `.diagram-svg` in a `.scroll-x` div so wide tables/diagrams
+  scroll horizontally on phones instead of overflowing). **This is why chapter
+  fragments only need semantic HTML** — headings, `<pre>`, `<table>`, raw
+  `<svg class="diagram-svg">` — and never hand-write TOC entries, ids, copy
+  buttons, scroll wrappers, or `<code>` inside `<pre>`.
+- **Sidebar has two modes off one hamburger** (`toggleSidebar`): desktop
+  collapses it out of the layout and remembers the choice in `localStorage`
+  (`sidebarCollapsed`); mobile (≤860px, `isMobileViewport()`) slides an
+  off-canvas drawer over a backdrop. Sub-chapter groups auto-expand only for the
+  active page.
+
+So the data flow is: **`chapters.js` (config) → `app.js` (router + post-process)
+→ `chapters/*.html` (content fragments) → `style.css` (design system)**. Cache
+busting is manual: `index.html` references `style.css`/`chapters.js`/`app.js`
+with a shared `?v=NN` query (currently `v=22`) — bump it when you change any of
+those three.
+
+---
+
 ## ⚡ Workflow when the user asks for "the next chapter"
 
 Do these in order. Do **not** skip the reading steps.
@@ -34,9 +100,10 @@ Do these in order. Do **not** skip the reading steps.
      `import numpy as py`, misspellings, missing final flush, etc.).
    - **`.txt` / data files** → read them; they're often the sample data used in
      the code examples.
-3. **Read the most recent existing chapter** (e.g. `chapters/chapter5.html`) to
-   match structure, tone, and components exactly. Also check `chapters.js` for
-   the current chapter list and the previous chapter's `<nav class="page-nav">`.
+3. **Read the most recent existing chapter** (latest is `chapters/chapter8.html`
+   and its `chapter8-1/-2/-3` sub-chapters) to match structure, tone, and
+   components exactly. Also check `chapters.js` for the current chapter list and
+   the previous chapter's `<nav class="page-nav">`.
 4. **Find the chapter number**: the source folders are numbered (e.g.
    `8-advanced-shanking-...`), but the **website chapter number is sequential**
    (next integer after the last entry in `chapters.js`). The folder number and
@@ -73,7 +140,8 @@ RAG_webpages/
 └── chapters/
     ├── chapter1.html, chapter1-1.html   # "-1" suffix = sub-chapter (child)
     ├── chapter2.html, chapter2-1.html
-    ├── chapter3.html … chapter6.html
+    ├── chapter3.html … chapter8.html
+    └── chapter7-1.html … chapter8-3.html   # sub-chapters
 ```
 
 - A chapter HTML file is a **fragment**: no `<html>/<head>/<body>`, just the
