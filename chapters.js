@@ -101,5 +101,10 @@ const chapters = [
         id: "chapter9",
         title: "Chapter 9: Multimodal RAG — Going Beyond Text",
         description: "Extending RAG to handle text AND images in a unified pipeline — CLIP embeddings for shared vector space, PDF parsing with PyMuPDF, unified FAISS index, GPT-4V for multimodal answer generation, and the complete ten-step end-to-end flow."
+    },
+    {
+        id: "chapter10",
+        title: "Chapter 10: AI Agents vs Agentic AI",
+        description: "The leap from single-purpose AI agents to collaborative agentic systems — clear definitions and a side-by-side comparison, the perception → reasoning → action → learning loop, the LLM as the agent's brain (with tools and memory), real examples (chatbots and banking bots vs smart homes and health assistants), and a full worked example of an agentic AI software-development team with human feedback in the loop."
     }
 ];

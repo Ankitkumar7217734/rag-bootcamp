@@ -1,0 +1,496 @@
+<h1>Chapter 10: AI Agents vs Agentic AI</h1>
+<p style="color:#888; margin-bottom: 2rem;"><em>One assistant that answers a question, versus a team of them that plans, delegates, builds, checks each other's work, and learns — and why that difference reshapes how we build with LLMs.</em></p>
+
+<h2>Overview</h2>
+
+<p>So far this course has built <strong>retrieval pipelines</strong> — systems that fetch the right context and hand it to an LLM. But the moment you let the LLM <em>decide what to do next</em> — call a tool, search a database, ask a follow-up, hand work to another model — you've stepped from a pipeline into the world of <strong>agents</strong>.</p>
+
+<p>Two terms get used almost interchangeably here, and the confusion is costly: <strong>"AI agent"</strong> and <strong>"Agentic AI."</strong> They are not the same thing. An <strong>AI agent</strong> is a single program that performs a specific task with a degree of autonomy. <strong>Agentic AI</strong> is a broader framework where <em>multiple</em> agents collaborate and make decisions independently to achieve a larger goal — emphasising adaptability and learning over fixed rules.</p>
+
+<p>This chapter draws the line clearly, then makes it concrete with real systems: customer-service chatbots and banking bots on the agent side; smart homes, health assistants, and a full software-development team on the agentic side.</p>
+
+<!-- Overview diagram: AI Agent (single, rule-bound) vs Agentic AI (network of collaborating agents toward a goal) -->
+<svg class="diagram-svg" viewBox="0 0 940 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Side-by-side contrast. Left: an AI Agent is a single box that takes a user query and returns an answer using predefined rules, a single entity with one focused purpose and limited autonomy. Right: Agentic AI is an orchestrator under a complex goal coordinating three collaborating agents that make autonomous decisions and learn and adapt.">
+  <defs>
+    <marker id="c10a-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto-start-reverse">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+  </defs>
+
+  <!-- divider -->
+  <line x1="470" y1="22" x2="470" y2="312" stroke="#36363e" stroke-width="1.5" stroke-dasharray="4,5"/>
+
+  <!-- LEFT: AI Agent -->
+  <text x="235" y="40" text-anchor="middle" fill="#4ecca3" font-size="17" font-weight="700" font-family="system-ui">1 · AI Agent</text>
+  <text x="235" y="60" text-anchor="middle" fill="#76767f" font-size="11.5" font-family="system-ui">a single program, one focused task</text>
+
+  <rect x="25" y="118" width="95" height="46" rx="8" fill="#16161a" stroke="#fbbf24" stroke-width="1.6"/>
+  <text x="72" y="146" text-anchor="middle" fill="#fbbf24" font-size="12" font-family="system-ui">User Query</text>
+
+  <line x1="120" y1="141" x2="156" y2="141" stroke="#818cf8" stroke-width="2" marker-end="url(#c10a-arr)"/>
+
+  <rect x="158" y="104" width="134" height="74" rx="9" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2.5"/>
+  <text x="225" y="136" text-anchor="middle" fill="#4ecca3" font-size="14" font-weight="700" font-family="system-ui">AI Agent</text>
+  <text x="225" y="156" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">predefined rules</text>
+
+  <line x1="292" y1="141" x2="328" y2="141" stroke="#818cf8" stroke-width="2" marker-end="url(#c10a-arr)"/>
+
+  <rect x="330" y="118" width="95" height="46" rx="8" fill="#16161a" stroke="#818cf8" stroke-width="1.6"/>
+  <text x="377" y="146" text-anchor="middle" fill="#818cf8" font-size="12" font-family="system-ui">Answer</text>
+
+  <text x="40" y="226" fill="#b4b4be" font-size="12" font-family="system-ui">• Single entity, one focused purpose</text>
+  <text x="40" y="250" fill="#b4b4be" font-size="12" font-family="system-ui">• Follows predefined rules</text>
+  <text x="40" y="274" fill="#b4b4be" font-size="12" font-family="system-ui">• Limited, bounded autonomy</text>
+
+  <!-- RIGHT: Agentic AI -->
+  <text x="705" y="40" text-anchor="middle" fill="#818cf8" font-size="17" font-weight="700" font-family="system-ui">2 · Agentic AI</text>
+  <text x="705" y="60" text-anchor="middle" fill="#76767f" font-size="11.5" font-family="system-ui">a network of agents toward one goal</text>
+
+  <rect x="630" y="84" width="150" height="40" rx="8" fill="#16161a" stroke="#fbbf24" stroke-width="1.8"/>
+  <text x="705" y="109" text-anchor="middle" fill="#fbbf24" font-size="12.5" font-weight="600" font-family="system-ui">Complex Goal</text>
+
+  <rect x="608" y="138" width="194" height="40" rx="8" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
+  <text x="705" y="163" text-anchor="middle" fill="#818cf8" font-size="12.5" font-weight="700" font-family="system-ui">Orchestrator / Planner</text>
+  <line x1="705" y1="124" x2="705" y2="136" stroke="#818cf8" stroke-width="2" marker-end="url(#c10a-arr)"/>
+
+  <!-- three agents -->
+  <rect x="500" y="205" width="115" height="50" rx="8" fill="#1a1a2e" stroke="#4ecca3" stroke-width="1.8"/>
+  <text x="557" y="235" text-anchor="middle" fill="#4ecca3" font-size="12" font-weight="600" font-family="system-ui">Agent A</text>
+  <rect x="648" y="205" width="115" height="50" rx="8" fill="#1a1a2e" stroke="#a78bfa" stroke-width="1.8"/>
+  <text x="705" y="235" text-anchor="middle" fill="#a78bfa" font-size="12" font-weight="600" font-family="system-ui">Agent B</text>
+  <rect x="796" y="205" width="115" height="50" rx="8" fill="#1a1a2e" stroke="#4ecca3" stroke-width="1.8"/>
+  <text x="853" y="235" text-anchor="middle" fill="#4ecca3" font-size="12" font-weight="600" font-family="system-ui">Agent C</text>
+
+  <!-- orchestrator to agents -->
+  <line x1="662" y1="178" x2="566" y2="203" stroke="#818cf8" stroke-width="1.8" marker-end="url(#c10a-arr)"/>
+  <line x1="705" y1="178" x2="705" y2="203" stroke="#818cf8" stroke-width="1.8" marker-end="url(#c10a-arr)"/>
+  <line x1="748" y1="178" x2="844" y2="203" stroke="#818cf8" stroke-width="1.8" marker-end="url(#c10a-arr)"/>
+
+  <!-- collaboration (bidirectional) -->
+  <line x1="618" y1="230" x2="645" y2="230" stroke="#818cf8" stroke-width="1.6" marker-start="url(#c10a-arr)" marker-end="url(#c10a-arr)"/>
+  <line x1="766" y1="230" x2="793" y2="230" stroke="#818cf8" stroke-width="1.6" marker-start="url(#c10a-arr)" marker-end="url(#c10a-arr)"/>
+
+  <text x="705" y="285" text-anchor="middle" fill="#b4b4be" font-size="12" font-family="system-ui">• Agents collaborate &amp; decide autonomously</text>
+  <text x="705" y="307" text-anchor="middle" fill="#b4b4be" font-size="12" font-family="system-ui">• Learns &amp; adapts from real-time data</text>
+</svg>
+
+<div class="example-block">
+  <div class="label">The Core Distinction</div>
+  <p>An <strong>AI agent</strong> is a <em>single entity with a focused purpose</em> — it handles a specific task within predefined rules. <strong>Agentic AI</strong> is a <em>network of agents working together</em> — it focuses on the overall system, with the ability to learn, adapt, and make complex decisions toward a larger goal. Put simply: an AI agent is a worker; agentic AI is the whole self-organising team.</p>
+</div>
+
+<hr class="divider">
+
+<h2>What Is an AI Agent?</h2>
+
+<p>An <strong>AI agent</strong> is an individual software program designed to perform a specific task with a degree of autonomy — that is, <strong>without constant human intervention</strong>. It perceives an input, applies its logic, and produces an output, all on its own. But its scope is narrow and its behaviour is largely <strong>rule-bound</strong>.</p>
+
+<h3>Two Defining Traits</h3>
+
+<table>
+  <thead>
+    <tr><th>Trait</th><th>What it means for an AI agent</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>1 · Functionality</strong></td><td>Handles <strong>specific tasks</strong> with <strong>limited autonomy</strong>. It does one job well and stays inside that lane.</td></tr>
+    <tr><td><strong>2 · Decision Making</strong></td><td>Driven by <strong>predefined rules</strong>. Given the same input, it follows the same fixed logic — it does not improvise a new strategy.</td></tr>
+  </tbody>
+</table>
+
+<p>The mental model is a <strong>single entity with a focused purpose</strong>. There is one agent, it has one job, and the boundaries of that job are drawn in advance.</p>
+
+<h3>Example — A Customer-Service Chatbot</h3>
+
+<p>The canonical AI agent is a <strong>customer-service chatbot</strong>. A user asks a question, the bot follows a fixed retrieve-and-answer flow, and it returns a basic answer — "Where is my order?" leads to an order-status lookup and a reply. It is autonomous in that no human types the response, but it never steps outside its script.</p>
+
+<!-- AI agent example: a chatbot follows a fixed retrieve-and-answer flow against an orders database -->
+<svg class="diagram-svg" viewBox="0 0 940 230" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A customer-service chatbot AI agent. A user question flows into the chatbot, which calls a retriever, which queries an orders database, and the order status flows back to the user. A fixed, single-task flow.">
+  <defs>
+    <marker id="c10c-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+    <marker id="c10c-arr-g" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#4ecca3"/>
+    </marker>
+  </defs>
+
+  <rect x="20" y="88" width="185" height="56" rx="9" fill="#16161a" stroke="#fbbf24" stroke-width="1.8"/>
+  <text x="112" y="112" text-anchor="middle" fill="#fbbf24" font-size="12.5" font-weight="600" font-family="system-ui">User</text>
+  <text x="112" y="130" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">"Where is my order?"</text>
+
+  <line x1="205" y1="116" x2="238" y2="116" stroke="#818cf8" stroke-width="2" marker-end="url(#c10c-arr)"/>
+
+  <rect x="240" y="80" width="170" height="72" rx="9" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2.5"/>
+  <text x="325" y="110" text-anchor="middle" fill="#4ecca3" font-size="13.5" font-weight="700" font-family="system-ui">Chatbot</text>
+  <text x="325" y="130" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">AI Agent · single task</text>
+
+  <line x1="410" y1="116" x2="446" y2="116" stroke="#818cf8" stroke-width="2" marker-end="url(#c10c-arr)"/>
+
+  <rect x="448" y="89" width="150" height="54" rx="9" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
+  <text x="523" y="114" text-anchor="middle" fill="#818cf8" font-size="12.5" font-weight="700" font-family="system-ui">Retriever</text>
+  <text x="523" y="131" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">order lookup</text>
+
+  <line x1="598" y1="116" x2="650" y2="116" stroke="#818cf8" stroke-width="2" marker-end="url(#c10c-arr)"/>
+
+  <!-- database cylinder -->
+  <ellipse cx="745" cy="92" rx="55" ry="13" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
+  <path d="M690,92 L690,150 A55,13 0 0 0 800,150 L800,92" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
+  <ellipse cx="745" cy="92" rx="55" ry="13" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
+  <text x="745" y="128" text-anchor="middle" fill="#818cf8" font-size="12" font-weight="600" font-family="system-ui">Orders DB</text>
+
+  <!-- return path -->
+  <path d="M745,163 L745,196 L112,196 L112,146" fill="none" stroke="#4ecca3" stroke-width="1.8" stroke-dasharray="5,4" marker-end="url(#c10c-arr-g)"/>
+  <text x="430" y="189" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">order status returned →</text>
+
+  <text x="470" y="222" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">A fixed flow: handles one well-defined task, no improvising.</text>
+</svg>
+
+<hr class="divider">
+
+<h2>What Is Agentic AI?</h2>
+
+<p><strong>Agentic AI</strong> describes a <strong>broader framework</strong> in which multiple AI agents collaborate and make decisions independently to achieve a larger goal — emphasising <strong>adaptability and learning from experience</strong> rather than just following predefined rules. It still solves tasks without human intervention, but it does so by reasoning about the <em>whole system</em>.</p>
+
+<p>Where an AI agent follows a script, agentic AI makes <strong>autonomous decisions based on real-time data and circumstances</strong>. It focuses on the overall objective and has the ability to <strong>learn, adapt, and make complex decisions</strong>. The defining structure is a <strong>network of agents working together to achieve a goal</strong>.</p>
+
+<h3>Example — A Smart-Home System</h3>
+
+<p>A <strong>smart-home system</strong> is agentic AI in miniature. Multiple AI subsystems — controlling lights, the thermostat, and appliances — perceive their surroundings, <strong>coordinate with each other</strong>, and adapt their behaviour toward a shared goal such as <strong>reducing electricity use</strong>. No single rule dictates the outcome; the agents negotiate it together as conditions change.</p>
+
+<!-- Agentic AI example: a smart-home system where multiple device agents coordinate toward reducing electricity use -->
+<svg class="diagram-svg" viewBox="0 0 940 270" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A smart-home agentic system. A central smart-home hub coordinates three device agents - lights, thermostat, and appliances - which also collaborate with each other, all working toward the shared goal of reducing electricity use.">
+  <defs>
+    <marker id="c10d-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto-start-reverse">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+  </defs>
+
+  <rect x="370" y="24" width="200" height="52" rx="9" fill="#1a1a2e" stroke="#818cf8" stroke-width="2.5"/>
+  <text x="470" y="48" text-anchor="middle" fill="#818cf8" font-size="13.5" font-weight="700" font-family="system-ui">Smart Home System</text>
+  <text x="470" y="66" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">multiple AI agents</text>
+
+  <!-- goal badge -->
+  <rect x="690" y="28" width="222" height="44" rx="8" fill="#16161a" stroke="#fbbf24" stroke-width="1.8"/>
+  <text x="801" y="47" text-anchor="middle" fill="#fbbf24" font-size="12" font-weight="600" font-family="system-ui">Shared Goal</text>
+  <text x="801" y="64" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">reduce electricity use</text>
+
+  <!-- devices -->
+  <rect x="105" y="150" width="165" height="58" rx="9" fill="#1a1a2e" stroke="#fbbf24" stroke-width="2"/>
+  <text x="187" y="184" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700" font-family="system-ui">Lights</text>
+
+  <rect x="388" y="150" width="165" height="58" rx="9" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2"/>
+  <text x="470" y="184" text-anchor="middle" fill="#4ecca3" font-size="13" font-weight="700" font-family="system-ui">Thermostat</text>
+
+  <rect x="670" y="150" width="165" height="58" rx="9" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2"/>
+  <text x="752" y="184" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="700" font-family="system-ui">Appliances</text>
+
+  <!-- hub to devices -->
+  <line x1="430" y1="76" x2="220" y2="148" stroke="#818cf8" stroke-width="1.8" marker-end="url(#c10d-arr)"/>
+  <line x1="470" y1="76" x2="470" y2="148" stroke="#818cf8" stroke-width="1.8" marker-end="url(#c10d-arr)"/>
+  <line x1="510" y1="76" x2="720" y2="148" stroke="#818cf8" stroke-width="1.8" marker-end="url(#c10d-arr)"/>
+
+  <!-- collaboration between devices -->
+  <line x1="273" y1="179" x2="385" y2="179" stroke="#818cf8" stroke-width="1.6" marker-start="url(#c10d-arr)" marker-end="url(#c10d-arr)"/>
+  <line x1="556" y1="179" x2="667" y2="179" stroke="#818cf8" stroke-width="1.6" marker-start="url(#c10d-arr)" marker-end="url(#c10d-arr)"/>
+
+  <text x="470" y="248" text-anchor="middle" fill="#76767f" font-size="11.5" font-family="system-ui">Agents perceive, coordinate, and adapt together toward the goal — no single fixed rule.</text>
+</svg>
+
+<hr class="divider">
+
+<h2>AI Agents vs Agentic AI — Side by Side</h2>
+
+<p>The two live on a spectrum of autonomy. The clearest way to keep them straight is feature by feature:</p>
+
+<table>
+  <thead>
+    <tr><th>Dimension</th><th>AI Agent</th><th>Agentic AI</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Scope</strong></td><td>A single entity with a focused purpose</td><td>A network of agents pursuing a larger goal</td></tr>
+    <tr><td><strong>Functionality</strong></td><td>Specific tasks, limited autonomy</td><td>Whole-system behaviour, broad autonomy</td></tr>
+    <tr><td><strong>Decision making</strong></td><td>Predefined rules</td><td>Autonomous decisions from real-time data &amp; circumstances</td></tr>
+    <tr><td><strong>Adaptability</strong></td><td>Fixed — same input, same logic</td><td>Learns and adapts from experience over time</td></tr>
+    <tr><td><strong>Complexity handled</strong></td><td>Simple, well-defined problems</td><td>Complex, multi-step workflows</td></tr>
+    <tr><td><strong>Coordination</strong></td><td>Works alone</td><td>Agents collaborate and hand off work</td></tr>
+    <tr><td><strong>Typical example</strong></td><td>Customer-service chatbot, banking bot</td><td>Smart home, health assistant, dev team</td></tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">A Useful Rule of Thumb</div>
+  <p>If the system's behaviour can be fully written down as <strong>"if this, then that"</strong> ahead of time, you have an <strong>AI agent</strong>. If the system must <strong>decide its own steps</strong>, coordinate several specialists, and improve as it sees more data, you have <strong>Agentic AI</strong>.</p>
+</div>
+
+<hr class="divider">
+
+<h2>The Four Pillars of an Agentic System</h2>
+
+<p>What lets agentic AI go beyond a fixed script is a continuous loop of four capabilities. Each pillar feeds the next, and the cycle repeats as the environment changes:</p>
+
+<table>
+  <thead>
+    <tr><th>Pillar</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>1 · Perception</strong></td><td>Gather the data from the surroundings — read the inputs, sensors, documents, or state of the world.</td></tr>
+    <tr><td><strong>2 · Reasoning</strong></td><td>Understand what is going on — interpret the perceived data and decide what matters.</td></tr>
+    <tr><td><strong>3 · Action</strong></td><td>Take a specific action — call a tool, send a message, change something in the environment.</td></tr>
+    <tr><td><strong>4 · Learning</strong></td><td>Improve and adapt over time — update memory and strategy based on the results of past actions.</td></tr>
+  </tbody>
+</table>
+
+<!-- The agentic loop: Perception, Reasoning, Action, Learning cycling around the agent and its environment -->
+<svg class="diagram-svg" viewBox="0 0 940 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The agentic loop. Four stages cycle clockwise around the agent and its environment: Perception gathers data, Reasoning understands the situation, Action takes a step, and Learning improves over time, then the loop repeats.">
+  <defs>
+    <marker id="c10b-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+  </defs>
+
+  <!-- center -->
+  <ellipse cx="470" cy="150" rx="112" ry="46" fill="#16161a" stroke="#36363e" stroke-width="1.5" stroke-dasharray="5,4"/>
+  <text x="470" y="147" text-anchor="middle" fill="#b4b4be" font-size="12.5" font-weight="600" font-family="system-ui">Agent &amp; Environment</text>
+  <text x="470" y="165" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">the loop repeats</text>
+
+  <!-- Reasoning (top) -->
+  <rect x="390" y="27" width="160" height="56" rx="9" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
+  <text x="470" y="50" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="700" font-family="system-ui">2 · Reasoning</text>
+  <text x="470" y="68" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">understand the situation</text>
+
+  <!-- Action (right) -->
+  <rect x="710" y="122" width="160" height="56" rx="9" fill="#1a1a2e" stroke="#fbbf24" stroke-width="2"/>
+  <text x="790" y="145" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700" font-family="system-ui">3 · Action</text>
+  <text x="790" y="163" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">take a specific step</text>
+
+  <!-- Learning (bottom) -->
+  <rect x="390" y="217" width="160" height="56" rx="9" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2"/>
+  <text x="470" y="240" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="700" font-family="system-ui">4 · Learning</text>
+  <text x="470" y="258" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">improve &amp; adapt</text>
+
+  <!-- Perception (left) -->
+  <rect x="70" y="122" width="160" height="56" rx="9" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2"/>
+  <text x="150" y="145" text-anchor="middle" fill="#4ecca3" font-size="13" font-weight="700" font-family="system-ui">1 · Perception</text>
+  <text x="150" y="163" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">gather data</text>
+
+  <!-- clockwise arcs -->
+  <path d="M214,126 Q300,66 388,74" fill="none" stroke="#818cf8" stroke-width="2" marker-end="url(#c10b-arr)"/>
+  <path d="M552,74 Q662,66 712,124" fill="none" stroke="#818cf8" stroke-width="2" marker-end="url(#c10b-arr)"/>
+  <path d="M712,176 Q662,250 552,226" fill="none" stroke="#818cf8" stroke-width="2" marker-end="url(#c10b-arr)"/>
+  <path d="M388,226 Q278,250 214,176" fill="none" stroke="#818cf8" stroke-width="2" marker-end="url(#c10b-arr)"/>
+</svg>
+
+<p>In pseudocode, the whole of agentic behaviour is this loop running until the goal is met:</p>
+
+<pre>while not goal_reached:
+    observation = perceive(environment)        # 1 · Perception
+    plan        = reason(observation, memory)   # 2 · Reasoning
+    result      = act(plan, tools)              # 3 · Action
+    memory      = learn(memory, result)         # 4 · Learning</pre>
+
+<p>An <strong>AI agent</strong> usually collapses this to a single pass — perceive the query, apply a rule, act, done. <strong>Agentic AI</strong> keeps the loop spinning, with multiple agents each running their own version and sharing what they learn.</p>
+
+<hr class="divider">
+
+<h2>The Brain of an Agent — LLMs, Tools &amp; Memory</h2>
+
+<p>Both AI agents and agentic AI are built from the same raw materials. The <strong>LLM is the brain</strong> of the agent — it does the reasoning. What turns a plain language model into something that can <em>act</em> is giving that brain two things: <strong>tools</strong> to affect the world and <strong>databases / memory</strong> to remember and look things up.</p>
+
+<table>
+  <thead>
+    <tr><th>Building block</th><th>Role</th><th>Example</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>LLM</strong></td><td>The brain — perceives, reasons, and decides what to do next</td><td>GPT-4, Claude, Llama</td></tr>
+    <tr><td><strong>Tools</strong></td><td>Hands — let the agent take actions beyond text</td><td>Web search, calculator, code runner, API calls</td></tr>
+    <tr><td><strong>Databases / Memory</strong></td><td>Long-term knowledge and recall — including the <strong>retriever + vector store</strong> from earlier chapters</td><td>Vector DB, SQL, conversation memory</td></tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">Where This Course Fits In</div>
+  <p>Everything you built in Chapters 1–9 — chunking, embeddings, vector stores, hybrid search, query enhancement, multimodal retrieval — is the <strong>memory</strong> an agent reaches into. RAG is how an agent <em>knows things</em>; tools are how it <em>does things</em>; the LLM is how it <em>decides</em>. Agents are where retrieval stops being a pipeline and becomes a capability.</p>
+</div>
+
+<hr class="divider">
+
+<h2>Where Each One Fits — More Examples</h2>
+
+<p>The right choice is about the shape of the problem. When the process is <strong>clearly defined</strong>, an AI agent is simpler, cheaper, and more predictable. When the problem demands <strong>flexibility, real-time adaptation, and several specialists</strong>, agentic AI earns its complexity.</p>
+
+<table>
+  <thead>
+    <tr><th>Use case</th><th>Type</th><th>Why</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Customer-service chatbot</strong></td><td>AI Agent</td><td>Answers basic questions along a fixed path</td></tr>
+    <tr><td><strong>Automated banking bot</strong></td><td>AI Agent</td><td>Balance inquiries and transactions — processes are clearly defined</td></tr>
+    <tr><td><strong>Smart-home system</strong></td><td>Agentic AI</td><td>Multiple agents coordinate and adapt toward a shared goal</td></tr>
+    <tr><td><strong>Personalised health assistant</strong></td><td>Agentic AI</td><td>Analyses medical history, real-time health data, and lifestyle factors to give personalised care; adapts to new research and patient feedback</td></tr>
+  </tbody>
+</table>
+
+<p>The banking bot and the health assistant make the contrast vivid. The <strong>banking bot</strong> works because "check balance" and "transfer funds" are <strong>clearly defined processes</strong> — predefined rules are a feature, not a limitation. The <strong>health assistant</strong> must weigh history against real-time signals and lifestyle, and keep up with new medical research — its <strong>flexibility and complexity</strong> are exactly what make it agentic.</p>
+
+<hr class="divider">
+
+<h2>Worked Example: An Agentic AI Software-Development Team</h2>
+
+<p>The most complete illustration is an agentic system modelled on a real <strong>software project</strong> for a client (say, XYZ Company). A human software org has three broad stages — <strong>requirement gathering</strong> (business analyst, product manager), <strong>sprint planning</strong> (the agile process), and <strong>developer teams</strong>. An agentic AI mirrors that structure with collaborating agents.</p>
+
+<p>Requirements flow into an <strong>LLM planner</strong> that decomposes them into tasks. Each task goes to a <strong>developer agent</strong> — itself an AI agent powered by an LLM and careful prompt engineering. Their output is checked by a <strong>testing agent</strong> and a <strong>code-review agent</strong>; failures <strong>raise bugs</strong> that loop straight back to the developers. A <strong>human stays in the loop</strong> throughout, steering and approving — until the project ships.</p>
+
+<!-- Agentic software-development system: requirements -> LLM planner -> three dev agents -> testing + code review -> raise bugs (loops back) -> delivered, with a human in the loop -->
+<svg class="diagram-svg" viewBox="0 0 940 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="An agentic AI software-development team. Requirements feed an LLM task planner, which splits work into Task 1, 2, and 3 for three developer agents (each an LLM plus prompt engineering). Their code goes to a testing agent and a code-review agent; the code-review agent sends feedback to a developer, and the testing agent raises bugs that loop back to the developers. A human-feedback box oversees the build and testing stages. When tests pass, the project is delivered.">
+  <defs>
+    <marker id="c10e-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+    <marker id="c10e-grn" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#4ecca3"/>
+    </marker>
+    <marker id="c10e-red" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#ef6461"/>
+    </marker>
+  </defs>
+
+  <!-- Requirements -->
+  <rect x="360" y="18" width="220" height="50" rx="9" fill="#1a1a2e" stroke="#818cf8" stroke-width="2.5"/>
+  <text x="470" y="40" text-anchor="middle" fill="#818cf8" font-size="13.5" font-weight="700" font-family="system-ui">Requirements</text>
+  <text x="470" y="58" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">from XYZ Company · BA / PM</text>
+
+  <line x1="470" y1="68" x2="470" y2="90" stroke="#818cf8" stroke-width="2" marker-end="url(#c10e-arr)"/>
+
+  <!-- LLM Planner -->
+  <rect x="350" y="92" width="240" height="56" rx="9" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2.5"/>
+  <text x="470" y="116" text-anchor="middle" fill="#a78bfa" font-size="13.5" font-weight="700" font-family="system-ui">LLM — Task Planner</text>
+  <text x="470" y="134" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">decomposes requirements into tasks</text>
+
+  <!-- Planner to dev agents, with task labels -->
+  <line x1="400" y1="148" x2="200" y2="203" stroke="#818cf8" stroke-width="1.8" marker-end="url(#c10e-arr)"/>
+  <line x1="470" y1="148" x2="470" y2="203" stroke="#818cf8" stroke-width="1.8" marker-end="url(#c10e-arr)"/>
+  <line x1="540" y1="148" x2="740" y2="203" stroke="#818cf8" stroke-width="1.8" marker-end="url(#c10e-arr)"/>
+  <text x="276" y="172" text-anchor="middle" fill="#fbbf24" font-size="10.5" font-family="monospace">Task 1</text>
+  <text x="486" y="180" text-anchor="middle" fill="#fbbf24" font-size="10.5" font-family="monospace">Task 2</text>
+  <text x="664" y="172" text-anchor="middle" fill="#fbbf24" font-size="10.5" font-family="monospace">Task 3</text>
+
+  <!-- Dev agents -->
+  <rect x="55" y="205" width="200" height="66" rx="9" fill="#1a1a2e" stroke="#fbbf24" stroke-width="2"/>
+  <text x="155" y="234" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700" font-family="system-ui">Dev Agent 1</text>
+  <text x="155" y="253" text-anchor="middle" fill="#76767f" font-size="9.5" font-family="system-ui">LLM + Prompt Engineering</text>
+
+  <rect x="370" y="205" width="200" height="66" rx="9" fill="#1a1a2e" stroke="#fbbf24" stroke-width="2"/>
+  <text x="470" y="234" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700" font-family="system-ui">Dev Agent 2</text>
+  <text x="470" y="253" text-anchor="middle" fill="#76767f" font-size="9.5" font-family="system-ui">LLM + Prompt Engineering</text>
+
+  <rect x="685" y="205" width="200" height="66" rx="9" fill="#1a1a2e" stroke="#fbbf24" stroke-width="2"/>
+  <text x="785" y="234" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700" font-family="system-ui">Dev Agent 3</text>
+  <text x="785" y="253" text-anchor="middle" fill="#76767f" font-size="9.5" font-family="system-ui">LLM + Prompt Engineering</text>
+
+  <!-- Dev -> QA -->
+  <line x1="180" y1="271" x2="368" y2="346" stroke="#818cf8" stroke-width="1.8" marker-end="url(#c10e-arr)"/>
+  <line x1="470" y1="271" x2="470" y2="328" stroke="#818cf8" stroke-width="1.8" marker-end="url(#c10e-arr)"/>
+  <line x1="785" y1="271" x2="785" y2="328" stroke="#818cf8" stroke-width="1.8" marker-end="url(#c10e-arr)"/>
+
+  <!-- Testing -->
+  <rect x="370" y="330" width="200" height="56" rx="9" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2"/>
+  <text x="470" y="354" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="700" font-family="system-ui">Testing Agent</text>
+  <text x="470" y="372" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">runs the test suite</text>
+
+  <!-- Code Review -->
+  <rect x="685" y="330" width="200" height="56" rx="9" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2"/>
+  <text x="785" y="354" text-anchor="middle" fill="#4ecca3" font-size="13" font-weight="700" font-family="system-ui">Code Review Agent</text>
+  <text x="785" y="372" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">checks quality</text>
+
+  <!-- Code review feedback to dev2 -->
+  <path d="M700,335 Q600,300 574,256" fill="none" stroke="#4ecca3" stroke-width="1.8" stroke-dasharray="5,4" marker-end="url(#c10e-grn)"/>
+  <text x="648" y="305" text-anchor="middle" fill="#4ecca3" font-size="10" font-family="system-ui">review feedback</text>
+
+  <!-- Testing -> Raise Bugs -->
+  <line x1="470" y1="386" x2="470" y2="428" stroke="#818cf8" stroke-width="1.8" marker-end="url(#c10e-arr)"/>
+
+  <!-- Raise Bugs -->
+  <rect x="370" y="430" width="200" height="46" rx="9" fill="#1a1a2e" stroke="#ef6461" stroke-width="2"/>
+  <text x="470" y="458" text-anchor="middle" fill="#ef6461" font-size="13" font-weight="700" font-family="system-ui">Raise Bugs</text>
+
+  <!-- Bug loop back to devs (left channel) -->
+  <path d="M368,453 L25,453 L25,250 L53,250" fill="none" stroke="#ef6461" stroke-width="1.8" stroke-dasharray="6,4" marker-end="url(#c10e-red)"/>
+
+  <!-- tests pass -> delivered -->
+  <line x1="570" y1="455" x2="683" y2="462" stroke="#4ecca3" stroke-width="1.8" marker-end="url(#c10e-grn)"/>
+  <text x="628" y="446" text-anchor="middle" fill="#4ecca3" font-size="10" font-family="system-ui">tests pass</text>
+
+  <!-- Delivered -->
+  <rect x="685" y="440" width="200" height="46" rx="9" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2.5"/>
+  <text x="785" y="468" text-anchor="middle" fill="#4ecca3" font-size="13" font-weight="700" font-family="system-ui">✓ Project Delivered</text>
+
+  <!-- Human in the loop -->
+  <rect x="40" y="345" width="200" height="56" rx="9" fill="#16161a" stroke="#b4b4be" stroke-width="1.8" stroke-dasharray="5,3"/>
+  <text x="140" y="369" text-anchor="middle" fill="#ececf1" font-size="12.5" font-weight="700" font-family="system-ui">Human Feedback</text>
+  <text x="140" y="387" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">in the loop</text>
+  <line x1="140" y1="345" x2="140" y2="273" stroke="#b4b4be" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#c10e-arr)"/>
+  <line x1="240" y1="367" x2="368" y2="360" stroke="#b4b4be" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#c10e-arr)"/>
+
+  <!-- caption -->
+  <text x="470" y="508" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">Requirements flow down; bugs loop back up (red); a human steers throughout — until the project ships.</text>
+</svg>
+
+<h3>How the Pieces Map</h3>
+
+<table>
+  <thead>
+    <tr><th>Stage</th><th>Human team</th><th>Agentic AI equivalent</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Requirement gathering</strong></td><td>Business analyst, product manager</td><td>Requirements captured and fed to the LLM planner</td></tr>
+    <tr><td><strong>Sprint planning</strong></td><td>Agile process</td><td>LLM planner decomposes work into Task 1, 2, 3</td></tr>
+    <tr><td><strong>Development</strong></td><td>Developer teams</td><td>Dev agents (LLM + prompt engineering), one per task</td></tr>
+    <tr><td><strong>Quality</strong></td><td>QA &amp; peer review</td><td>Testing agent + code-review agent, with feedback loops</td></tr>
+    <tr><td><strong>Oversight</strong></td><td>Tech lead / stakeholders</td><td>Human feedback in the loop, steering every stage</td></tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">Why This Is Agentic, Not Just Many Agents</div>
+  <p>Each developer agent on its own is a plain AI agent. What makes the <em>system</em> agentic is the <strong>coordination</strong>: a planner that decides how to split the work, agents that hand off to testing and review, a <strong>bug loop</strong> that sends failures back for another pass, and a human steering the whole thing. The intelligence lives in the network, not in any single box.</p>
+</div>
+
+<hr class="divider">
+
+<h2>Another Example: A Blog-Generation Agentic System</h2>
+
+<p>The same pattern generalises far beyond code. A <strong>blog-generation agentic system</strong> chains specialist agents into a content pipeline, each doing one job and passing its output to the next — with the planner (and a human) keeping the whole thing on track:</p>
+
+<table>
+  <thead>
+    <tr><th>Agent</th><th>Responsibility</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Research agent</strong></td><td>Gathers sources and facts on the topic (often via RAG)</td></tr>
+    <tr><td><strong>Outline agent</strong></td><td>Turns the research into a structured outline</td></tr>
+    <tr><td><strong>Writing agent</strong></td><td>Drafts each section from the outline</td></tr>
+    <tr><td><strong>Editing agent</strong></td><td>Revises for clarity, tone, and accuracy</td></tr>
+    <tr><td><strong>SEO agent</strong></td><td>Optimises titles, headings, and keywords before publishing</td></tr>
+  </tbody>
+</table>
+
+<p>Swap the agents and you have a research assistant, a data-analysis crew, or a support-triage system. The framework — <strong>plan, delegate, act, review, learn</strong> — stays the same.</p>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+
+<div class="example-block">
+  <div class="label">Remember These Five</div>
+  <p><strong>1.</strong> An <strong>AI agent</strong> is a single program that performs a specific task with limited autonomy, driven by <strong>predefined rules</strong> — a single entity with a focused purpose (e.g. a customer-service chatbot or banking bot).</p>
+  <p><strong>2.</strong> <strong>Agentic AI</strong> is a broader framework where <strong>multiple agents collaborate</strong> and make autonomous decisions to reach a larger goal, <strong>learning and adapting</strong> rather than just following rules (e.g. a smart home or health assistant).</p>
+  <p><strong>3.</strong> Every agentic system runs the same four-pillar loop — <strong>Perception → Reasoning → Action → Learning</strong> — over and over as the environment changes.</p>
+  <p><strong>4.</strong> The <strong>LLM is the brain</strong>; <strong>tools</strong> are its hands; <strong>databases / memory</strong> (your RAG stack) are its knowledge. Agents are where retrieval becomes a capability instead of a pipeline.</p>
+  <p><strong>5.</strong> Choose by problem shape: <strong>clearly-defined process → AI agent</strong>; <strong>complex, adaptive, multi-specialist workflow → Agentic AI</strong>. The software-dev team — planner, dev agents, testing &amp; review, a bug loop, and a human in the loop — shows agentic AI end to end.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter9">← Chapter 9: Multimodal RAG — Going Beyond Text</a>
+    <span></span>
+</nav>
