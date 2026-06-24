@@ -147,6 +147,7 @@ async function loadChapter(id) {
         buildTOC(main);
         highlightCode(main);
         addCopyButtons(main);
+        wrapScrollables(main);
         window.scrollTo(0, 0);
     } catch (e) {
         main.innerHTML = `
@@ -206,6 +207,26 @@ function addCopyButtons(scope) {
         });
 
         wrap.appendChild(btn);
+    });
+}
+
+/**
+ * Wrap wide elements (tables and diagrams) in a horizontally scrollable
+ * container so they stay readable on narrow screens instead of overflowing the
+ * page or being crushed into the viewport. The wrapper only scrolls on small
+ * screens (see the .scroll-x rules in style.css); on desktop it is an inert
+ * pass-through, so box shadows and rounded corners still render normally.
+ */
+function wrapScrollables(scope) {
+    const targets = scope.querySelectorAll('table, svg.diagram-svg');
+    targets.forEach(el => {
+        const parent = el.parentElement;
+        if (!parent || parent.classList.contains('scroll-x')) return;  // already wrapped
+        const isTable = el.tagName.toLowerCase() === 'table';
+        const wrap = document.createElement('div');
+        wrap.className = 'scroll-x ' + (isTable ? 'scroll-x--table' : 'scroll-x--diagram');
+        parent.insertBefore(wrap, el);
+        wrap.appendChild(el);
     });
 }
 
