@@ -1,0 +1,511 @@
+<h1>Chapter 12: Agents — Tools, ReAct &amp; the Agentic Loop</h1>
+<p style="color:#888; margin-bottom: 2rem;"><em>Chapter 11 gave the LLM a graph to run in. This chapter gives it <strong>hands</strong> — real tools it can call, a loop to call them in, and a memory that survives between turns. This is where a chatbot becomes an <strong>agent</strong>.</em></p>
+
+<h2>Overview</h2>
+
+<p>So far the LLM has only ever <em>talked</em>. It can reason about text, but it can't search arXiv, look something up on Wikipedia, fetch today's news, or even reliably multiply two numbers. An <strong>agent</strong> fixes that: it's an LLM wired to a set of <strong>tools</strong>, running inside a loop that lets it <strong>decide for itself</strong> which tool to call, read the result, and decide what to do next — over and over — until the task is done.</p>
+
+<p>This chapter builds exactly that, on top of LangGraph. We'll cover the four building blocks (<strong>chains, routers, tools, agents</strong>), the <strong>ReAct</strong> architecture that ties them together, how to write and bind real tools, how the <code>ToolNode</code> + <code>tools_condition</code> loop works, how a <strong>checkpointer</strong> gives the agent memory across turns, and how <strong>LangSmith</strong> lets you watch the whole thing run.</p>
+
+<div class="example-block">
+  <div class="label">The Core Idea</div>
+  <p>An agent is an <strong>LLM that controls a loop</strong>. The model is the "brain"; the tools are its hands. On every turn it looks at the conversation and either <strong>answers directly</strong> (and the loop ends) or <strong>emits a tool call</strong>. The tool runs, its output is fed back in, and the model is asked again — <em>act, observe, reason</em> — until it has what it needs to respond.</p>
+</div>
+
+<p>Here is the shape of the agent we're going to build — the LLM sits at the centre, a conditional edge routes to <code>tools</code> whenever the model asks for one, and the tool result loops <strong>back into the LLM</strong> instead of ending the run:</p>
+
+<svg class="diagram-svg" viewBox="0 0 940 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The ReAct agent graph. START flows into the LLM brain node. A conditional edge (tools_condition) either ends the run if the model answered directly, or routes to the tools node if the model emitted a tool call. The tools node loops its output back into the LLM brain, forming a cycle.">
+  <defs>
+    <marker id="c12-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+    <marker id="c12-arr-g" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#4ecca3"/>
+    </marker>
+    <marker id="c12-arr-y" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#fbbf24"/>
+    </marker>
+  </defs>
+
+  <!-- START -->
+  <rect x="40" y="150" width="120" height="44" rx="22" fill="#16161a" stroke="#818cf8" stroke-width="2"/>
+  <text x="100" y="177" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="700" font-family="monospace">START</text>
+  <text x="100" y="214" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">natural-language input</text>
+
+  <line x1="160" y1="172" x2="318" y2="172" stroke="#818cf8" stroke-width="2" marker-end="url(#c12-arr)"/>
+
+  <!-- LLM brain -->
+  <rect x="320" y="132" width="220" height="80" rx="10" fill="#1a1a2e" stroke="#ef6461" stroke-width="2.5"/>
+  <text x="430" y="166" text-anchor="middle" fill="#ececf1" font-size="15" font-weight="700" font-family="system-ui">LLM</text>
+  <text x="430" y="188" text-anchor="middle" fill="#ef6461" font-size="12" font-weight="700" font-family="monospace">[ BRAIN ]</text>
+  <text x="430" y="124" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">tools bound via bind_tools()</text>
+
+  <!-- conditional edge label -->
+  <text x="610" y="120" text-anchor="middle" fill="#fbbf24" font-size="11" font-style="italic" font-family="system-ui">tools_condition</text>
+
+  <!-- to END (answered directly) -->
+  <line x1="540" y1="152" x2="700" y2="92" stroke="#4ecca3" stroke-width="2" marker-end="url(#c12-arr-g)"/>
+  <text x="615" y="78" text-anchor="middle" fill="#4ecca3" font-size="10.5" font-family="system-ui">no tool call → answer</text>
+  <rect x="700" y="62" width="120" height="44" rx="22" fill="#16161a" stroke="#4ecca3" stroke-width="2"/>
+  <text x="760" y="89" text-anchor="middle" fill="#4ecca3" font-size="13" font-weight="700" font-family="monospace">END</text>
+
+  <!-- to tools (tool call) -->
+  <line x1="540" y1="192" x2="700" y2="248" stroke="#fbbf24" stroke-width="2" marker-end="url(#c12-arr-y)"/>
+  <text x="618" y="240" text-anchor="middle" fill="#fbbf24" font-size="10.5" font-family="system-ui">tool call → run it</text>
+
+  <!-- tools node -->
+  <circle cx="760" cy="280" r="40" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2.5"/>
+  <text x="760" y="278" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="700" font-family="system-ui">tools</text>
+  <text x="760" y="296" text-anchor="middle" fill="#76767f" font-size="9" font-family="monospace">add() · arxiv …</text>
+
+  <!-- loop back to LLM (observe) -->
+  <path d="M 720 300 Q 430 380 430 214" fill="none" stroke="#a78bfa" stroke-width="2" marker-end="url(#c12-arr)" stroke-dasharray="6,4"/>
+  <text x="470" y="345" text-anchor="middle" fill="#a78bfa" font-size="10.5" font-style="italic" font-family="system-ui">observe — feed tool output back in</text>
+</svg>
+
+<p>Notice the <strong>cycle</strong>: <code>tools</code> flows back into the LLM, not into <code>END</code>. That single back-edge is the difference between a one-shot chain and an agent that can chain <em>several</em> tool calls together to solve a multi-step request.</p>
+
+<hr class="divider">
+
+<h2>From Chains to Agents — Four Building Blocks</h2>
+
+<p>It helps to see how an agent is assembled from simpler pieces you've already met. Each row adds one capability to the one above it:</p>
+
+<table>
+  <thead>
+    <tr><th>#</th><th>Building block</th><th>What it does</th><th>Who decides the path?</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td><strong>Chain</strong></td><td>A fixed sequence of steps — prompt → LLM → parser. Always runs the same way.</td><td>You (hard-coded)</td></tr>
+    <tr><td>2</td><td><strong>Router</strong></td><td>A conditional edge picks <em>one of several</em> branches based on the input, then stops.</td><td>The model, once</td></tr>
+    <tr><td>3</td><td><strong>Tools</strong></td><td>External functions the LLM can call — search, math, APIs — that extend it beyond text.</td><td>The model chooses which</td></tr>
+    <tr><td>4</td><td><strong>Agent</strong></td><td>A router with a <strong>loop</strong>: the model calls tools, observes results, and re-decides — repeatedly.</td><td>The model, every turn</td></tr>
+  </tbody>
+</table>
+
+<p>The jump from <strong>router</strong> (Chapter 11.3) to <strong>agent</strong> is precisely the loop we drew above. A router answers or calls a tool <em>once</em>; an agent keeps going until it's satisfied.</p>
+
+<hr class="divider">
+
+<h2>ReAct — the General Agent Architecture</h2>
+
+<p><strong>ReAct</strong> (Reason + Act) is the general-purpose pattern behind almost every modern agent. It breaks each turn of the loop into three moves:</p>
+
+<table>
+  <thead>
+    <tr><th>Step</th><th>Name</th><th>What happens</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td><strong>Act</strong></td><td>The model calls one or more <strong>specific tools</strong> — it decides the name and the arguments.</td></tr>
+    <tr><td>2</td><td><strong>Observe</strong></td><td>Each tool runs; its output is <strong>passed back to the model</strong> as a tool message.</td></tr>
+    <tr><td>3</td><td><strong>Reason</strong></td><td>Based on the tool's output and the input, the model <strong>decides what to do next</strong> — call another tool, or answer directly and finish.</td></tr>
+  </tbody>
+</table>
+
+<svg class="diagram-svg" viewBox="0 0 940 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The ReAct cycle: Act leads to Observe, Observe leads to Reason, and Reason loops back to Act, with an exit arrow from Reason to a final answer.">
+  <defs>
+    <marker id="c12-cyc" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+    <marker id="c12-cyc-g" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#4ecca3"/>
+    </marker>
+  </defs>
+
+  <!-- Act -->
+  <rect x="90" y="92" width="180" height="60" rx="10" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2.5"/>
+  <text x="180" y="118" text-anchor="middle" fill="#4ecca3" font-size="14" font-weight="700" font-family="system-ui">1 · Act</text>
+  <text x="180" y="138" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">model calls a tool</text>
+
+  <line x1="270" y1="122" x2="368" y2="122" stroke="#818cf8" stroke-width="2" marker-end="url(#c12-cyc)"/>
+
+  <!-- Observe -->
+  <rect x="370" y="92" width="180" height="60" rx="10" fill="#1a1a2e" stroke="#fbbf24" stroke-width="2.5"/>
+  <text x="460" y="118" text-anchor="middle" fill="#fbbf24" font-size="14" font-weight="700" font-family="system-ui">2 · Observe</text>
+  <text x="460" y="138" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">output back to model</text>
+
+  <line x1="550" y1="122" x2="648" y2="122" stroke="#818cf8" stroke-width="2" marker-end="url(#c12-cyc)"/>
+
+  <!-- Reason -->
+  <rect x="650" y="92" width="180" height="60" rx="10" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2.5"/>
+  <text x="740" y="118" text-anchor="middle" fill="#a78bfa" font-size="14" font-weight="700" font-family="system-ui">3 · Reason</text>
+  <text x="740" y="138" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">decide next step</text>
+
+  <!-- loop back Reason -> Act -->
+  <path d="M 740 92 Q 740 30 460 30 Q 180 30 180 92" fill="none" stroke="#818cf8" stroke-width="2" marker-end="url(#c12-cyc)" stroke-dasharray="6,4"/>
+  <text x="460" y="22" text-anchor="middle" fill="#818cf8" font-size="10.5" font-style="italic" font-family="system-ui">call another tool</text>
+
+  <!-- exit -->
+  <line x1="740" y1="152" x2="740" y2="206" stroke="#4ecca3" stroke-width="2" marker-end="url(#c12-cyc-g)"/>
+  <text x="740" y="224" text-anchor="middle" fill="#4ecca3" font-size="10.5" font-family="system-ui">done → final answer</text>
+</svg>
+
+<p>That's the entire intuition. Everything below is just code that realises this loop in LangGraph.</p>
+
+<hr class="divider">
+
+<h2>Tools — Giving the LLM Hands</h2>
+
+<p>A <strong>tool</strong> is just a Python function the LLM is allowed to call. In LangChain you turn a function into a tool with the <code>@tool</code> decorator. Two things matter enormously: the <strong>docstring</strong> (the model reads it to decide <em>when</em> to use the tool) and the <strong>type hints</strong> (they define the arguments the model must fill in).</p>
+
+<h3>A custom tool — searching arXiv</h3>
+
+<pre>import arxiv
+from langchain_core.tools import tool
+from langchain_community.tools import WikipediaQueryRun
+from langchain_community.utilities import WikipediaAPIWrapper
+
+@tool
+def arxiv_search(query: str) -> str:
+    """Search arXiv for academic papers related to the query."""
+    client = arxiv.Client()
+    search = arxiv.Search(
+        query=query,
+        max_results=2,
+        sort_by=arxiv.SortCriterion.Relevance
+    )
+    results = []
+    for paper in client.results(search):
+        results.append(
+            f"Title: {paper.title}\n"
+            f"Summary: {paper.summary[:500]}\n"
+            f"URL: {paper.entry_id}"
+        )
+    return "\n---\n".join(results) if results else "No results found."
+
+print(arxiv_search.name)   # -> arxiv_search</pre>
+
+<p>Once decorated, the tool exposes a <code>.name</code> and an <code>.invoke()</code> method so you can test it directly, exactly as the agent will call it:</p>
+
+<pre>arxiv_search.invoke("Attention is all you need")
+# 'Title: Do You Even Need Attention? ... URL: http://arxiv.org/abs/2105.02723v1 ...'</pre>
+
+<h3>Prebuilt tools — Wikipedia and Tavily</h3>
+
+<p>You don't have to write every tool. LangChain ships hundreds. Here's Wikipedia (capped to one short result) and <strong>Tavily</strong>, a search API built for LLMs that returns clean, recent web results:</p>
+
+<pre>api_wrapper_wiki = WikipediaAPIWrapper(top_k_results=1, doc_content_chars_max=500)
+wiki = WikipediaQueryRun(api_wrapper=api_wrapper_wiki)
+wiki.name          # -> 'wikipedia'
+wiki.invoke("What is machine learning")</pre>
+
+<pre>from langchain_community.tools.tavily_search import TavilySearchResults
+
+tavily = TavilySearchResults()
+tavily.invoke("Provide me the recent AI news for March 3rd 2026")
+# [{'title': 'March 2026 AI News: 6 Key Stories...', 'url': '...', 'content': '...'}]</pre>
+
+<h3>Plain functions as tools too</h3>
+
+<p>Math is something LLMs are famously bad at, so we hand it off to real functions. Note the careful docstrings and type hints — they <em>are</em> the tool's interface for the model:</p>
+
+<pre>def multiply(a: int, b: int) -> int:
+    """Multiply a and b.
+
+    Args:
+        a: first int
+        b: second int
+    """
+    return a * b
+
+def add(a: int, b: int) -> int:
+    """Adds a and b.
+
+    Args:
+        a: first int
+        b: second int
+    """
+    return a + b
+
+def divide(a: int, b: int) -> float:
+    """Divide a and b.
+
+    Args:
+        a: first int
+        b: second int
+    """
+    return a / b
+
+# Combine every tool into one list the LLM can choose from
+tools = [arxiv_search, wiki, tavily, add, divide, multiply]</pre>
+
+<div class="example-block">
+  <div class="label">Why the docstring matters</div>
+  <p>The model never sees your function body — only its <strong>name, signature, and docstring</strong>. A vague docstring means the model calls the tool at the wrong time or with the wrong arguments. Treat the docstring as a prompt: say precisely what the tool does and what each argument is.</p>
+</div>
+
+<hr class="divider">
+
+<h2>Binding Tools to the LLM</h2>
+
+<p>Defining tools isn't enough — the model has to <strong>know about them</strong>. <code>bind_tools()</code> attaches the tool schemas to the LLM so that, instead of only producing text, the model can produce a <strong>structured tool call</strong>: a name plus arguments.</p>
+
+<pre>from langchain_openai import ChatOpenAI
+
+llm = ChatOpenAI(model="gpt-4-turbo", temperature=0)
+llm_with_tools = llm.bind_tools(tools)</pre>
+
+<p>Now when we ask something that needs a tool, the model doesn't answer in prose — it returns an <code>AIMessage</code> with an empty <code>content</code> and a populated <code>tool_calls</code> list:</p>
+
+<pre>from langchain_core.messages import HumanMessage
+
+llm_with_tools.invoke([HumanMessage(content="What is the recent AI News")]).tool_calls
+# [{'name': 'tavily_search_results_json',
+#   'args': {'query': 'recent AI news'},
+#   'id': 'call_ZYgtqWUMCxsg0lKWB4Unt6Cs',
+#   'type': 'tool_call'}]</pre>
+
+<p>The model <strong>chose</strong> Tavily and <strong>wrote the query argument itself</strong>. That's the "Act" step. But on its own, <code>bind_tools</code> only <em>requests</em> a tool call — nothing has actually run yet. We need a graph to execute the request and feed the result back. Enter LangGraph.</p>
+
+<hr class="divider">
+
+<h2>The State — a List of Messages</h2>
+
+<p>An agent's state is the <strong>conversation</strong> itself: a growing list of messages (human, AI, tool). We use the <code>add_messages</code> reducer so each node <strong>appends</strong> to the list instead of overwriting it — the same pattern from <a href="#chapter11-2">Chapter 11.2</a>.</p>
+
+<pre>from typing_extensions import TypedDict
+from typing import Annotated
+from langchain_core.messages import AnyMessage
+from langgraph.graph.message import add_messages
+
+class State(TypedDict):
+    messages: Annotated[list[AnyMessage], add_messages]</pre>
+
+<hr class="divider">
+
+<h2>Building the Agent Graph</h2>
+
+<p>Now we assemble the loop from the diagram. Two prebuilt LangGraph pieces do the heavy lifting:</p>
+
+<table>
+  <thead>
+    <tr><th>Piece</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>ToolNode(tools)</code></td><td>A ready-made node that reads the latest tool call from the state, <strong>runs the matching tool</strong>, and appends the result as a tool message.</td></tr>
+    <tr><td><code>tools_condition</code></td><td>A ready-made conditional edge: if the last AI message contains a tool call, route to <code>"tools"</code>; otherwise route to <code>END</code>.</td></tr>
+  </tbody>
+</table>
+
+<pre>from langgraph.graph import StateGraph, START, END
+from langgraph.prebuilt import ToolNode, tools_condition
+
+# The LLM "brain" node
+def tool_calling_llm(state: State):
+    return {"messages": [llm_with_tools.invoke(state["messages"])]}
+
+# Build the graph
+builder = StateGraph(State)
+builder.add_node("tool_calling_llm", tool_calling_llm)
+builder.add_node("tools", ToolNode(tools))
+
+builder.add_edge(START, "tool_calling_llm")
+builder.add_conditional_edges(
+    "tool_calling_llm",
+    # If the latest message is a tool call -> route to "tools"
+    # If it is NOT a tool call          -> route to END
+    tools_condition,
+)
+builder.add_edge("tools", "tool_calling_llm")   # <-- the loop back-edge
+
+graph = builder.compile()</pre>
+
+<p>The one line that makes this an <strong>agent</strong> rather than a router is <code>builder.add_edge("tools", "tool_calling_llm")</code>. Without it, the graph would run a tool once and stop. With it, the tool result flows back into the brain, which can then call <em>another</em> tool — looping until it answers directly and <code>tools_condition</code> finally routes to <code>END</code>.</p>
+
+<hr class="divider">
+
+<h2>Running the Agent — Multiple Tools, One Request</h2>
+
+<p>Watch what happens with a request that needs <strong>several</strong> tools at once — a web search <em>and</em> some math:</p>
+
+<pre>messages = graph.invoke({"messages": HumanMessage(
+    content="Provide me the top 10 recent AI news for March 3rd 2025, add 5 plus 5 and then multiply by 10"
+)})
+for m in messages["messages"]:
+    m.pretty_print()</pre>
+
+<pre>================================ Human Message =================================
+Provide me the top 10 recent AI news for March 3rd 2025, add 5 plus 5 and then multiply by 10
+================================== Ai Message ==================================
+Tool Calls:
+  tavily_search_results_json (call_zVGxt2fM4h2mlulmuJlWd3oD)
+  Args:
+    query: top 10 recent AI news March 3rd 2025
+  add (call_6ReGLwwDqiaE0Bort4HDm7b8)
+  Args:
+    a: 5
+    b: 5
+================================= Tool Message =================================
+Name: tavily_search_results_json
+[{"title": "The 10 Biggest AI News Stories Of 2025", "url": "https://www.crn.com/..."}]
+================================= Tool Message =================================
+Name: add
+10
+================================== Ai Message ==================================
+Tool Calls:
+  multiply (call_8h2...)
+  Args:
+    a: 10
+    b: 10
+================================= Tool Message =================================
+Name: multiply
+100
+================================== Ai Message ==================================
+Here are the top recent AI news stories ... and 5 plus 5 is 10, multiplied by 10 is 100.</pre>
+
+<p>Trace the loop: the model fired <code>tavily</code> and <code>add</code> together (Act), saw <code>add</code> return <code>10</code> (Observe), <strong>reasoned</strong> that it now needed <code>multiply(10, 10)</code>, called it, observed <code>100</code>, and only then wrote the final answer. It chained three tool calls across multiple passes through the loop — entirely on its own.</p>
+
+<div class="example-block">
+  <div class="label">A telling failure — why memory matters</div>
+  <p>Ask the agent <code>"Divide that by 5"</code> in a <strong>fresh</strong> run and it flounders — it guesses <code>divide(10, 5)</code> and then apologises, because "that" refers to a previous answer it no longer has. Each <code>invoke()</code> starts from a blank state. To say "that number" and be understood, the agent needs to <strong>remember the last turn</strong>. That's the next section.</p>
+</div>
+
+<hr class="divider">
+
+<h2>Memory — Checkpointers, Threads &amp; Super-Steps</h2>
+
+<p>LangGraph can use a <strong>checkpointer</strong> to automatically save the graph state after each step. This built-in persistence layer is what gives an agent <strong>memory</strong>: it lets the graph pick up from the last state update instead of starting blank every time.</p>
+
+<p>The easiest one to use is <strong>MemorySaver</strong> — an in-memory key-value store for graph state. You compile the graph with it and, just like that, the graph remembers:</p>
+
+<pre>from langgraph.checkpoint.memory import MemorySaver
+
+memory = MemorySaver()
+graph_memory = builder.compile(checkpointer=memory)</pre>
+
+<p>To keep separate conversations apart, every call passes a <strong>thread id</strong> in its config. All the checkpoints sharing a <code>thread_id</code> form one continuous conversation:</p>
+
+<pre>config = {"configurable": {"thread_id": "1"}}
+
+# Turn 1
+graph_memory.invoke({"messages": [HumanMessage(content="Add 12 and 13.")]}, config=config)
+# -> "The result of adding 12 and 13 is 25."
+
+# Turn 2 — "that number" now resolves, because the state persisted
+graph_memory.invoke({"messages": [HumanMessage(content="add that number to 25")]}, config=config)
+# -> calls add(25, 25) = 50
+
+# Turn 3
+graph_memory.invoke({"messages": [HumanMessage(content="then multiply that number by 2")]}, config=config)
+# -> calls multiply(50, 2) = 100</pre>
+
+<p>Because the checkpointer replays the saved messages on every turn, <code>"that number"</code> resolves correctly — the agent carries 25 → 50 → 100 across three separate <code>invoke()</code> calls. To start a clean conversation, just hand it a different <code>thread_id</code>.</p>
+
+<h3>The four concepts of persistence</h3>
+
+<p>It's worth naming the pieces precisely, because they show up everywhere in LangGraph:</p>
+
+<svg class="diagram-svg" viewBox="0 0 940 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="LangGraph persistence concepts. Row 1, Graph: an initial state flows through Node 1 then Node 2 to a final state, representing the control flow of nodes and edges. Row 2, Super-steps: each sequential node is its own super-step. Row 3, Checkpoints: the state and metadata are packaged at every super-step. Row 4, Thread: a collection of checkpoints grouped together.">
+  <defs>
+    <marker id="c12-flow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#76767f"/>
+    </marker>
+  </defs>
+
+  <!-- column guides (node x positions): node1 ~ 360, node2 ~ 560 -->
+
+  <!-- Row labels -->
+  <text x="20" y="60"  fill="#818cf8" font-size="13" font-weight="700" font-family="system-ui">Graph</text>
+  <text x="20" y="150" fill="#4ecca3" font-size="13" font-weight="700" font-family="system-ui">Super-steps</text>
+  <text x="20" y="232" fill="#fbbf24" font-size="13" font-weight="700" font-family="system-ui">Checkpoints</text>
+  <text x="20" y="318" fill="#a78bfa" font-size="13" font-weight="700" font-family="system-ui">Thread</text>
+
+  <!-- node column headers -->
+  <text x="360" y="22" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="monospace">Node 1</text>
+  <text x="560" y="22" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="monospace">Node 2</text>
+
+  <!-- ROW 1: Graph -->
+  <text x="170" y="60" text-anchor="middle" fill="#76767f" font-size="10" font-family="monospace">{state: "I"}</text>
+  <line x1="232" y1="56" x2="322" y2="56" stroke="#76767f" stroke-width="1.6" marker-end="url(#c12-flow)"/>
+  <circle cx="360" cy="56" r="18" fill="#1a1a2e" stroke="#ef6461" stroke-width="2"/>
+  <line x1="382" y1="56" x2="522" y2="56" stroke="#76767f" stroke-width="1.6" marker-end="url(#c12-flow)"/>
+  <circle cx="560" cy="56" r="18" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
+  <line x1="582" y1="56" x2="640" y2="56" stroke="#76767f" stroke-width="1.6" marker-end="url(#c12-flow)"/>
+  <text x="740" y="60" text-anchor="middle" fill="#76767f" font-size="10" font-family="monospace">{state: "I heart langgraph"}</text>
+  <text x="895" y="48" text-anchor="end" fill="#b4b4be" font-size="10.5" font-family="system-ui">Control flow of</text>
+  <text x="895" y="64" text-anchor="end" fill="#b4b4be" font-size="10.5" font-family="system-ui">nodes &amp; edges</text>
+
+  <!-- ROW 2: Super-steps -->
+  <circle cx="360" cy="140" r="18" fill="#1a1a2e" stroke="#ef6461" stroke-width="2"/>
+  <circle cx="560" cy="140" r="18" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
+  <text x="895" y="130" text-anchor="end" fill="#b4b4be" font-size="10.5" font-family="system-ui">Each sequential node is its own</text>
+  <text x="895" y="146" text-anchor="end" fill="#b4b4be" font-size="10.5" font-family="system-ui">super-step; parallel nodes</text>
+  <text x="895" y="162" text-anchor="end" fill="#b4b4be" font-size="10.5" font-family="system-ui">share one super-step</text>
+
+  <!-- ROW 3: Checkpoints -->
+  <rect x="300" y="200" width="120" height="64" rx="9" fill="#1a1a2e" stroke="#fbbf24" stroke-width="2"/>
+  <text x="312" y="220" fill="#b4b4be" font-size="9" font-family="monospace">state: "I heart"</text>
+  <text x="312" y="234" fill="#b4b4be" font-size="9" font-family="monospace">next: node 2</text>
+  <text x="312" y="248" fill="#76767f" font-size="9" font-family="monospace">id: ...</text>
+  <text x="312" y="260" fill="#76767f" font-size="9" font-family="monospace">etc ...</text>
+
+  <rect x="500" y="200" width="130" height="64" rx="9" fill="#1a1a2e" stroke="#fbbf24" stroke-width="2"/>
+  <text x="512" y="220" fill="#b4b4be" font-size="9" font-family="monospace">state: "I heart langgraph"</text>
+  <text x="512" y="234" fill="#b4b4be" font-size="9" font-family="monospace">next: end</text>
+  <text x="512" y="248" fill="#76767f" font-size="9" font-family="monospace">id: ...</text>
+  <text x="512" y="260" fill="#76767f" font-size="9" font-family="monospace">etc ...</text>
+
+  <text x="895" y="226" text-anchor="end" fill="#b4b4be" font-size="10.5" font-family="system-ui">State &amp; metadata packaged</text>
+  <text x="895" y="242" text-anchor="end" fill="#b4b4be" font-size="10.5" font-family="system-ui">at every super-step</text>
+
+  <!-- ROW 4: Thread -->
+  <rect x="285" y="290" width="360" height="50" rx="10" fill="none" stroke="#a78bfa" stroke-width="1.8" stroke-dasharray="6,4"/>
+  <rect x="320" y="304" width="60" height="22" rx="5" fill="#1a1a2e" stroke="#ef6461" stroke-width="1.8"/>
+  <rect x="430" y="304" width="60" height="22" rx="5" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.8"/>
+  <text x="895" y="320" text-anchor="end" fill="#b4b4be" font-size="10.5" font-family="system-ui">A collection of checkpoints</text>
+</svg>
+
+<table>
+  <thead>
+    <tr><th>Concept</th><th>Meaning</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Graph</strong></td><td>The control flow of nodes and edges that transforms an initial state into a final one.</td></tr>
+    <tr><td><strong>Super-step</strong></td><td>One tick of execution. Each sequential node is its own super-step; nodes that run in <strong>parallel</strong> share the same super-step.</td></tr>
+    <tr><td><strong>Checkpoint</strong></td><td>A snapshot of the <strong>state plus metadata</strong> (the values, what runs <code>next</code>, an id) saved at every super-step. This is what the checkpointer stores.</td></tr>
+    <tr><td><strong>Thread</strong></td><td>A <strong>collection of checkpoints</strong> sharing one <code>thread_id</code> — i.e. one continuous conversation. Different threads = different, isolated conversations.</td></tr>
+  </tbody>
+</table>
+
+<p>Because every checkpoint is saved, two superpowers fall out for free: <strong>memory</strong> (replay the thread to continue a conversation) and <strong>human-in-the-loop</strong> (pause at a checkpoint, let a human inspect or edit the state, then resume).</p>
+
+<hr class="divider">
+
+<h2>LangSmith — Tracking &amp; Monitoring</h2>
+
+<p>Once an agent loops through several tool calls, "it works" or "it doesn't" stops being a useful description — you need to <em>see</em> each step. <strong>LangSmith</strong> is LangChain's observability platform: with a couple of environment variables it captures every run as a trace you can open in the browser — each LLM call, each tool call, the inputs, the outputs, the latency, and the token cost.</p>
+
+<pre>import os
+from dotenv import load_dotenv
+load_dotenv()
+
+os.environ["LANGCHAIN_TRACING_V2"] = "true"
+os.environ["LANGCHAIN_PROJECT"] = "ReAct-agent"
+# plus your TAVILY / OPENAI / GROQ keys in the .env file</pre>
+
+<p>With tracing on, every <code>invoke()</code> shows up under the <code>ReAct-agent</code> project: you can click into the multi-tool run above and watch the brain → tools → brain loop unfold step by step. For a system where the model decides its own path, that visibility is not a luxury — it's how you debug.</p>
+
+<div class="example-block">
+  <div class="label">Swapping the brain — provider-agnostic</div>
+  <p>Nothing in the graph is tied to OpenAI. Swap the brain for an open model on Groq and recompile — the tools, state, loop, and checkpointer are unchanged:</p>
+  <p><code>from langchain_groq import ChatGroq</code> → <code>llm = ChatGroq(model="llama-3.3-70b-versatile")</code> → <code>llm_with_tools = llm.bind_tools(tools)</code>.</p>
+</div>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+
+<div class="example-block">
+  <div class="label">Remember These Five</div>
+  <p><strong>1.</strong> An <strong>agent</strong> is an LLM running a loop — it repeatedly <em>acts</em> (calls a tool), <em>observes</em> (reads the result), and <em>reasons</em> (decides the next step) until it answers. That loop is the <strong>ReAct</strong> architecture.</p>
+  <p><strong>2.</strong> A <strong>tool</strong> is a function exposed via <code>@tool</code>; the model picks it by its <strong>name, signature, and docstring</strong>. <code>bind_tools()</code> lets the LLM emit structured <code>tool_calls</code> instead of plain text.</p>
+  <p><strong>3.</strong> <code>ToolNode</code> runs the requested tool and <code>tools_condition</code> routes "tool call → tools, otherwise → END". The single back-edge <code>tools → llm</code> is what turns a router into an agent.</p>
+  <p><strong>4.</strong> A <strong>checkpointer</strong> (e.g. <code>MemorySaver</code>) saves a <strong>checkpoint</strong> of the state at every <strong>super-step</strong>; checkpoints sharing a <code>thread_id</code> form one conversation. This is what gives the agent memory and enables human-in-the-loop.</p>
+  <p><strong>5.</strong> <strong>LangSmith</strong> traces every LLM and tool call so you can actually watch — and debug — an agent that chooses its own path.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter11-3">← 3 · Chains, Tools &amp; the Router Agent</a>
+    <span></span>
+</nav>

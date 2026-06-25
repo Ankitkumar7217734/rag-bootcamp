@@ -128,5 +128,10 @@ const chapters = [
                 description: "Binding tools to an LLM, the structured tool call, executing it with ToolNode, and the tools_condition router that lets the model choose between answering directly and calling a tool — the simplest agent."
             }
         ]
+    },
+    {
+        id: "chapter12",
+        title: "Chapter 12: Agents — Tools, ReAct & the Agentic Loop",
+        description: "Turning a chatbot into an agent — the act/observe/reason ReAct loop, writing and binding real tools (arXiv, Wikipedia, Tavily, math), the ToolNode + tools_condition loop that lets the LLM call tools and come back, memory via checkpointers and threads (graph, super-steps, checkpoints), and tracing every step with LangSmith."
     }
 ];
