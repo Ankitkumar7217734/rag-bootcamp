@@ -1,0 +1,238 @@
+<h1>Chapter 11: LangGraph — Building Stateful Workflows</h1>
+<p style="color:#888; margin-bottom: 2rem;"><em>Chapter 10 explained what an agent <strong>is</strong>. This chapter is where you actually <strong>build</strong> one — wiring an LLM, tools, and memory into a graph that decides its own control flow.</em></p>
+
+<h2>Overview</h2>
+
+<p>Up to now every pipeline in this course has been a <strong>straight line</strong>: load → chunk → embed → retrieve → generate. That works beautifully when the steps never change. But the moment you want the system to <em>loop</em>, <em>branch</em>, call a tool and come back, or pause for a human, a straight line stops being enough. You need a way to describe <strong>flow</strong> and <strong>state</strong>.</p>
+
+<p><strong>LangGraph</strong> is that tool. It's a library for building <strong>stateful, multi-actor applications with LLMs</strong> — exactly the agent and multi-agent workflows from the last chapter. Instead of hard-coding the order of steps, you describe your application as a <strong>graph</strong>: boxes (nodes) that do work, and arrows (edges) that decide what runs next.</p>
+
+<div class="example-block">
+  <div class="label">The Core Idea</div>
+  <p>LangGraph models your application as a <strong>graph of nodes and edges over a shared state</strong>. Each <strong>node</strong> is a Python function that reads the state and returns an update; each <strong>edge</strong> decides which node runs next — and edges can be <strong>conditional</strong>, which is what lets an LLM steer its own control flow. The framework threads one <strong>state</strong> object through the whole run.</p>
+</div>
+
+<p>A few facts worth knowing before we build anything:</p>
+<ul>
+  <li>LangGraph is <strong>inspired by Pregel and Apache Beam</strong>; its public interface draws inspiration from <strong>NetworkX</strong>.</li>
+  <li>It's built by <strong>LangChain Inc.</strong> (the creators of LangChain) but can be used <strong>without</strong> LangChain.</li>
+  <li>It powers <strong>production-grade agents</strong>, trusted by LinkedIn, Uber, Klarna, GitLab, and many more.</li>
+</ul>
+
+<p>What LangGraph adds on top of a plain script is <strong>fine-grained control over both the flow and the state</strong> of your application, via a central <strong>persistence layer</strong>. That persistence unlocks two features common to almost every serious agent:</p>
+
+<table>
+  <thead>
+    <tr><th>Feature</th><th>What the persistence layer gives you</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Memory</strong></td><td>LangGraph persists arbitrary aspects of your application's state, supporting memory of conversations and other updates <strong>within and across</strong> interactions.</td></tr>
+    <tr><td><strong>Human-in-the-loop</strong></td><td>Because state is <strong>checkpointed</strong>, execution can be <strong>interrupted and resumed</strong> — allowing decisions, validation, and corrections at key stages via human input.</td></tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Where LangGraph Sits — the LangChain Ecosystem</h2>
+
+<p>LangGraph isn't a lone library; it's one layer of a stack. It helps to see the whole picture before zooming in:</p>
+
+<table>
+  <thead>
+    <tr><th>Layer</th><th>What it is</th><th>Type</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>LangGraph Platform</strong></td><td>Deployment — host, scale, and manage your graphs in production.</td><td>Commercial</td></tr>
+    <tr><td><strong>Integrations</strong></td><td>The components you plug in — vector databases, tools, and more.</td><td>Open source</td></tr>
+    <tr><td><strong>LangChain + LangGraph</strong></td><td>The architecture layer — LangChain for the building blocks, LangGraph for the control flow on top.</td><td>Open source</td></tr>
+    <tr><td><strong>LangSmith</strong></td><td>Observability — debugging, a playground, prompt management, annotation, testing, and monitoring.</td><td>Commercial</td></tr>
+  </tbody>
+</table>
+
+<p>The mental split is simple: <strong>LangChain</strong> gives you the reusable parts (models, loaders, retrievers, tools), <strong>LangGraph</strong> wires them into a stateful flow, <strong>LangSmith</strong> lets you see what happened, and the <strong>Platform</strong> ships it.</p>
+
+<hr class="divider">
+
+<h2>Lang + Graph — the Two Building Blocks</h2>
+
+<p>The name says it: <strong>Lang</strong>(uage models) + <strong>Graph</strong>. The graph is a <strong>DAG — a Directed Acyclic Graph</strong> in the simplest case: information flows in one direction through a set of stages. (LangGraph also supports <em>cycles</em>, which is what makes loops and agents possible — more on that in <a href="#chapter11-3">Chapter 11.3</a>.) Every LangGraph is made of just two kinds of thing:</p>
+
+<table>
+  <thead>
+    <tr><th>Component</th><th>What it is</th><th>In code</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>1 · Nodes</strong></td><td>The <strong>workers</strong>. A node is a Python function that receives the state and returns a partial update to it. This is where an LLM call, a tool call, or any logic lives.</td><td><code>graph.add_node("name", fn)</code></td></tr>
+    <tr><td><strong>2 · Edges</strong></td><td>The <strong>flow of information</strong>. An edge connects one node to the next. A <strong>conditional</strong> edge runs a function to <em>choose</em> the next node at runtime.</td><td><code>graph.add_edge(a, b)</code> / <code>add_conditional_edges(...)</code></td></tr>
+  </tbody>
+</table>
+
+<p>Two special nodes bookend every graph. <code>START</code> is where user input enters the graph; <code>END</code> is the terminal node where the run stops. You connect your real nodes between them.</p>
+
+<hr class="divider">
+
+<h2>The State — the Data That Flows Through</h2>
+
+<p>Before adding any node, you define the <strong>state</strong>. The <strong>state schema</strong> is the input/output contract for every node and edge in the graph — it describes the structure and types of the data the graph carries. The simplest way to declare one is a <code>TypedDict</code> from Python's <code>typing</code> module, which gives type hints for each key.</p>
+
+<pre>from typing import TypedDict
+
+class State(TypedDict):
+    graph_info: str</pre>
+
+<p>Because the state is a <code>TypedDict</code> with the schema above, <strong>every node can read the key</strong> with <code>state["graph_info"]</code>. (LangGraph offers more ways to declare state — dataclasses and Pydantic models — which we cover next in <a href="#chapter11-1">Chapter 11.1</a>.)</p>
+
+<hr class="divider">
+
+<h2>Building a Simple Graph, Step by Step</h2>
+
+<p>Let's build a tiny but complete graph that shows every concept at once: a <strong>node that starts the game</strong>, then a <strong>conditional edge</strong> that randomly routes to either a <em>cricket</em> node or a <em>badminton</em> node, then <code>END</code>.</p>
+
+<h3>Step 1 — Define the nodes</h3>
+
+<p>Each node takes the state and returns a dict that updates a state key. Here every node appends to <code>graph_info</code>:</p>
+
+<pre>def start_play(state: State):
+    print("Start_Play node has been called")
+    return {"graph_info": state["graph_info"] + " I am planning to play"}
+
+def cricket(state: State):
+    print("Cricket node has been called")
+    return {"graph_info": state["graph_info"] + " Cricket"}
+
+def badminton(state: State):
+    print("Badminton node has been called")
+    return {"graph_info": state["graph_info"] + " Badminton"}</pre>
+
+<h3>Step 2 — Define the conditional router</h3>
+
+<p>A conditional edge is just a function that <strong>returns the name of the next node</strong>. The return type is annotated with <code>Literal[...]</code> to list the possible destinations. Here we flip a coin:</p>
+
+<pre>import random
+from typing import Literal
+
+def random_play(state: State) -> Literal["cricket", "badminton"]:
+    if random.random() < 0.5:
+        return "cricket"
+    else:
+        return "badminton"</pre>
+
+<h3>Step 3 — Construct and compile the graph</h3>
+
+<p>Now we wire it together with <code>StateGraph</code>. We add the nodes, connect <code>START</code> to the first node, attach the <strong>conditional edge</strong> off <code>start_play</code>, and route both game nodes to <code>END</code>. Finally we <code>compile()</code> — which runs a basic structural check — and visualise it as a Mermaid diagram.</p>
+
+<pre>from IPython.display import display, Image
+from langgraph.graph import StateGraph, START, END
+
+# Build the graph
+graph = StateGraph(State)
+
+# Add the nodes
+graph.add_node("start_play", start_play)
+graph.add_node("cricket", cricket)
+graph.add_node("badminton", badminton)
+
+# Add the edges
+graph.add_edge(START, "start_play")
+graph.add_conditional_edges("start_play", random_play)
+graph.add_edge("cricket", END)
+graph.add_edge("badminton", END)
+
+# Compile the graph to check for errors
+graph_builder = graph.compile()
+
+# Visualize the graph
+display(Image(graph_builder.get_graph().draw_mermaid_png()))</pre>
+
+<p>That compiled graph looks like this — a single entry, a fork driven by the conditional edge, and two paths that rejoin at <code>END</code>:</p>
+
+<!-- The simple "play" graph: START -> start_play -> conditional edge -> cricket/badminton -> END -->
+<svg class="diagram-svg" viewBox="0 0 940 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A simple LangGraph. START flows into the start_play node. A conditional edge then randomly routes either to the cricket node on the left or the badminton node on the right. Both nodes then flow into END.">
+  <defs>
+    <marker id="c11-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+    <marker id="c11-arr-y" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#fbbf24"/>
+    </marker>
+  </defs>
+
+  <!-- START -->
+  <rect x="405" y="20" width="130" height="42" rx="21" fill="#16161a" stroke="#818cf8" stroke-width="2"/>
+  <text x="470" y="46" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="700" font-family="monospace">START</text>
+
+  <line x1="470" y1="62" x2="470" y2="92" stroke="#818cf8" stroke-width="2" marker-end="url(#c11-arr)"/>
+
+  <!-- start_play -->
+  <rect x="370" y="94" width="200" height="56" rx="9" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2.5"/>
+  <text x="470" y="118" text-anchor="middle" fill="#4ecca3" font-size="13.5" font-weight="700" font-family="system-ui">start_play</text>
+  <text x="470" y="137" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">node · updates state</text>
+
+  <!-- conditional split label -->
+  <text x="470" y="173" text-anchor="middle" fill="#fbbf24" font-size="11" font-style="italic" font-family="system-ui">conditional edge — random_play()</text>
+
+  <!-- branches -->
+  <line x1="420" y1="150" x2="300" y2="216" stroke="#fbbf24" stroke-width="2" stroke-dasharray="5,4" marker-end="url(#c11-arr-y)"/>
+  <line x1="520" y1="150" x2="640" y2="216" stroke="#fbbf24" stroke-width="2" stroke-dasharray="5,4" marker-end="url(#c11-arr-y)"/>
+
+  <!-- cricket -->
+  <rect x="180" y="218" width="200" height="56" rx="9" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
+  <text x="280" y="242" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="700" font-family="system-ui">cricket</text>
+  <text x="280" y="261" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">if coin &lt; 0.5</text>
+
+  <!-- badminton -->
+  <rect x="560" y="218" width="200" height="56" rx="9" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2"/>
+  <text x="660" y="242" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="700" font-family="system-ui">badminton</text>
+  <text x="660" y="261" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">otherwise</text>
+
+  <!-- to END -->
+  <line x1="280" y1="274" x2="430" y2="318" stroke="#818cf8" stroke-width="2" marker-end="url(#c11-arr)"/>
+  <line x1="660" y1="274" x2="510" y2="318" stroke="#818cf8" stroke-width="2" marker-end="url(#c11-arr)"/>
+
+  <!-- END -->
+  <rect x="405" y="320" width="130" height="42" rx="21" fill="#16161a" stroke="#818cf8" stroke-width="2"/>
+  <text x="470" y="346" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="700" font-family="monospace">END</text>
+</svg>
+
+<h3>Step 4 — Invoke the graph</h3>
+
+<p>To run the graph, call <code>.invoke()</code> with an initial state matching the schema. LangGraph feeds it through <code>START</code> and returns the final state:</p>
+
+<pre>graph_builder.invoke({"graph_info": "Hey my name is Ankit."})</pre>
+
+<p>On one run, the printed trace and result show the start node firing, then the coin landing on cricket:</p>
+
+<pre>Start_Play node has been called
+Cricket node has been called
+
+{'graph_info': 'Hey my name is Ankit. I am planning to play Cricket'}</pre>
+
+<p>Run it again and the conditional edge may route you to badminton instead — that's the whole point of <code>add_conditional_edges</code>: the path is <strong>decided at runtime</strong>, not fixed in advance. Swap <code>random_play</code> for a function that asks an <em>LLM</em> which way to go, and you've built the core of an agent.</p>
+
+<div class="example-block">
+  <div class="label">The Five-Step Recipe for Every LangGraph</div>
+  <p><strong>1.</strong> Define the <strong>state</strong> (a <code>TypedDict</code> / dataclass / Pydantic model). <strong>2.</strong> Write the <strong>nodes</strong> as functions that take state and return an update. <strong>3.</strong> Add nodes and <strong>edges</strong> (plain or conditional) to a <code>StateGraph</code>. <strong>4.</strong> <code>compile()</code> to validate. <strong>5.</strong> <code>invoke()</code> (or <code>stream()</code>) with an initial state. Every example in this chapter is a variation on these five steps.</p>
+</div>
+
+<hr class="divider">
+
+<h2>What's Next</h2>
+
+<p>This parent chapter gave you the skeleton: state, nodes, edges, conditional routing, compile, invoke. The three sub-chapters build on it:</p>
+
+<table>
+  <thead>
+    <tr><th>Section</th><th>What you'll learn</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>11.1 · State Schemas</strong></td><td>The three ways to define state — <code>TypedDict</code>, <code>dataclass</code>, and Pydantic <code>BaseModel</code> — and when runtime validation matters.</td></tr>
+    <tr><td><strong>11.2 · Building a Chatbot</strong></td><td>Using <strong>messages</strong> as state, the <code>add_messages</code> reducer, plugging in chat models, and streaming responses.</td></tr>
+    <tr><td><strong>11.3 · Chains, Tools &amp; the Router Agent</strong></td><td>Binding tools to an LLM, the <code>ToolNode</code> + <code>tools_condition</code> pattern, and building a router that decides between answering directly or calling a tool.</td></tr>
+  </tbody>
+</table>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter10">← Chapter 10: AI Agents vs Agentic AI</a>
+    <a href="#chapter11-1" class="next">1 · State Schemas →</a>
+</nav>

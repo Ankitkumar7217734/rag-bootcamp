@@ -106,5 +106,27 @@ const chapters = [
         id: "chapter10",
         title: "Chapter 10: AI Agents vs Agentic AI",
         description: "The leap from single-purpose AI agents to collaborative agentic systems — clear definitions and a side-by-side comparison, the perception → reasoning → action → learning loop, the LLM as the agent's brain (with tools and memory), real examples (chatbots and banking bots vs smart homes and health assistants), and a full worked example of an agentic AI software-development team with human feedback in the loop."
+    },
+    {
+        id: "chapter11",
+        title: "Chapter 11: LangGraph — Building Stateful Workflows",
+        description: "Where agents stop being theory and get built — modelling an app as a graph of nodes and edges over a shared state, the LangChain ecosystem, conditional routing, compile and invoke, and the five-step recipe behind every LangGraph.",
+        children: [
+            {
+                id: "chapter11-1",
+                title: "State Schemas — TypedDict, Dataclass & Pydantic",
+                description: "The three ways to define a graph's state — TypedDict (hints only), dataclass (dot access + defaults), and Pydantic BaseModel (runtime validation) — over one shared graph, and when each is the right call."
+            },
+            {
+                id: "chapter11-2",
+                title: "Building a Chatbot",
+                description: "Using a list of messages as the graph state, the add_messages reducer that appends instead of overwriting, plugging in provider-agnostic chat models (OpenAI / Groq), and streaming the response node by node."
+            },
+            {
+                id: "chapter11-3",
+                title: "Chains, Tools & the Router Agent",
+                description: "Binding tools to an LLM, the structured tool call, executing it with ToolNode, and the tools_condition router that lets the model choose between answering directly and calling a tool — the simplest agent."
+            }
+        ]
     }
 ];

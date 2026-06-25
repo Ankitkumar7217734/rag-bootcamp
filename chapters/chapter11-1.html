@@ -1,0 +1,273 @@
+<h1>State Schemas — TypedDict, Dataclass &amp; Pydantic</h1>
+<p style="color:#888; margin-bottom: 2rem;">The <strong>state</strong> is the data every node reads and writes. LangGraph lets you describe its shape three different ways — and the one you pick decides how much safety you get.</p>
+
+<h2>Why the State Schema Matters</h2>
+
+<p>When you define a LangGraph, you give it a <strong>state schema</strong>: the structure and the types of the data your graph will carry. <strong>Every node communicates through this schema</strong> — it's the shared contract that lets one node's output become the next node's input. Get it right and the whole graph stays coherent; get it wrong and bad data silently flows from node to node.</p>
+
+<p>LangGraph is deliberately flexible here. It offers <strong>three</strong> ways to define the schema, trading convenience against strictness:</p>
+
+<table>
+  <thead>
+    <tr><th>#</th><th>Approach</th><th>Access style</th><th>Validation</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>1</strong></td><td><code>TypedDict</code></td><td><code>state["name"]</code> (dict)</td><td>Hints only — <strong>not</strong> enforced at runtime</td></tr>
+    <tr><td><strong>2</strong></td><td><code>@dataclass</code></td><td><code>state.name</code> (dot)</td><td>Hints + defaults; stricter, still not runtime-validated</td></tr>
+    <tr><td><strong>3</strong></td><td>Pydantic <code>BaseModel</code></td><td><code>state.name</code> (dot)</td><td><strong>Runtime validation</strong> — raises on bad types</td></tr>
+  </tbody>
+</table>
+
+<!-- The three state schemas wrap the same graph topology; only the contract differs -->
+<svg class="diagram-svg" viewBox="0 0 940 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Three state schema options feeding the same graph. TypedDict, Dataclass, and Pydantic BaseModel each sit on the left as alternative state definitions; an arrow shows all three plug into the identical PlayGame graph on the right. TypedDict gives type hints only, Dataclass adds dot access and defaults, and Pydantic adds runtime validation.">
+  <defs>
+    <marker id="c11a-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+  </defs>
+
+  <!-- three schema cards -->
+  <rect x="30" y="24" width="240" height="48" rx="9" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
+  <text x="50" y="44" fill="#818cf8" font-size="13" font-weight="700" font-family="monospace">TypedDict</text>
+  <text x="50" y="62" fill="#76767f" font-size="10.5" font-family="system-ui">type hints only · state["name"]</text>
+
+  <rect x="30" y="100" width="240" height="48" rx="9" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2"/>
+  <text x="50" y="120" fill="#4ecca3" font-size="13" font-weight="700" font-family="monospace">@dataclass</text>
+  <text x="50" y="138" fill="#76767f" font-size="10.5" font-family="system-ui">dot access + defaults · state.name</text>
+
+  <rect x="30" y="176" width="240" height="48" rx="9" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2"/>
+  <text x="50" y="196" fill="#a78bfa" font-size="13" font-weight="700" font-family="monospace">BaseModel</text>
+  <text x="50" y="214" fill="#76767f" font-size="10.5" font-family="system-ui">runtime validation · state.name</text>
+
+  <!-- arrows converging -->
+  <line x1="270" y1="48" x2="470" y2="118" stroke="#818cf8" stroke-width="1.8" marker-end="url(#c11a-arr)"/>
+  <line x1="270" y1="124" x2="470" y2="124" stroke="#818cf8" stroke-width="1.8" marker-end="url(#c11a-arr)"/>
+  <line x1="270" y1="200" x2="470" y2="130" stroke="#818cf8" stroke-width="1.8" marker-end="url(#c11a-arr)"/>
+
+  <!-- shared graph -->
+  <rect x="480" y="86" width="420" height="76" rx="10" fill="#16161a" stroke="#36363e" stroke-width="1.5" stroke-dasharray="5,4"/>
+  <text x="690" y="112" text-anchor="middle" fill="#b4b4be" font-size="12.5" font-weight="600" font-family="system-ui">The same PlayGame graph</text>
+  <text x="690" y="132" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">PlayGame → (cricket | badminton) → END</text>
+  <text x="690" y="150" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">only the state contract changes</text>
+</svg>
+
+<p>To make the comparison fair, all three examples below build the <strong>exact same graph</strong>: a <code>PlayGame</code> node that flows, via a conditional edge, into either a <code>cricket</code> or a <code>badminton</code> node. Only the <em>state definition</em> changes.</p>
+
+<hr class="divider">
+
+<h2>Approach 1 — TypedDict (built-in Python)</h2>
+
+<p>As we saw in the parent chapter, <code>TypedDict</code> from Python's <code>typing</code> module lets you specify keys and their value types. But remember: <strong>these are only type hints</strong>. Static checkers like MyPy or your IDE can flag mismatches before you run, but <strong>they are not enforced at runtime</strong> — pass the wrong type and Python won't stop you.</p>
+
+<pre>from typing_extensions import TypedDict
+from typing import Literal
+
+class TypedDictState(TypedDict):
+    name: str
+    game: Literal["Cricket", "Badminton"]</pre>
+
+<p>Nodes read keys with dictionary syntax, <code>state["name"]</code>:</p>
+
+<pre>def play_game(state: TypedDictState):
+    print("..Play Game node has been called.. ")
+    return {"name": state["name"] + " want to play"}
+
+def cricket(state: TypedDictState):
+    print("..Cricket node has been called.. ")
+    return {"game": "Cricket"}
+
+def badminton(state: TypedDictState):
+    print("..Badminton node has been called.. ")
+    return {"game": "Badminton"}</pre>
+
+<p>The conditional edge returns the name of the next node:</p>
+
+<pre>import random
+
+def decide_play(state: TypedDictState) -> Literal["cricket", "badminton"]:
+    if random.random() < 0.5:
+        return "cricket"
+    else:
+        return "badminton"</pre>
+
+<p>Wiring it up is the standard five-step recipe — add nodes, connect <code>START</code>, attach the conditional edge, route both leaves to <code>END</code>, compile:</p>
+
+<pre>from IPython.display import Image, display
+from langgraph.graph import StateGraph, START, END
+
+builder = StateGraph(TypedDictState)
+builder.add_node("PlayGame", play_game)
+builder.add_node("cricket", cricket)
+builder.add_node("badminton", badminton)
+
+builder.add_edge(START, "PlayGame")
+builder.add_conditional_edges("PlayGame", decide_play)
+builder.add_edge("cricket", END)
+builder.add_edge("badminton", END)
+
+graph = builder.compile()
+display(Image(graph.get_graph(xray=True).draw_mermaid_png()))</pre>
+
+<pre>graph.invoke({"name": "Ankit"})</pre>
+
+<pre>..Play Game node has been called..
+..Badminton node has been called..
+
+{'name': 'Ankit want to play', 'game': 'Badminton'}</pre>
+
+<hr class="divider">
+
+<h2>Approach 2 — Dataclass</h2>
+
+<p>Python's <code>dataclasses</code> provide a more structured, class-based alternative to <code>TypedDict</code>. They offer a concise syntax for classes whose main job is to <strong>hold data</strong>. The differences that matter for LangGraph:</p>
+
+<table>
+  <thead>
+    <tr><th>vs TypedDict</th><th>Dataclass</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Field access</td><td><strong>Dot notation</strong> — <code>state.name</code> instead of <code>state["name"]</code></td></tr>
+    <tr><td>Defaults</td><td>Supported directly in the class definition (<code>game: str = ""</code>)</td></tr>
+    <tr><td>Methods</td><td>You can define methods on the state class</td></tr>
+    <tr><td>Type checking</td><td>Stricter than <code>TypedDict</code></td></tr>
+  </tbody>
+</table>
+
+<pre>from dataclasses import dataclass
+
+@dataclass
+class DataclassState:
+    name: str
+    game: str = ""  # default value supported in dataclass</pre>
+
+<p>The one change in the nodes is the access style — <code>state.name</code>, not <code>state["name"]</code>:</p>
+
+<pre>def play_game_dc(state: DataclassState):
+    print("..Play Game node has been called.. ")
+    # Dot notation access — state.name instead of state["name"]
+    return {"name": state.name + " want to play"}
+
+def cricket_dc(state: DataclassState):
+    print("..Cricket node has been called.. ")
+    return {"game": "Cricket"}
+
+def badminton_dc(state: DataclassState):
+    print("..Badminton node has been called.. ")
+    return {"game": "Badminton"}
+
+def decide_play_dc(state: DataclassState) -> Literal["cricket_dc", "badminton_dc"]:
+    if random.random() < 0.5:
+        return "cricket_dc"
+    else:
+        return "badminton_dc"</pre>
+
+<p>The graph is identical in shape; only the names differ:</p>
+
+<pre>dc_builder = StateGraph(DataclassState)
+dc_builder.add_node("PlayGame", play_game_dc)
+dc_builder.add_node("cricket_dc", cricket_dc)
+dc_builder.add_node("badminton_dc", badminton_dc)
+
+dc_builder.add_edge(START, "PlayGame")
+dc_builder.add_conditional_edges("PlayGame", decide_play_dc)
+dc_builder.add_edge("cricket_dc", END)
+dc_builder.add_edge("badminton_dc", END)
+
+dc_graph = dc_builder.compile()</pre>
+
+<p>Note the difference at invocation: a dataclass is <strong>instantiated</strong>, not passed as a dict:</p>
+
+<pre>dc_graph.invoke(DataclassState(name="Ankit"))</pre>
+
+<pre>..Play Game node has been called..
+..Badminton node has been called..
+
+{'name': 'Ankit want to play', 'game': 'Badminton'}</pre>
+
+<hr class="divider">
+
+<h2>Approach 3 — Pydantic BaseModel</h2>
+
+<p>Pydantic models are the strict option: they provide <strong>runtime validation</strong>. Unlike the first two approaches, a Pydantic model will <strong>raise an error if you pass the wrong type</strong> — the bad data never makes it into the graph.</p>
+
+<div class="example-block">
+  <div class="label">When to reach for Pydantic</div>
+  <p>Use a Pydantic <code>BaseModel</code> when you need <strong>strict runtime type validation</strong>, want <strong>auto-coercion</strong> (e.g. the string <code>"42"</code> becomes the int <code>42</code>), or you're building <strong>production pipelines</strong> where bad data could silently propagate and corrupt later steps. For quick prototypes, <code>TypedDict</code> is lighter.</p>
+</div>
+
+<pre>from pydantic import BaseModel
+
+class PydanticState(BaseModel):
+    name: str
+    game: Literal["Cricket", "Badminton"] = "Cricket"</pre>
+
+<p>Nodes use dot access, just like the dataclass:</p>
+
+<pre>def play_game_pd(state: PydanticState):
+    print("..Play Game node has been called.. ")
+    return {"name": state.name + " want to play"}
+
+def cricket_pd(state: PydanticState):
+    print("..Cricket node has been called.. ")
+    return {"game": "Cricket"}
+
+def badminton_pd(state: PydanticState):
+    print("..Badminton node has been called.. ")
+    return {"game": "Badminton"}
+
+def decide_play_pd(state: PydanticState) -> Literal["cricket_pd", "badminton_pd"]:
+    if random.random() < 0.5:
+        return "cricket_pd"
+    else:
+        return "badminton_pd"</pre>
+
+<pre>pd_builder = StateGraph(PydanticState)
+pd_builder.add_node("PlayGame", play_game_pd)
+pd_builder.add_node("cricket_pd", cricket_pd)
+pd_builder.add_node("badminton_pd", badminton_pd)
+
+pd_builder.add_edge(START, "PlayGame")
+pd_builder.add_conditional_edges("PlayGame", decide_play_pd)
+pd_builder.add_edge("cricket_pd", END)
+pd_builder.add_edge("badminton_pd", END)
+
+pd_graph = pd_builder.compile()</pre>
+
+<p>Invoke it with a model instance. This time the coin landed on cricket:</p>
+
+<pre>pd_graph.invoke(PydanticState(name="Ankit"))</pre>
+
+<pre>..Play Game node has been called..
+..Cricket node has been called..
+
+{'name': 'Ankit want to play', 'game': 'Cricket'}</pre>
+
+<h3>Seeing validation in action</h3>
+
+<p>The payoff of Pydantic is that an invalid <code>game</code> value (anything outside <code>"Cricket"</code> / <code>"Badminton"</code>) is rejected <strong>before the graph ever runs</strong> — a <code>ValidationError</code> is raised at construction time, instead of a wrong value quietly flowing through nodes as it would with a <code>TypedDict</code>. That early failure is exactly what you want in production.</p>
+
+<hr class="divider">
+
+<h2>Choosing a Schema</h2>
+
+<table>
+  <thead>
+    <tr><th>Use…</th><th>When…</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>TypedDict</code></td><td>You're prototyping, want the lightest syntax, and trust your inputs.</td></tr>
+    <tr><td><code>@dataclass</code></td><td>You like dot access and default values, and want a bit more structure without a dependency.</td></tr>
+    <tr><td>Pydantic <code>BaseModel</code></td><td>You need <strong>runtime validation</strong>, type coercion, or you're shipping to production where bad data is costly.</td></tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">Remember</div>
+  <p>The graph topology — nodes, edges, conditional routing — is <strong>identical</strong> across all three. The state schema only changes (a) <strong>how nodes read fields</strong> (<code>state["x"]</code> vs <code>state.x</code>), (b) <strong>how you invoke</strong> (dict vs class instance), and (c) <strong>how much validation</strong> you get. Start with <code>TypedDict</code>, reach for Pydantic when correctness matters.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter11">← Chapter 11: LangGraph — Building Stateful Workflows</a>
+    <a href="#chapter11-2" class="next">2 · Building a Chatbot →</a>
+</nav>

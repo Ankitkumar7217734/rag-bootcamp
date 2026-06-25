@@ -100,8 +100,8 @@ Do these in order. Do **not** skip the reading steps.
      `import numpy as py`, misspellings, missing final flush, etc.).
    - **`.txt` / data files** → read them; they're often the sample data used in
      the code examples.
-3. **Read the most recent existing chapter** (latest is `chapters/chapter8.html`
-   and its `chapter8-1/-2/-3` sub-chapters) to match structure, tone, and
+3. **Read the most recent existing chapter** (latest is `chapters/chapter11.html`
+   and its `chapter11-1/-2/-3` sub-chapters) to match structure, tone, and
    components exactly. Also check `chapters.js` for the current chapter list and
    the previous chapter's `<nav class="page-nav">`.
 4. **Find the chapter number**: the source folders are numbered (e.g.

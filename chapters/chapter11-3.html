@@ -1,0 +1,402 @@
+<h1>Chains, Tools &amp; the Router Agent</h1>
+<p style="color:#888; margin-bottom: 2rem;">This is where the graph stops being a fixed pipeline and starts <strong>thinking</strong>: the LLM decides whether to answer directly or reach for a tool — and that decision <em>is</em> the agent.</p>
+
+<h2>What We're Building</h2>
+
+<p>A chain in LangGraph ties together four ideas you'll use in every agent:</p>
+
+<ol>
+  <li>How to use <strong>chat messages</strong> as the graph state.</li>
+  <li>How to use <strong>chat models</strong> in graph nodes.</li>
+  <li>How to <strong>bind tools</strong> to the LLM.</li>
+  <li>How to <strong>execute the tool call</strong> in a graph node.</li>
+</ol>
+
+<p>By the end, the graph will look at a user message and <strong>route</strong> itself: a question like <em>"what is 2 plus 2"</em> triggers a tool call, while <em>"what is Machine Learning"</em> gets answered directly by the model. That self-routing is the simplest possible <strong>agent</strong>.</p>
+
+<hr class="divider">
+
+<h2>Messages — the Four Roles</h2>
+
+<p>LangChain represents a conversation as a list of typed messages, each capturing a different <strong>role</strong>:</p>
+
+<table>
+  <thead>
+    <tr><th>Message type</th><th>Represents</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>HumanMessage</code></td><td>A message from the <strong>user</strong>.</td></tr>
+    <tr><td><code>AIMessage</code></td><td>A message from the <strong>chat model</strong>.</td></tr>
+    <tr><td><code>SystemMessage</code></td><td>Instructions that <strong>steer the model's behaviour</strong>.</td></tr>
+    <tr><td><code>ToolMessage</code></td><td>The <strong>result returned from a tool call</strong>.</td></tr>
+  </tbody>
+</table>
+
+<p>Each message carries its content, an optional author <code>name</code>, and optional <code>response_metadata</code> (often populated by the provider on AI messages). You can build and pretty-print a conversation by hand:</p>
+
+<pre>from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
+from pprint import pprint
+
+messages = [AIMessage(content="please tell me how can I help", name="LLMModels")]
+messages.append(HumanMessage(content="hi, how are you?", name="User"))
+messages.append(AIMessage(content="which programming language you want to learn", name="LLMModels"))
+messages.append(HumanMessage(content="I want to learn RAG", name="Ankit"))
+
+for message in messages:
+    message.pretty_print()</pre>
+
+<pre>================================== Ai Message ==================================
+Name: LLMModels
+please tell me how can I help
+================================ Human Message =================================
+Name: User
+hi, how are you?
+================================== Ai Message ==================================
+Name: LLMModels
+which programming language you want to learn
+================================ Human Message =================================
+Name: Ankit
+I want to learn RAG</pre>
+
+<p>We can pass this whole sequence of messages straight into a chat model as the input:</p>
+
+<pre>from langchain_groq import ChatGroq
+llm_groq = ChatGroq(model="llama-3.3-70b-versatile")
+llm_groq.invoke("Hey I am Ankit and i Like to watch cricket")</pre>
+
+<pre>AIMessage(content="Hi Ankit, nice to meet you. Cricket is an exciting sport...
+          Are you a fan of Test cricket, ODIs, or T20s?", ...)</pre>
+
+<hr class="divider">
+
+<h2>Tools — Giving the LLM Hands</h2>
+
+<p>An LLM on its own can only produce text. <strong>Tools</strong> let it interact with external systems — an <strong>API</strong>, a <strong>third-party service</strong>, or a <strong>database</strong>. The flow is: a query comes in as natural language, the model <strong>decides whether to call a tool</strong>, and if it does, the tool runs and returns a result the model can use.</p>
+
+<!-- Tool binding: the LLM brain gets a tool's JSON schema bound to it and emits a structured tool_call -->
+<svg class="diagram-svg" viewBox="0 0 940 270" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Binding a tool to an LLM. A user natural-language input enters the LLM, which acts as the brain. A tool, defined by its docstring, is converted to a JSON schema and bound to the LLM. Sources for tools include third-party APIs, a weather API, and external databases. When asked a matching question, the LLM emits a structured tool call naming the function and its arguments rather than a plain text answer.">
+  <defs>
+    <marker id="c11d-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+    <marker id="c11d-grn" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#4ecca3"/>
+    </marker>
+  </defs>
+
+  <!-- input -->
+  <rect x="25" y="100" width="120" height="48" rx="8" fill="#16161a" stroke="#fbbf24" stroke-width="1.8"/>
+  <text x="85" y="121" text-anchor="middle" fill="#fbbf24" font-size="11.5" font-weight="600" font-family="system-ui">User Input</text>
+  <text x="85" y="138" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">natural language</text>
+
+  <line x1="145" y1="124" x2="190" y2="124" stroke="#818cf8" stroke-width="2" marker-end="url(#c11d-arr)"/>
+
+  <!-- LLM brain -->
+  <rect x="192" y="86" width="180" height="78" rx="10" fill="#1a1a2e" stroke="#ef6461" stroke-width="2.5"/>
+  <text x="282" y="120" text-anchor="middle" fill="#ececf1" font-size="15" font-weight="700" font-family="system-ui">LLM</text>
+  <text x="282" y="142" text-anchor="middle" fill="#ef6461" font-size="11" font-weight="600" font-family="system-ui">the Brain</text>
+
+  <!-- tool def -->
+  <rect x="470" y="22" width="200" height="64" rx="9" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2"/>
+  <text x="570" y="48" text-anchor="middle" fill="#4ecca3" font-size="12.5" font-weight="700" font-family="system-ui">Tool — add()</text>
+  <text x="570" y="68" text-anchor="middle" fill="#76767f" font-size="10" font-family="monospace">docstring → JSON schema</text>
+
+  <!-- bind arrow -->
+  <path d="M470,60 Q410,60 374,108" fill="none" stroke="#4ecca3" stroke-width="2" marker-end="url(#c11d-grn)"/>
+  <text x="430" y="50" text-anchor="middle" fill="#4ecca3" font-size="11" font-style="italic" font-family="system-ui">bind_tools()</text>
+
+  <!-- sources -->
+  <rect x="470" y="104" width="200" height="44" rx="8" fill="#16161a" stroke="#a78bfa" stroke-width="1.6"/>
+  <text x="570" y="123" text-anchor="middle" fill="#a78bfa" font-size="11" font-weight="600" font-family="system-ui">3rd-party API · Weather API</text>
+  <text x="570" y="139" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">external database</text>
+  <line x1="470" y1="126" x2="376" y2="126" stroke="#a78bfa" stroke-width="1.6" marker-end="url(#c11d-arr)"/>
+
+  <!-- output: tool call -->
+  <line x1="372" y1="140" x2="470" y2="200" stroke="#818cf8" stroke-width="2" marker-end="url(#c11d-arr)"/>
+  <rect x="472" y="178" width="270" height="56" rx="9" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
+  <text x="607" y="202" text-anchor="middle" fill="#818cf8" font-size="12.5" font-weight="700" font-family="system-ui">Structured tool_call</text>
+  <text x="607" y="221" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="monospace">{name: "add", args: {a, b}}</text>
+
+  <text x="282" y="200" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">decides: call a tool?</text>
+</svg>
+
+<h3>Defining a tool</h3>
+
+<p>A tool is just a Python function with a <strong>docstring</strong> — LangChain reads the signature and docstring to build the JSON schema the model sees. Here's a simple <code>add</code>:</p>
+
+<pre>def add(a: int, b: int) -> int:
+    """
+    Args:
+        a (int): first number
+        b (int): second number
+
+    Returns:
+        int: sum of a and b
+
+    Example:
+        >>> add(1, 2)
+        3
+    """
+    return a + b</pre>
+
+<h3>Binding the tool</h3>
+
+<p><strong>Binding</strong> attaches the tool's schema to the model so the model knows it <em>can</em> call it. The model still decides whether to. We call <code>bind_tools</code> and then invoke with a question that needs arithmetic:</p>
+
+<pre># bind the function to the llm
+llm_with_tools = llm_groq.bind_tools([add])
+
+tool_calls = llm_with_tools.invoke([HumanMessage(content="what is 1+2?", name="user")])
+tool_calls.tool_calls</pre>
+
+<pre>[{'name': 'add',
+  'args': {'a': 1, 'b': 2},
+  'id': '2q8js3923',
+  'type': 'tool_call'}]</pre>
+
+<p>Crucially, the model did <strong>not</strong> compute <code>3</code> itself. It returned a <strong>structured request</strong> — "call <code>add</code> with <code>a=1, b=2</code>" — and left the actual execution to us. That separation is what makes tool calling reliable: the LLM picks the tool and the arguments; deterministic code does the work.</p>
+
+<hr class="divider">
+
+<h2>Using Messages as State (with the Reducer)</h2>
+
+<p>To turn this into a graph, the state is again a list of messages with the <code>add_messages</code> reducer — so each node <strong>appends</strong> rather than overwrites (see <a href="#chapter11-2">Chapter 11.2</a> for why this matters):</p>
+
+<pre>from typing_extensions import TypedDict
+from typing import Annotated
+from langchain_core.messages import AnyMessage
+from langgraph.graph.message import add_messages
+
+class State(TypedDict):
+    messages: Annotated[list[AnyMessage], add_messages]</pre>
+
+<p>The node simply invokes the tool-bound model on the running messages:</p>
+
+<pre>def llm_tools(state: State) -> State:
+    return {"messages": [llm_with_tools.invoke(state["messages"])]}</pre>
+
+<p>A first graph wires that single node between <code>START</code> and <code>END</code>:</p>
+
+<pre>from IPython.display import display, Image
+from langgraph.graph import StateGraph, START, END
+
+builder = StateGraph(State)
+builder.add_node("llm_tools", llm_tools)
+builder.add_edge(START, "llm_tools")
+builder.add_edge("llm_tools", END)
+
+graph = builder.compile()
+display(Image(graph.get_graph().draw_mermaid_png()))</pre>
+
+<p>Invoke it with an arithmetic question and the model produces a tool call — but note there's <strong>no tool result yet</strong>, because nothing in this graph actually <em>runs</em> the tool:</p>
+
+<pre>message = graph.invoke({"messages": "what is 2 plus 2"})
+for msg in message["messages"]:
+    msg.pretty_print()</pre>
+
+<pre>================================ Human Message =================================
+what is 2 plus 2
+================================== Ai Message ==================================
+Tool Calls:
+  add (w4qsxsf2x)
+ Call ID: w4qsxsf2x
+  Args:
+    a: 2
+    b: 2</pre>
+
+<p>The graph stopped at the request. To close the loop we need a node that <strong>executes</strong> the tool and a way to decide <em>when</em> to route there.</p>
+
+<hr class="divider">
+
+<h2>Executing Tools — <code>ToolNode</code> + <code>tools_condition</code></h2>
+
+<p>LangGraph ships two prebuilt helpers that do exactly this:</p>
+
+<table>
+  <thead>
+    <tr><th>Helper</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>ToolNode(tools)</code></td><td>A ready-made node that <strong>runs</strong> whatever tool the last AI message asked for and returns a <code>ToolMessage</code> with the result.</td></tr>
+    <tr><td><code>tools_condition</code></td><td>A prebuilt <strong>conditional edge</strong>: if the latest AI message contains a tool call, route to the <code>tools</code> node; otherwise route to <code>END</code>.</td></tr>
+  </tbody>
+</table>
+
+<pre>tools = [add]
+
+from langgraph.prebuilt import ToolNode, tools_condition
+
+builder = StateGraph(State)
+builder.add_node("llm_tools", llm_tools)
+builder.add_node("tools", ToolNode(tools))
+
+builder.add_edge(START, "llm_tools")
+builder.add_conditional_edges(
+    "llm_tools",
+    # If the latest message from the assistant is a tool call -> route to "tools".
+    # If it is NOT a tool call -> route to END.
+    tools_condition,
+)
+builder.add_edge("tools", END)
+
+graph = builder.compile()
+display(Image(graph.get_graph().draw_mermaid_png()))</pre>
+
+<p>This is the <strong>router</strong>. The <code>llm_tools</code> node feeds into <code>tools_condition</code>, which sends the flow one of two ways:</p>
+
+<!-- The router/agent graph: START -> llm_tools -> tools_condition -> {tools -> END | END} -->
+<svg class="diagram-svg" viewBox="0 0 940 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The router agent graph. START flows into the llm_tools node. A conditional edge called tools_condition then routes two ways: if the AI message is a tool call, it goes down to the tools node which runs the tool and returns to END; if it is a direct natural-language response, it goes straight to END. The dashed branch from tools back up to llm_tools shows the full agent loop variant where tool results are fed back to the model.">
+  <defs>
+    <marker id="c11e-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+    <marker id="c11e-grn" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#4ecca3"/>
+    </marker>
+    <marker id="c11e-mut" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#76767f"/>
+    </marker>
+  </defs>
+
+  <!-- START -->
+  <rect x="60" y="128" width="116" height="42" rx="21" fill="#16161a" stroke="#818cf8" stroke-width="2"/>
+  <text x="118" y="154" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="700" font-family="monospace">START</text>
+
+  <line x1="176" y1="149" x2="226" y2="149" stroke="#818cf8" stroke-width="2" marker-end="url(#c11e-arr)"/>
+
+  <!-- llm_tools -->
+  <rect x="228" y="120" width="190" height="58" rx="9" fill="#1a1a2e" stroke="#ef6461" stroke-width="2.5"/>
+  <text x="323" y="144" text-anchor="middle" fill="#ececf1" font-size="13.5" font-weight="700" font-family="system-ui">llm_tools</text>
+  <text x="323" y="163" text-anchor="middle" fill="#ef6461" font-size="10.5" font-family="system-ui">LLM + bound tools (Brain)</text>
+
+  <!-- conditional node label -->
+  <text x="500" y="100" text-anchor="middle" fill="#fbbf24" font-size="11.5" font-style="italic" font-weight="600" font-family="system-ui">tools_condition</text>
+
+  <!-- branch up to END (direct) -->
+  <path d="M418,135 Q560,110 700,135" fill="none" stroke="#818cf8" stroke-width="2" marker-end="url(#c11e-arr)"/>
+  <text x="560" y="124" text-anchor="middle" fill="#818cf8" font-size="10.5" font-family="system-ui">direct response →</text>
+
+  <!-- branch down to tools -->
+  <path d="M418,164 Q540,210 618,236" fill="none" stroke="#818cf8" stroke-width="2" marker-end="url(#c11e-arr)"/>
+  <text x="520" y="226" text-anchor="middle" fill="#818cf8" font-size="10.5" font-family="system-ui">tool call →</text>
+
+  <!-- tools node -->
+  <rect x="540" y="238" width="190" height="56" rx="9" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2.5"/>
+  <text x="635" y="262" text-anchor="middle" fill="#4ecca3" font-size="13.5" font-weight="700" font-family="system-ui">tools</text>
+  <text x="635" y="281" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">ToolNode · runs add()</text>
+
+  <!-- tools to END -->
+  <path d="M730,255 Q800,230 800,180" fill="none" stroke="#4ecca3" stroke-width="2" marker-end="url(#c11e-grn)"/>
+
+  <!-- END -->
+  <rect x="742" y="128" width="116" height="42" rx="21" fill="#16161a" stroke="#818cf8" stroke-width="2"/>
+  <text x="800" y="154" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="700" font-family="monospace">END</text>
+
+  <!-- agent loop variant (dashed) -->
+  <path d="M540,266 Q360,300 323,180" fill="none" stroke="#76767f" stroke-width="1.6" stroke-dasharray="6,4" marker-end="url(#c11e-mut)"/>
+  <text x="360" y="252" text-anchor="middle" fill="#76767f" font-size="10" font-style="italic" font-family="system-ui">agent loop: feed result back to the LLM</text>
+</svg>
+
+<div class="example-block">
+  <div class="label">Why this is a Router — and an Agent</div>
+  <p>We can think of this as a <strong>router</strong>, where the chat model <strong>routes between a direct response or a tool call</strong> based on the user input. And that makes it a simple <strong>agent</strong>: the LLM is <strong>directing the control flow</strong> — either by calling a tool or by just responding directly. The decision lives in the model, not in hard-coded <code>if</code> statements.</p>
+</div>
+
+<h3>Running it both ways</h3>
+
+<p>Now an arithmetic question flows all the way through — the model requests <code>add</code>, the <code>tools</code> node runs it, and a <code>ToolMessage</code> carries back the answer <code>4</code>:</p>
+
+<pre>message = graph.invoke({"messages": "what is 2 plus 2"})
+for msg in message["messages"]:
+    msg.pretty_print()</pre>
+
+<pre>================================ Human Message =================================
+what is 2 plus 2
+================================== Ai Message ==================================
+Tool Calls:
+  add (w53brqqkx)
+ Call ID: w53brqqkx
+  Args:
+    a: 2
+    b: 2
+================================= Tool Message =================================
+Name: add
+4</pre>
+
+<p>And a question that needs <strong>no tool</strong> takes the other branch — <code>tools_condition</code> sees no tool call, routes straight to <code>END</code>, and the model just answers:</p>
+
+<pre>message = graph.invoke({"messages": "what is Machine Learning"})
+for msg in message["messages"]:
+    msg.pretty_print()</pre>
+
+<pre>================================ Human Message =================================
+what is Machine Learning
+================================== Ai Message ==================================
+Machine learning is a subset of artificial intelligence (AI) that involves the use
+of algorithms and statistical models to enable machines to perform a specific task
+without using explicit instructions... There are several types of machine learning,
+including: 1. Supervised learning  2. Unsupervised learning  3. Reinforcement
+learning  4. Semi-supervised learning...</pre>
+
+<p>Same graph, two completely different paths — chosen at runtime by the model. That's the essence of an agent.</p>
+
+<div class="example-block">
+  <div class="label">From router to full agent loop</div>
+  <p>In this graph the <code>tools</code> node goes straight to <code>END</code>. A complete <strong>agent</strong> instead loops the tool result <em>back</em> to <code>llm_tools</code> (the dashed arrow above), so the model can read the tool output and decide whether to answer or call another tool. That single extra edge — <code>tools → llm_tools</code> instead of <code>tools → END</code> — turns the one-shot router into an agent that can chain multiple tool calls. We build exactly that in the next chapter.</p>
+</div>
+
+<hr class="divider">
+
+<h2>Scaling Up — Multiple Tools</h2>
+
+<p>Nothing limits you to one tool. You bind a <strong>list</strong>, and the model picks the right one per query. A common upgrade is real external tools — for example, <strong>Arxiv</strong> and <strong>Wikipedia</strong> search from <code>langchain_community</code>:</p>
+
+<pre>from langchain_community.tools import ArxivQueryRun, WikipediaQueryRun
+from langchain_community.utilities import ArxivAPIWrapper, WikipediaAPIWrapper
+
+api_wrapper_arxiv = ArxivAPIWrapper(top_k_results=2, doc_content_chars_max=500)
+arxiv = ArxivQueryRun(api_wrapper=api_wrapper_arxiv)
+print(arxiv.name)        # -> arxiv
+
+arxiv.invoke("Attention is all you need")</pre>
+
+<pre>'Published: 2021-05-06
+Title: Do You Even Need Attention? A Stack of Feed-Forward Layers Does Surprisingly
+       Well on ImageNet
+Authors: Luke Melas-Kyriazi
+Summary: The strong performance of vision transformers on image classification...'</pre>
+
+<p>To build a multi-tool chatbot, you bind the whole list and reuse the <em>exact same</em> router pattern — only the <code>tools</code> list grows:</p>
+
+<pre>tools = [add, arxiv]                      # mix custom + external tools
+llm_with_tools = llm_groq.bind_tools(tools)
+
+builder = StateGraph(State)
+builder.add_node("llm_tools", llm_tools)
+builder.add_node("tools", ToolNode(tools))   # ToolNode handles ALL tools
+
+builder.add_edge(START, "llm_tools")
+builder.add_conditional_edges("llm_tools", tools_condition)
+builder.add_edge("tools", END)
+graph = builder.compile()</pre>
+
+<p>Now "what is 2 plus 2" routes to <code>add</code>, "summarise the Attention paper" routes to <code>arxiv</code>, and "what is Machine Learning" skips tools entirely — all decided by the model. The <code>ToolNode</code> + <code>tools_condition</code> pattern doesn't change; you just hand it more tools.</p>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+
+<div class="example-block">
+  <div class="label">Remember These Five</div>
+  <p><strong>1.</strong> A conversation is a list of typed <strong>messages</strong> — <code>Human</code>, <code>AI</code>, <code>System</code>, <code>Tool</code> — and the graph state carries them with the <code>add_messages</code> reducer.</p>
+  <p><strong>2.</strong> A <strong>tool</strong> is a documented Python function; <code>llm.bind_tools([...])</code> shows the model its schema. The model returns a <strong>structured tool call</strong> (name + args) — it does <em>not</em> execute the tool itself.</p>
+  <p><strong>3.</strong> <code>ToolNode</code> <strong>runs</strong> the requested tool and returns a <code>ToolMessage</code>; <code>tools_condition</code> is the prebuilt <strong>conditional edge</strong> that routes to <code>tools</code> when there's a tool call and to <code>END</code> otherwise.</p>
+  <p><strong>4.</strong> Together they form a <strong>router</strong>: the LLM decides between answering directly and calling a tool — a simple <strong>agent</strong>, because the model directs the control flow.</p>
+  <p><strong>5.</strong> Loop <code>tools</code> back to the LLM (instead of to <code>END</code>) to get a full agent that chains tool calls; bind a <strong>list</strong> of tools to scale from one tool to many without changing the graph.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter11-2">← 2 · Building a Chatbot</a>
+    <span></span>
+</nav>

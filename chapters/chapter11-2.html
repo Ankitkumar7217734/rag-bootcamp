@@ -1,0 +1,215 @@
+<h1>Building a Chatbot with LangGraph</h1>
+<p style="color:#888; margin-bottom: 2rem;">A graph whose state is a <strong>list of messages</strong> — that one change turns the toy graph from the parent chapter into a real conversational chatbot.</p>
+
+<h2>From Strings to Messages</h2>
+
+<p>So far our state held a plain string. A chatbot needs something richer: a <strong>running list of the conversation</strong>. In LangGraph, the state for a chat application is a list of <strong>messages</strong>, and each new turn appends to it. The state schema looks like this:</p>
+
+<pre>from typing_extensions import TypedDict
+from langgraph.graph import StateGraph, START, END
+
+# Reducers
+from typing import Annotated
+from langgraph.graph.message import add_messages
+
+class State(TypedDict):
+    messages: Annotated[list, add_messages]</pre>
+
+<p>That <code>Annotated[list, add_messages]</code> is the key idea of this whole chapter — we'll unpack it in a moment. First, the model.</p>
+
+<hr class="divider">
+
+<h2>Plugging in a Chat Model</h2>
+
+<p>The brain of the chatbot is a <strong>chat model</strong>. LangGraph doesn't care which provider you use — here we load environment keys and show two interchangeable options: OpenAI's <code>gpt-4o</code> and a Groq-hosted model.</p>
+
+<pre>import os
+from dotenv import load_dotenv
+load_dotenv()
+
+os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY") or ""
+os.environ["GROQ_API_KEY"] = os.getenv("GROQ_API_KEY") or ""</pre>
+
+<pre>from langchain_openai import ChatOpenAI
+llm = ChatOpenAI(model="gpt-4o", temperature=0.5)
+llm.invoke("help")</pre>
+
+<pre>AIMessage(content='Of course! How can I assist you today?', ...)</pre>
+
+<p>Swapping in Groq is a one-line change — the rest of the graph stays the same:</p>
+
+<pre>from langchain_groq import ChatGroq
+llm_groq = ChatGroq(model="openai/gpt-oss-120b", temperature=0.5, max_tokens=1000)
+llm_groq.invoke("hello")</pre>
+
+<pre>AIMessage(content='Hello! How can I help you today?', ...)</pre>
+
+<div class="example-block">
+  <div class="label">Why this matters</div>
+  <p>Because the model is just a value you pass into a node, LangGraph graphs are <strong>provider-agnostic</strong>. You can develop against a fast, cheap model and switch to a stronger one for production by changing a single line — the nodes, edges, and state never change.</p>
+</div>
+
+<hr class="divider">
+
+<h2>The Reducer — Why <code>add_messages</code> Is Essential</h2>
+
+<p>Here's a subtle but critical problem. Each node returns a new value for the <code>messages</code> key. By default, <strong>that new value overwrites the old one</strong>. But in a conversation we don't want to <em>replace</em> the history every turn — we want to <strong>append</strong> to it.</p>
+
+<p>The fix is a <strong>reducer</strong>. A reducer is a function that tells LangGraph <em>how</em> to combine the existing state value with a node's update, instead of blindly overwriting it. The pre-built reducer for messages is <code>add_messages</code>: it <strong>appends</strong> new messages to the existing list. You attach it by annotating the key:</p>
+
+<pre>from typing import Annotated
+from langgraph.graph.message import add_messages
+from langchain_core.messages import AnyMessage
+
+class State(TypedDict):
+    messages: Annotated[list[AnyMessage], add_messages]</pre>
+
+<!-- Default overwrite vs add_messages reducer (append) -->
+<svg class="diagram-svg" viewBox="0 0 940 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Two ways a node update combines with the message state. Top row, default overwrite: an existing list of two messages plus a new message yields only the new message, losing history. Bottom row, with the add_messages reducer: the same existing two messages plus a new message yields all three messages appended together.">
+  <defs>
+    <marker id="c11b-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+    <marker id="c11b-red" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#ef6461"/>
+    </marker>
+    <marker id="c11b-grn" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#4ecca3"/>
+    </marker>
+  </defs>
+
+  <!-- TOP: default overwrite -->
+  <text x="40" y="38" fill="#ef6461" font-size="12.5" font-weight="700" font-family="system-ui">Default — overwrite (history lost)</text>
+  <rect x="40" y="50" width="150" height="40" rx="7" fill="#1a1a2e" stroke="#76767f" stroke-width="1.5"/>
+  <text x="115" y="74" text-anchor="middle" fill="#b4b4be" font-size="11" font-family="monospace">[msg1, msg2]</text>
+  <text x="208" y="74" text-anchor="middle" fill="#76767f" font-size="15" font-family="monospace">+</text>
+  <rect x="226" y="50" width="110" height="40" rx="7" fill="#1a1a2e" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="281" y="74" text-anchor="middle" fill="#fbbf24" font-size="11" font-family="monospace">[msg3]</text>
+  <line x1="345" y1="70" x2="430" y2="70" stroke="#ef6461" stroke-width="2" marker-end="url(#c11b-red)"/>
+  <rect x="440" y="50" width="120" height="40" rx="7" fill="#1a1a2e" stroke="#ef6461" stroke-width="1.8"/>
+  <text x="500" y="74" text-anchor="middle" fill="#ef6461" font-size="11" font-family="monospace">[msg3]</text>
+  <text x="585" y="74" fill="#76767f" font-size="11" font-family="system-ui">✗ msg1 &amp; msg2 gone</text>
+
+  <!-- divider -->
+  <line x1="40" y1="120" x2="900" y2="120" stroke="#26262c" stroke-width="1"/>
+
+  <!-- BOTTOM: add_messages -->
+  <text x="40" y="160" fill="#4ecca3" font-size="12.5" font-weight="700" font-family="system-ui">add_messages — append (history kept)</text>
+  <rect x="40" y="172" width="150" height="40" rx="7" fill="#1a1a2e" stroke="#76767f" stroke-width="1.5"/>
+  <text x="115" y="196" text-anchor="middle" fill="#b4b4be" font-size="11" font-family="monospace">[msg1, msg2]</text>
+  <text x="208" y="196" text-anchor="middle" fill="#76767f" font-size="15" font-family="monospace">+</text>
+  <rect x="226" y="172" width="110" height="40" rx="7" fill="#1a1a2e" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="281" y="196" text-anchor="middle" fill="#fbbf24" font-size="11" font-family="monospace">[msg3]</text>
+  <line x1="345" y1="192" x2="430" y2="192" stroke="#4ecca3" stroke-width="2" marker-end="url(#c11b-grn)"/>
+  <rect x="440" y="172" width="200" height="40" rx="7" fill="#1a1a2e" stroke="#4ecca3" stroke-width="1.8"/>
+  <text x="540" y="196" text-anchor="middle" fill="#4ecca3" font-size="11" font-family="monospace">[msg1, msg2, msg3]</text>
+  <text x="665" y="196" fill="#76767f" font-size="11" font-family="system-ui">✓ full history</text>
+</svg>
+
+<p>You can see the reducer in isolation. Given a starting list and a new message, <code>add_messages</code> returns the combined list rather than the new message alone:</p>
+
+<pre>from langchain_core.messages import HumanMessage, AIMessage
+
+initial_state = [AIMessage(content="Please help me with this question:", role="LLMModel")]
+initial_state.append(HumanMessage(content="Attention is all you need", role="Ankit"))
+
+ai_message = AIMessage(content="Attention is all you need", role="LLMModel")
+
+# add_messages appends instead of overwriting
+add_messages(initial_state, ai_message)</pre>
+
+<pre>[AIMessage(content='Please help me with this question:', ...),
+ HumanMessage(content='Attention is all you need', ...),
+ AIMessage(content='Attention is all you need', ...)]</pre>
+
+<p>All three messages survive — and each is automatically assigned a unique <code>id</code>. That's exactly the behaviour a chatbot needs.</p>
+
+<hr class="divider">
+
+<h2>The Chatbot Node</h2>
+
+<p>With messages-as-state and the reducer in place, the chatbot node itself is almost trivial: take the running list of messages, send it to the model, and return the model's reply. The reducer takes care of appending it.</p>
+
+<pre>def superbot(state: State):
+    return {"messages": [llm_groq.invoke(state["messages"])]}</pre>
+
+<p>Wire it into a graph — a single node between <code>START</code> and <code>END</code>:</p>
+
+<pre>graph = StateGraph(State)
+
+# Node
+graph.add_node("superbot", superbot)
+# Edges
+graph.add_edge(START, "superbot")
+graph.add_edge("superbot", END)
+
+graph_builder = graph.compile()
+
+# Display
+from IPython.display import Image, display
+display(Image(graph_builder.get_graph().draw_mermaid_png()))</pre>
+
+<!-- The minimal chatbot graph: START -> superbot (LLM) -> END -->
+<svg class="diagram-svg" viewBox="0 0 940 150" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A minimal chatbot graph. START flows into the superbot node, which calls the chat model, and then flows into END. The messages state list is appended to by the add_messages reducer on every pass.">
+  <defs>
+    <marker id="c11c-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+  </defs>
+
+  <rect x="60" y="52" width="120" height="44" rx="22" fill="#16161a" stroke="#818cf8" stroke-width="2"/>
+  <text x="120" y="79" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="700" font-family="monospace">START</text>
+
+  <line x1="180" y1="74" x2="335" y2="74" stroke="#818cf8" stroke-width="2" marker-end="url(#c11c-arr)"/>
+
+  <rect x="337" y="44" width="266" height="60" rx="9" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2.5"/>
+  <text x="470" y="70" text-anchor="middle" fill="#4ecca3" font-size="14" font-weight="700" font-family="system-ui">superbot</text>
+  <text x="470" y="90" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">llm_groq.invoke(state["messages"])</text>
+
+  <line x1="603" y1="74" x2="758" y2="74" stroke="#818cf8" stroke-width="2" marker-end="url(#c11c-arr)"/>
+
+  <rect x="760" y="52" width="120" height="44" rx="22" fill="#16161a" stroke="#818cf8" stroke-width="2"/>
+  <text x="820" y="79" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="700" font-family="monospace">END</text>
+
+  <text x="470" y="132" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">Every reply is appended to the messages list by the add_messages reducer.</text>
+</svg>
+
+<hr class="divider">
+
+<h2>Invoking the Chatbot</h2>
+
+<p>Call <code>.invoke()</code> with an opening message. LangGraph wraps your string into a <code>HumanMessage</code>, runs the node, and appends the AI's reply:</p>
+
+<pre>graph_builder.invoke({"messages": "Hi, My name Ankit and I like Cricket"})</pre>
+
+<pre>{'messages': [
+  HumanMessage(content='Hi, My name Ankit and I like Cricket', ...),
+  AIMessage(content="Hello Ankit! 👋 Great to meet you. Cricket is such an exciting
+            sport—do you have a favorite team or player? ...", ...)
+]}</pre>
+
+<p>Notice the returned state holds <strong>both</strong> messages — the human turn and the AI turn — because the reducer appended rather than overwrote.</p>
+
+<hr class="divider">
+
+<h2>Streaming the Response</h2>
+
+<p>Calling <code>.invoke()</code> waits for the whole run to finish before returning. For a chatbot you usually want to <strong>stream</strong> — show output as it's produced. LangGraph's <code>.stream()</code> yields an <strong>event per node</strong> as the graph executes:</p>
+
+<pre>for event in graph_builder.stream({"messages": "Hello my"}):
+    print(event)</pre>
+
+<pre>{'superbot': {'messages': [AIMessage(content='Hello! How can I assist you today?', ...)]}}</pre>
+
+<p>Each event is keyed by the <strong>node name</strong> (<code>superbot</code>) and carries that node's update to the state. For a one-node graph there's a single event; for a larger graph you'd see one event per node as control flows through it — which makes <code>.stream()</code> invaluable for both live UIs and debugging.</p>
+
+<div class="example-block">
+  <div class="label">Remember These Four</div>
+  <p><strong>1.</strong> A chatbot's state is a <strong>list of messages</strong> (<code>HumanMessage</code>, <code>AIMessage</code>, <code>SystemMessage</code>, <code>ToolMessage</code>). <strong>2.</strong> The <code>add_messages</code> <strong>reducer</strong> makes node updates <em>append</em> to that list instead of overwriting it — without it, every turn would erase the history. <strong>3.</strong> The chat model is just a value passed into a node, so graphs are <strong>provider-agnostic</strong> (OpenAI, Groq, …). <strong>4.</strong> Use <code>.invoke()</code> for a single result, <code>.stream()</code> to emit one event per node as the graph runs.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter11-1">← 1 · State Schemas</a>
+    <a href="#chapter11-3" class="next">3 · Chains, Tools &amp; the Router Agent →</a>
+</nav>
