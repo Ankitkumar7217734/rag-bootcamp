@@ -133,5 +133,27 @@ const chapters = [
         id: "chapter12",
         title: "Chapter 12: Agents — Tools, ReAct & the Agentic Loop",
         description: "Turning a chatbot into an agent — the act/observe/reason ReAct loop, writing and binding real tools (arXiv, Wikipedia, Tavily, math), the ToolNode + tools_condition loop that lets the LLM call tools and come back, memory via checkpointers and threads (graph, super-steps, checkpoints), and tracing every step with LangSmith."
+    },
+    {
+        id: "chapter13",
+        title: "Chapter 13: Agentic RAG — Retrieval as a Decision",
+        description: "Putting an agent in charge of retrieval — wrapping retrievers as tools the LLM can call, routing a question across multiple vector stores by tool description, grading retrieved documents for relevance with structured output, and the agent → retrieve → grade → generate / rewrite loop that lets a RAG system recover from a bad retrieval instead of answering from it.",
+        children: [
+            {
+                id: "chapter13-1",
+                title: "Knowledge Bases & Retriever Tools",
+                description: "Building the ingredients — two independent FAISS vector stores (LangGraph and LangChain docs) and wrapping each retriever with create_retriever_tool so the agent can route a question to the right store using only the tool descriptions."
+            },
+            {
+                id: "chapter13-2",
+                title: "The Graph — State, Nodes & Edges",
+                description: "The message-based AgentState and the add_messages reducer, the four nodes (agent, retrieve, generate, rewrite), the grade_documents conditional edge with structured output, and wiring it all into a compiled StateGraph."
+            },
+            {
+                id: "chapter13-3",
+                title: "Running, the Loop & Hardening",
+                description: "Invoking the agent on three questions — a clean retrieval, routing to the second store, and an off-topic query that triggers the rewrite loop — tracing the messages step by step, and bounding the loop with attempt counters and fallbacks so it never runs away."
+            }
+        ]
     }
 ];

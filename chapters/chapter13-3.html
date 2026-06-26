@@ -1,0 +1,213 @@
+<h1>Running the Agent — the Loop &amp; Hardening</h1>
+<p style="color:#888; margin-bottom: 2rem;">The graph is compiled. Now we run it on three deliberately different questions to see all three paths — straight through, routed to the other store, and stuck in the rewrite loop — and learn why that last one means you must always <strong>bound</strong> the loop.</p>
+
+<h2>Invoking the Graph</h2>
+
+<p>Running the graph is one line. Because the state uses the <code>add_messages</code> reducer, you can pass a bare string and LangGraph wraps it as the first <code>HumanMessage</code> for you:</p>
+
+<pre>graph.invoke({"messages": "What is Langgraph?"})</pre>
+
+<p>The <code>print</code> statements we put in each node act as a built-in trace — they tell you exactly which path the graph took on this run. Let's read all three.</p>
+
+<hr class="divider">
+
+<h2>Scenario 1 — A LangGraph Question (the happy path)</h2>
+
+<p>"What is Langgraph?" is squarely in store A's wheelhouse. The trace flows straight down the graph — agent calls the retriever, the docs grade as relevant, generate writes the answer:</p>
+
+<pre>---CALL AGENT---
+---CHECK RELEVANCE---
+---DECISION: DOCS RELEVANT---
+---GENERATE---</pre>
+
+<p>Behind those four lines, the <code>messages</code> list grew from one entry to four. Printing them out shows the full conversation the graph built:</p>
+
+<pre>================================ Human Message ================================
+What is Langgraph?
+
+================================== Ai Message ==================================
+Tool Calls:
+  retriever_vector_db_blog (8e9yyh72q)
+  Args:
+    query: Langgraph
+
+================================= Tool Message =================================
+Name: retriever_vector_db_blog
+LangGraph overview - Docs by LangChain ... LangGraph is a low-level orchestration
+framework and runtime for building, managing, and deploying long-running, stateful agents.
+
+================================== Ai Message ==================================
+LangGraph is a low-level orchestration framework for building stateful, multi-actor
+applications with LLMs. It models an application as a graph of nodes and edges over a
+shared state, and is used in production by companies such as Uber, Klarna, and LinkedIn.</pre>
+
+<p>Trace the four messages against the four trace lines: the agent emitted a <strong>tool call</strong> to <code>retriever_vector_db_blog</code> with the query it wrote itself (<code>"Langgraph"</code>); the <code>retrieve</code> node ran it and appended a <strong>tool message</strong> with the docs; <code>grade_documents</code> scored them relevant; and <code>generate</code> appended the final <strong>answer</strong>. That's the full <code>agent → retrieve → grade → generate</code> path.</p>
+
+<hr class="divider">
+
+<h2>Scenario 2 — A LangChain Question (routing in action)</h2>
+
+<p>Now ask about LangChain instead. The path through the graph is identical, but the agent picks the <strong>other</strong> tool — <code>retriever_vector_langchain_blog</code> — entirely on the strength of the tool descriptions:</p>
+
+<pre>graph.invoke({"messages": "What is Langchain?"})</pre>
+
+<pre>---CALL AGENT---
+---CHECK RELEVANCE---
+---DECISION: DOCS RELEVANT---
+---GENERATE---</pre>
+
+<p>The only difference is invisible in the trace prints but plain in the tool call — a different tool, a different store:</p>
+
+<pre>================================== Ai Message ==================================
+Tool Calls:
+  retriever_vector_langchain_blog (3f2vxzbc2)
+  Args:
+    query: What is Langchain?</pre>
+
+<p>This is the payoff of building two stores in <a href="#chapter13-1">13.1</a>. We never wrote a single line of routing logic — no keyword matching, no <code>if "langchain" in question</code>. The agent read the two descriptions and chose correctly. Add a third store tomorrow and the routing extends itself.</p>
+
+<hr class="divider">
+
+<h2>Scenario 3 — An Off-Topic Question (the loop fires)</h2>
+
+<p>Here's the interesting case. Ask something <strong>neither</strong> store knows about. Machine learning isn't in the LangGraph or LangChain docs, so the docs grade as <em>not</em> relevant — and the rewrite loop kicks in:</p>
+
+<pre>graph.invoke({"messages": "What is Machine learning?"})</pre>
+
+<pre>---CALL AGENT---
+---CHECK RELEVANCE---
+---DECISION: DOCS NOT RELEVANT---
+---TRANSFORM QUERY---
+---CALL AGENT---
+---CHECK RELEVANCE---
+---DECISION: DOCS NOT RELEVANT---
+---TRANSFORM QUERY---
+---CALL AGENT---
+---CHECK RELEVANCE---
+---DECISION: DOCS NOT RELEVANT---
+---TRANSFORM QUERY---
+...</pre>
+
+<p>Read the cycle: <strong>agent → retrieve → grade (✗) → rewrite → agent → …</strong>, over and over. Each pass the agent dutifully retrieves, the grader correctly says "not relevant," and the rewriter produces yet another phrasing of a machine-learning question. But no rephrasing can conjure machine-learning content out of stores that simply don't contain any. The loop has <strong>no natural exit</strong>.</p>
+
+<p>All three scenarios, side by side:</p>
+
+<table>
+  <thead>
+    <tr><th>Query</th><th>Path through the graph</th><th>Outcome</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>"What is Langgraph?"</td><td>agent → retrieve (store A) → grade ✓ → generate</td><td>Grounded answer</td></tr>
+    <tr><td>"What is Langchain?"</td><td>agent → retrieve (store B) → grade ✓ → generate</td><td>Grounded answer</td></tr>
+    <tr><td>"What is Machine learning?"</td><td>agent → retrieve → grade ✗ → rewrite → … (loops)</td><td>No relevant docs exist → keeps retrying</td></tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Hardening — Always Bound the Loop</h2>
+
+<p>The self-correcting loop is the best and the most dangerous part of Agentic RAG. The same back-edge that lets the system recover from one bad retrieval will, on an unanswerable question, spin forever — burning tokens and latency — until LangGraph's built-in <strong>recursion limit</strong> finally throws a <code>GraphRecursionError</code>. Relying on that error as your stop condition is not a plan. You need a deliberate exit.</p>
+
+<svg class="diagram-svg" viewBox="0 0 940 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A bounded rewrite loop. The grade step sends irrelevant documents to rewrite. Rewrite passes through an attempts-counter check. If the number of attempts is under the limit N, it loops back to the agent to retry. If the limit is reached, it routes to a fallback such as a web search or an honest I-do-not-know answer, then ends.">
+  <defs>
+    <marker id="c13e-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+    <marker id="c13e-arr-y" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#fbbf24"/>
+    </marker>
+    <marker id="c13e-arr-g" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#4ecca3"/>
+    </marker>
+  </defs>
+
+  <!-- agent -->
+  <rect x="40" y="96" width="110" height="52" rx="10" fill="#1a1a2e" stroke="#ef6461" stroke-width="2.5"/>
+  <text x="95" y="120" text-anchor="middle" fill="#ececf1" font-size="13" font-weight="700" font-family="system-ui">agent</text>
+  <text x="95" y="137" text-anchor="middle" fill="#76767f" font-size="9" font-family="system-ui">+ retrieve</text>
+
+  <line x1="150" y1="122" x2="208" y2="122" stroke="#818cf8" stroke-width="2" marker-end="url(#c13e-arr)"/>
+
+  <!-- grade diamond -->
+  <polygon points="252,90 296,122 252,154 208,122" fill="#1a1a2e" stroke="#fbbf24" stroke-width="2"/>
+  <text x="252" y="119" text-anchor="middle" fill="#fbbf24" font-size="9" font-family="monospace">grade</text>
+  <text x="252" y="131" text-anchor="middle" fill="#fbbf24" font-size="9" font-family="monospace">docs?</text>
+
+  <line x1="296" y1="122" x2="354" y2="122" stroke="#ef6461" stroke-width="2" marker-end="url(#c13e-arr)"/>
+  <text x="325" y="113" text-anchor="middle" fill="#ef6461" font-size="9" font-family="system-ui">✗</text>
+
+  <!-- rewrite -->
+  <rect x="356" y="96" width="120" height="52" rx="10" fill="#1a1a2e" stroke="#fbbf24" stroke-width="2.5"/>
+  <text x="416" y="120" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700" font-family="system-ui">rewrite</text>
+  <text x="416" y="137" text-anchor="middle" fill="#76767f" font-size="9" font-family="system-ui">attempts += 1</text>
+
+  <line x1="476" y1="122" x2="534" y2="122" stroke="#818cf8" stroke-width="2" marker-end="url(#c13e-arr)"/>
+
+  <!-- guard diamond -->
+  <polygon points="586,84 638,122 586,160 534,122" fill="#1a1a2e" stroke="#fbbf24" stroke-width="2"/>
+  <text x="586" y="119" text-anchor="middle" fill="#fbbf24" font-size="9" font-family="monospace">attempts</text>
+  <text x="586" y="131" text-anchor="middle" fill="#fbbf24" font-size="9" font-family="monospace">&lt; N ?</text>
+
+  <!-- guard yes -> loop back to agent -->
+  <path d="M 586 84 L 586 40 L 95 40 L 95 96" fill="none" stroke="#fbbf24" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#c13e-arr-y)"/>
+  <text x="330" y="32" text-anchor="middle" fill="#fbbf24" font-size="10" font-style="italic" font-family="system-ui">yes — under the limit, retry</text>
+
+  <!-- guard no -> fallback -->
+  <line x1="638" y1="122" x2="704" y2="122" stroke="#4ecca3" stroke-width="2" marker-end="url(#c13e-arr-g)"/>
+  <text x="671" y="113" text-anchor="middle" fill="#4ecca3" font-size="9" font-family="system-ui">no</text>
+
+  <rect x="706" y="92" width="206" height="60" rx="10" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2"/>
+  <text x="809" y="116" text-anchor="middle" fill="#4ecca3" font-size="12" font-weight="700" font-family="system-ui">fallback</text>
+  <text x="809" y="133" text-anchor="middle" fill="#76767f" font-size="9" font-family="system-ui">web search · or honest "I don't know"</text>
+
+  <text x="470" y="210" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">A counter in the state turns an infinite loop into a bounded one with a graceful exit.</text>
+</svg>
+
+<p>The fix is to make the loop <strong>count</strong>. Three patterns, smallest to largest:</p>
+
+<table>
+  <thead>
+    <tr><th>Guard</th><th>How</th><th>Behaviour when it trips</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Recursion limit</strong></td><td><code>graph.invoke(..., {"recursion_limit": 10})</code></td><td>Hard stop — raises an error after N super-steps. A blunt safety net, not a UX.</td></tr>
+    <tr><td><strong>Attempt counter</strong></td><td>Add an <code>attempts</code> int to the state; increment it in <code>rewrite</code>; have the edge route elsewhere once it hits a cap.</td><td>Controlled exit you design — stop after, say, 3 rewrites.</td></tr>
+    <tr><td><strong>Fallback branch</strong></td><td>On giving up, route to a <strong>web-search</strong> node, or a node that returns an honest "I couldn't find that."</td><td>The user gets a useful answer or an honest miss — never a hang.</td></tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">The loop is a feature you must fence</div>
+  <p>Don't read Scenario 3 as a bug — it's the grading working <em>correctly</em>, refusing to answer machine-learning questions from LangGraph docs. That refusal is exactly what stops the system hallucinating. The lesson isn't "remove the loop," it's "<strong>bound</strong> the loop": give it a counter and a graceful fallback so a self-correcting system stays self-correcting without becoming a runaway.</p>
+</div>
+
+<hr class="divider">
+
+<h2>A Note on the Real World</h2>
+
+<p>Run any of this and the first thing you'll see is warnings, not errors:</p>
+
+<pre>DeprecationWarning: `langchain-community` is being sunset ...
+USER_AGENT environment variable not set, consider setting it to identify your requests.</pre>
+
+<p>This is normal. <code>langchain-community</code> integrations are gradually moving into standalone packages, and <code>WebBaseLoader</code> politely asks you to identify your scraper (which is why we passed a <code>User-Agent</code> header back in <a href="#chapter13-1">13.1</a>). Neither blocks the pipeline — but reading the warnings instead of ignoring them is how you keep a RAG system healthy as the ecosystem shifts underneath it.</p>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+
+<div class="example-block">
+  <div class="label">Remember These Five</div>
+  <p><strong>1.</strong> <code>graph.invoke({"messages": "..."})</code> accepts a bare string because <code>add_messages</code> wraps it as the first <code>HumanMessage</code>. The node <code>print</code>s are your free, built-in trace.</p>
+  <p><strong>2.</strong> On an on-topic question the path is <strong>agent → retrieve → grade ✓ → generate</strong>, and the <code>messages</code> list grows Human → AI(tool call) → Tool(docs) → AI(answer).</p>
+  <p><strong>3.</strong> <strong>Routing is free.</strong> A LangChain question fires the LangChain tool and a LangGraph question fires the LangGraph tool — chosen from the tool descriptions, with zero routing code.</p>
+  <p><strong>4.</strong> When no store can answer, the grader keeps returning "not relevant" and the <strong>rewrite loop never exits</strong> on its own — proof the self-check is working, and a hazard if left unbounded.</p>
+  <p><strong>5.</strong> Always <strong>bound the loop</strong>: a recursion limit, an attempt counter in the state, and a fallback branch (web search or an honest "I don't know") turn a potential runaway into a graceful one.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter13-2">← 2 · The Graph — State, Nodes &amp; Edges</a>
+    <span></span>
+</nav>

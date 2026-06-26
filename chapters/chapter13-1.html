@@ -1,0 +1,246 @@
+<h1>Knowledge Bases &amp; Retriever Tools</h1>
+<p style="color:#888; margin-bottom: 2rem;">Before an agent can <em>decide</em> what to retrieve, it needs something to retrieve <strong>from</strong> — and a way to reach it. Here we build two separate vector stores and turn each into a tool the LLM can call by name.</p>
+
+<h2>The Plan for This Section</h2>
+
+<p>An Agentic RAG system is only as good as the knowledge it can reach. In this sub-chapter we build the <strong>ingredients</strong> the agent will use later: two independent FAISS vector stores (one on the LangGraph docs, one on the LangChain docs), each exposed to the LLM as a <strong>retriever tool</strong>. By the end, the agent will be able to look at a question and pick the right store — not because we wrote routing logic, but because we wrote good tool <em>descriptions</em>.</p>
+
+<div class="example-block">
+  <div class="label">Where this fits</div>
+  <p>This is steps 0–2 of the build. The <code>tools</code> list we produce here is the exact list we'll bind to the LLM and hand to the <code>ToolNode</code> in <a href="#chapter13-2">13.2</a>. Nothing here is agent-specific yet — it's ordinary ingestion, plus one new function: <code>create_retriever_tool</code>.</p>
+</div>
+
+<hr class="divider">
+
+<h2>Step 0 — Setup</h2>
+
+<p>We use two model providers. <strong>Groq</strong> (serving Llama 3.3 70B) is the agent's brain — fast and free-tier friendly — and <strong>OpenAI</strong> supplies the embedding model that turns document chunks into vectors. Both keys live in a <code>.env</code> file and are loaded with <code>python-dotenv</code>:</p>
+
+<pre>import os
+from dotenv import load_dotenv
+load_dotenv()
+
+os.environ["GROQ_API_KEY"] = os.getenv("GROQ_API_KEY")
+os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")</pre>
+
+<p>Mixing providers like this is completely normal and a real strength of the LangChain stack: the embedding model and the chat model are independent choices. You could swap OpenAI embeddings for a local HuggingFace model, or Groq for OpenAI's <code>gpt-4o</code>, without touching anything else in the pipeline.</p>
+
+<hr class="divider">
+
+<h2>Step 1 — Build the First Knowledge Base (LangGraph docs)</h2>
+
+<p>The ingestion recipe is the same one from earlier chapters: <strong>load → split → embed → store</strong>. We scrape three LangGraph documentation pages with <code>WebBaseLoader</code>, passing a browser-like <code>User-Agent</code> header so the request isn't refused.</p>
+
+<pre>from langchain_community.document_loaders import WebBaseLoader
+from langchain_community.vectorstores import FAISS
+from langchain_openai import OpenAIEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+# LangGraph docs
+loader = WebBaseLoader(
+    web_paths=[
+        "https://docs.langchain.com/oss/python/langgraph/overview",
+        "https://docs.langchain.com/oss/python/langgraph/workflows-agents",
+        "https://docs.langchain.com/oss/python/langgraph/graph-api",
+    ],
+    requests_kwargs={"headers": {"User-Agent": "Mozilla/5.0"}},
+)
+docs = loader.load()</pre>
+
+<p>The result, <code>docs</code>, is a list of LangChain <code>Document</code> objects — one per URL — each with <code>page_content</code> (the scraped text) and <code>metadata</code> (the source URL, title, language). Those raw pages are far too long to embed as single vectors, so we split them into overlapping chunks:</p>
+
+<pre># Split into ~1000-char chunks with a little overlap
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+doc_splits = text_splitter.split_documents(docs)
+
+# Add all these chunks to a FAISS vector DB
+vectorstore = FAISS.from_documents(documents=doc_splits, embedding=OpenAIEmbeddings())
+retriever = vectorstore.as_retriever()</pre>
+
+<p>Three parameters do the real work here. They're worth understanding rather than copying:</p>
+
+<table>
+  <thead>
+    <tr><th>Parameter</th><th>Value</th><th>Why</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>chunk_size</code></td><td><code>1000</code></td><td>Characters per chunk. Big enough to hold a coherent idea, small enough to embed precisely and to fit several chunks in the prompt later.</td></tr>
+    <tr><td><code>chunk_overlap</code></td><td><code>100</code></td><td>Each chunk repeats the last 100 characters of the previous one, so a sentence split across a boundary still appears whole in at least one chunk.</td></tr>
+    <tr><td><code>embedding</code></td><td><code>OpenAIEmbeddings()</code></td><td>The function that maps each chunk to a vector. The <strong>same</strong> model must embed the query at search time, or the vectors won't be comparable.</td></tr>
+  </tbody>
+</table>
+
+<p><code>RecursiveCharacterTextSplitter</code> is "recursive" because it tries to split on the largest natural boundary first (paragraphs), then sentences, then words — only falling back to a hard character cut when nothing else fits. That keeps chunks readable instead of slicing mid-word.</p>
+
+<h3>A quick sanity check</h3>
+
+<p>Calling <code>.as_retriever()</code> turns the store into a retriever — an object with one job: given a query string, return the most similar chunks. Always test it before going further:</p>
+
+<pre>retriever.invoke("what is langgraph")
+# [Document(page_content='...LangGraph ecosystem... pair LangGraph with: LangSmith...'),
+#  Document(page_content='...low-level orchestration framework and runtime...'),
+#  ... ]</pre>
+
+<p>Good — the chunks coming back are clearly about LangGraph. The store works. Now we make it reachable by an LLM.</p>
+
+<hr class="divider">
+
+<h2>Turning a Retriever into a Tool</h2>
+
+<p>This is the move that makes RAG <em>agentic</em>. A plain retriever is something <strong>you</strong> call in code. Wrapping it with <code>create_retriever_tool</code> turns it into something the <strong>LLM</strong> can call — a first-class tool with a name and a description, exactly like the <code>@tool</code> functions from <a href="#chapter12">Chapter 12</a>.</p>
+
+<pre>from langchain_core.tools.retriever import create_retriever_tool
+
+retriever_tool = create_retriever_tool(
+    retriever,
+    "retriever_vector_db_blog",                     # the tool's name
+    "Search and run information about Langgraph",    # the model reads this to decide WHEN to use it
+)</pre>
+
+<p>The function takes exactly three arguments, and each one matters:</p>
+
+<table>
+  <thead>
+    <tr><th>Argument</th><th>Role</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>retriever</code></td><td>The thing that actually runs when the tool is called. Its search results become the tool's output.</td></tr>
+    <tr><td><code>"retriever_vector_db_blog"</code></td><td>The tool's <strong>name</strong> — how the model refers to it in a tool call, and how <code>ToolNode</code> looks it up later.</td></tr>
+    <tr><td><code>"Search and run information about Langgraph"</code></td><td>The <strong>description</strong> — the only hint the model gets about <em>when</em> this tool is the right one.</td></tr>
+  </tbody>
+</table>
+
+<p>What you get back is a <code>StructuredTool</code> — the same type LangChain produces for any tool — with the retriever wired in as its function:</p>
+
+<pre>retriever_tool
+# StructuredTool(name='retriever_vector_db_blog',
+#   description='Search and run information about Langgraph',
+#   args_schema=&lt;class 'langchain_core.tools.retriever.RetrieverInput'&gt;,
+#   func=&lt;function create_retriever_tool.&lt;locals&gt;.func ...&gt;)</pre>
+
+<div class="example-block">
+  <div class="label">The description IS the routing logic</div>
+  <p>The agent never sees your FAISS index, your chunk size, or your embeddings — it only sees each tool's <strong>name and description</strong>. "Search and run information about Langgraph" is the entire reason the model will pick this tool for a LangGraph question. With two stores, these one-line descriptions are the <em>only</em> thing the agent uses to route. A vague description ("search the docs") would leave the model guessing; a specific one routes reliably. Treat the description as a prompt.</p>
+</div>
+
+<hr class="divider">
+
+<h2>Step 2 — A Second Knowledge Base (LangChain docs)</h2>
+
+<p>One retriever tool is useful; <strong>two</strong> is where the agent starts genuinely routing. We repeat the exact same recipe on a different source — the LangChain docs — to produce a <strong>completely separate</strong> FAISS store and a second tool. Note we reuse the same <code>text_splitter</code> object; it holds no state between calls.</p>
+
+<pre># LangChain docs — a SEPARATE vector store
+loader_langchain = WebBaseLoader(
+    web_paths=[
+        "https://docs.langchain.com/oss/python/langchain/quickstart",
+        "https://docs.langchain.com/oss/python/langchain/knowledge-base",
+        "https://docs.langchain.com/oss/python/langchain/agents",
+    ],
+    requests_kwargs={"headers": {"User-Agent": "Mozilla/5.0"}},
+)
+docs = loader_langchain.load()
+
+doc_splits = text_splitter.split_documents(docs)
+vectorstorelangchain = FAISS.from_documents(documents=doc_splits, embedding=OpenAIEmbeddings())
+retrieverlangchain = vectorstorelangchain.as_retriever()
+
+retriever_tool_langchain = create_retriever_tool(
+    retrieverlangchain,
+    "retriever_vector_langchain_blog",
+    "Search and run information about Langchain",
+)
+
+# The agent will choose between these two
+tools = [retriever_tool, retriever_tool_langchain]</pre>
+
+<p>That <code>tools</code> list is the deliverable of this whole sub-chapter. Two tools, two stores, two crisp descriptions:</p>
+
+<table>
+  <thead>
+    <tr><th>Tool name</th><th>Backed by</th><th>Description the agent reads</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>retriever_vector_db_blog</code></td><td>LangGraph docs store</td><td>"Search and run information about Langgraph"</td></tr>
+    <tr><td><code>retriever_vector_langchain_blog</code></td><td>LangChain docs store</td><td>"Search and run information about Langchain"</td></tr>
+  </tbody>
+</table>
+
+<h3>Why two separate stores instead of one big one?</h3>
+
+<p>You could dump both doc sets into a single FAISS index and have one retriever. Keeping them separate buys you three things:</p>
+
+<table>
+  <thead>
+    <tr><th>Benefit</th><th>What it means</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Routing</strong></td><td>The agent picks a <em>source</em>, not just chunks — it reasons about which body of knowledge fits the question.</td></tr>
+    <tr><td><strong>Isolation</strong></td><td>A LangGraph question can't accidentally surface near-duplicate LangChain chunks that happen to embed similarly.</td></tr>
+    <tr><td><strong>Independence</strong></td><td>You can re-index, swap, or permission each store on its own — add a third tool tomorrow without touching the first two.</td></tr>
+  </tbody>
+</table>
+
+<p>So when a question arrives, the agent chooses a tool purely from the descriptions — a LangGraph question fires <code>retriever_vector_db_blog</code>, a LangChain question fires <code>retriever_vector_langchain_blog</code>:</p>
+
+<svg class="diagram-svg" viewBox="0 0 940 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The agent routing between two retriever tools. A question flows into the agent, which is bound to two tools. For a LangGraph question, the agent picks the retriever_vector_db_blog tool backed by the LangGraph store (solid arrow). For a LangChain question, it would pick the retriever_vector_langchain_blog tool backed by the LangChain store (dashed alternative arrow). The chosen store returns documents that flow on to the grade and generate steps.">
+  <defs>
+    <marker id="c13c-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+    <marker id="c13c-arr-g" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#4ecca3"/>
+    </marker>
+    <marker id="c13c-arr-m" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#76767f"/>
+    </marker>
+  </defs>
+
+  <!-- question -->
+  <rect x="368" y="18" width="204" height="40" rx="9" fill="#16161a" stroke="#818cf8" stroke-width="2"/>
+  <text x="470" y="43" text-anchor="middle" fill="#ececf1" font-size="12" font-family="system-ui">"What is LangGraph?"</text>
+  <line x1="470" y1="58" x2="470" y2="104" stroke="#818cf8" stroke-width="2" marker-end="url(#c13c-arr)"/>
+
+  <!-- agent -->
+  <rect x="396" y="106" width="148" height="58" rx="10" fill="#1a1a2e" stroke="#ef6461" stroke-width="2.5"/>
+  <text x="470" y="131" text-anchor="middle" fill="#ececf1" font-size="14" font-weight="700" font-family="system-ui">agent</text>
+  <text x="470" y="149" text-anchor="middle" fill="#76767f" font-size="9" font-family="monospace">bind_tools([A, B])</text>
+
+  <!-- to store A (chosen) -->
+  <path d="M 420 164 L 250 200" fill="none" stroke="#4ecca3" stroke-width="2.5" marker-end="url(#c13c-arr-g)"/>
+  <text x="300" y="180" text-anchor="middle" fill="#4ecca3" font-size="9.5" font-family="system-ui">LangGraph topic ✓</text>
+
+  <!-- to store B (alternative) -->
+  <path d="M 520 164 L 690 200" fill="none" stroke="#76767f" stroke-width="1.6" stroke-dasharray="6,4" marker-end="url(#c13c-arr-m)"/>
+  <text x="640" y="180" text-anchor="middle" fill="#76767f" font-size="9.5" font-family="system-ui">LangChain topic</text>
+
+  <!-- store A -->
+  <rect x="96" y="206" width="190" height="58" rx="10" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2.5"/>
+  <text x="191" y="229" text-anchor="middle" fill="#a78bfa" font-size="12" font-weight="700" font-family="system-ui">DB 1 · LangGraph blog</text>
+  <text x="191" y="247" text-anchor="middle" fill="#76767f" font-size="9" font-family="monospace">retriever_vector_db_blog</text>
+
+  <!-- store B -->
+  <rect x="654" y="206" width="200" height="58" rx="10" fill="#16161a" stroke="#76767f" stroke-width="2"/>
+  <text x="754" y="229" text-anchor="middle" fill="#b4b4be" font-size="12" font-weight="700" font-family="system-ui">DB 2 · LangChain blog</text>
+  <text x="754" y="247" text-anchor="middle" fill="#76767f" font-size="9" font-family="monospace">retriever_vector_langchain_blog</text>
+
+  <!-- store A onward -->
+  <line x1="286" y1="252" x2="384" y2="284" stroke="#4ecca3" stroke-width="2" marker-end="url(#c13c-arr-g)"/>
+  <text x="470" y="288" text-anchor="middle" fill="#76767f" font-size="9.5" font-style="italic" font-family="system-ui">retrieved docs → grade_documents → generate</text>
+</svg>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+
+<div class="example-block">
+  <div class="label">Remember These Three</div>
+  <p><strong>1.</strong> Building a knowledge base is the familiar <strong>load → split → embed → store</strong> recipe. <code>chunk_size</code>/<code>chunk_overlap</code> control how text is cut; the embedding model must be the same at index time and query time.</p>
+  <p><strong>2.</strong> <code>create_retriever_tool(retriever, name, description)</code> turns a retriever into a <code>StructuredTool</code> the LLM can call. It's what lets the model — not your code — decide to retrieve.</p>
+  <p><strong>3.</strong> With several stores, the tool <strong>descriptions are the routing logic</strong>. The agent picks a knowledge base from those one-liners alone, so write them to clearly distinguish the sources.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter13">← Chapter 13: Agentic RAG — Retrieval as a Decision</a>
+    <a href="#chapter13-2" class="next">2 · The Graph — State, Nodes &amp; Edges →</a>
+</nav>

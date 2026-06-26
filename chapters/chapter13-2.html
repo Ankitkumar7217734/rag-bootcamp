@@ -1,0 +1,453 @@
+<h1>The Graph — State, Nodes &amp; Edges</h1>
+<p style="color:#888; margin-bottom: 2rem;">With two retriever tools in hand, we now build the machine that uses them: a shared <strong>state</strong>, four <strong>nodes</strong> that transform it, and two <strong>conditional edges</strong> that steer the flow.</p>
+
+<h2>What We're Assembling</h2>
+
+<p>This is the heart of Agentic RAG. Everything from <a href="#chapter13-1">13.1</a> was preparation; now we write the graph itself — the same one drawn in the <a href="#chapter13">chapter overview</a>. We'll define the state first, then write each node and edge as an isolated function, and finally wire them together and compile. Keep one principle in mind throughout: <strong>nodes do work and return a state update; edges only choose the next node</strong>.</p>
+
+<hr class="divider">
+
+<h2>Step 3 — The State</h2>
+
+<p>Like the chatbot and the agent of <a href="#chapter11-2">Chapter 11.2</a> and <a href="#chapter12">Chapter 12</a>, the state is simply the <strong>conversation</strong>: a growing list of messages. We declare it as a <code>TypedDict</code> with a single key, <code>messages</code>.</p>
+
+<pre>from typing import Annotated, Sequence
+from typing_extensions import TypedDict
+from langchain_core.messages import BaseMessage
+from langgraph.graph.message import add_messages
+
+
+class AgentState(TypedDict):
+    # add_messages defines how updates are processed.
+    # Default is to replace; add_messages says "append".
+    messages: Annotated[Sequence[BaseMessage], add_messages]</pre>
+
+<p>The magic is in the <code>Annotated[..., add_messages]</code> annotation. Normally, when a node returns a value for a state key, it <strong>overwrites</strong> whatever was there. <code>add_messages</code> is a <strong>reducer</strong> — a function LangGraph runs to <em>merge</em> a node's output into the existing state instead of replacing it. For messages, that merge means <strong>append</strong>.</p>
+
+<table>
+  <thead>
+    <tr><th>Piece</th><th>Meaning</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>messages</code></td><td>The one and only state key — the full conversation so far.</td></tr>
+    <tr><td><code>Sequence[BaseMessage]</code></td><td>The type: an ordered list of messages (<code>HumanMessage</code>, <code>AIMessage</code>, <code>ToolMessage</code>).</td></tr>
+    <tr><td><code>add_messages</code></td><td>The reducer. Every node that returns <code>{"messages": [x]}</code> <strong>appends</strong> <code>x</code> rather than clobbering the history.</td></tr>
+  </tbody>
+</table>
+
+<p>This one-key design is what keeps the rest of the code so short. Because every node appends, two positions are always meaningful, no matter how long the conversation grows:</p>
+
+<ul>
+  <li><code>messages[0]</code> — the <strong>original question</strong>. The grader and the generator both read it from here.</li>
+  <li><code>messages[-1]</code> — the <strong>most recent output</strong>: whatever the last node produced (a tool call, retrieved docs, an answer).</li>
+</ul>
+
+<p>Here's how that list actually grows as one question flows through the graph — each node appends exactly one message:</p>
+
+<svg class="diagram-svg" viewBox="0 0 940 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="How the messages list grows vertically. The list starts at START with just a HumanMessage. The agent node appends an AIMessage with a tool call. The retrieve node appends a ToolMessage with the retrieved documents. The generate node appends a final AIMessage with the answer. Each step only ever appends to the bottom of the list.">
+  <defs>
+    <marker id="c13d-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#76767f"/>
+    </marker>
+  </defs>
+
+  <text x="470" y="20" text-anchor="middle" fill="#b4b4be" font-size="11" font-style="italic" font-family="system-ui">add_messages appends — the list only ever grows downward</text>
+
+  <!-- Left column: node labels (x=10-200) -->
+  <text x="160" y="66" text-anchor="end" fill="#818cf8" font-size="10" font-weight="700" font-family="monospace">START</text>
+  <text x="160" y="112" text-anchor="end" fill="#ef6461" font-size="10" font-weight="700" font-family="monospace">agent node</text>
+  <text x="160" y="164" text-anchor="end" fill="#a78bfa" font-size="10" font-weight="700" font-family="monospace">retrieve node</text>
+  <text x="160" y="218" text-anchor="end" fill="#4ecca3" font-size="10" font-weight="700" font-family="monospace">generate node</text>
+
+  <!-- Horizontal dashed connector lines from labels to messages -->
+  <line x1="164" y1="60" x2="220" y2="60" stroke="#26262c" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="164" y1="106" x2="220" y2="106" stroke="#26262c" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="164" y1="158" x2="220" y2="158" stroke="#26262c" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="164" y1="212" x2="220" y2="212" stroke="#26262c" stroke-width="1" stroke-dasharray="3,3"/>
+
+  <!-- Center column: message boxes (x=222-618) stacked vertically -->
+
+  <!-- messages[0] HumanMessage — present from START -->
+  <rect x="222" y="44" width="396" height="34" rx="7" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
+  <text x="420" y="66" text-anchor="middle" fill="#818cf8" font-size="11" font-weight="700" font-family="monospace">HumanMessage: "What is...?"</text>
+
+  <!-- append arrow #1 -->
+  <line x1="420" y1="78" x2="420" y2="94" stroke="#76767f" stroke-width="1.6" marker-end="url(#c13d-arr)"/>
+
+  <!-- messages[1] AIMessage tool_call — appended by agent -->
+  <rect x="222" y="96" width="396" height="34" rx="7" fill="#1a1a2e" stroke="#ef6461" stroke-width="2"/>
+  <text x="420" y="118" text-anchor="middle" fill="#ef6461" font-size="11" font-weight="700" font-family="monospace">AIMessage: tool_call(retriever, query)</text>
+
+  <!-- append arrow #2 -->
+  <line x1="420" y1="130" x2="420" y2="146" stroke="#76767f" stroke-width="1.6" marker-end="url(#c13d-arr)"/>
+
+  <!-- messages[2] ToolMessage — appended by retrieve -->
+  <rect x="222" y="148" width="396" height="34" rx="7" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2"/>
+  <text x="420" y="170" text-anchor="middle" fill="#a78bfa" font-size="11" font-weight="700" font-family="monospace">ToolMessage: [retrieved documents]</text>
+
+  <!-- append arrow #3 -->
+  <line x1="420" y1="182" x2="420" y2="198" stroke="#76767f" stroke-width="1.6" marker-end="url(#c13d-arr)"/>
+
+  <!-- messages[3] AIMessage answer — appended by generate -->
+  <rect x="222" y="200" width="396" height="34" rx="7" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2.5"/>
+  <text x="420" y="222" text-anchor="middle" fill="#4ecca3" font-size="11" font-weight="700" font-family="monospace">AIMessage: "The answer is..."</text>
+
+  <!-- Right column: index labels and what was added (x=626+) -->
+  <text x="628" y="66" fill="#76767f" font-size="9.5" font-family="monospace">messages[0]</text>
+  <text x="628" y="118" fill="#76767f" font-size="9.5" font-family="monospace">messages[1]</text>
+  <text x="628" y="170" fill="#76767f" font-size="9.5" font-family="monospace">messages[2]</text>
+  <text x="628" y="222" fill="#76767f" font-size="9.5" font-family="monospace">messages[3] = messages[-1]</text>
+
+  <!-- Bottom caption -->
+  <text x="420" y="278" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">messages[0] always = the original question</text>
+  <text x="420" y="296" text-anchor="middle" fill="#4ecca3" font-size="10" font-family="system-ui">messages[-1] always = the most recently appended message</text>
+</svg>
+
+<hr class="divider">
+
+<h2>Step 4 — The <code>agent</code> Node</h2>
+
+<p>The agent node is the brain. It binds the two tools to the LLM and invokes it on the current conversation. The model then <strong>either</strong> emits a tool call (it wants to retrieve) <strong>or</strong> returns a plain answer (it's done).</p>
+
+<pre>from langchain_groq import ChatGroq
+
+
+def agent(state):
+    """
+    Invokes the agent model to generate a response based on the current state.
+    Given the question, it will decide to retrieve using the retriever tool, or simply end.
+
+    Args:
+        state (messages): The current state
+
+    Returns:
+        dict: The updated state with the agent response appended to messages
+    """
+    print("---CALL AGENT---")
+    messages = state["messages"]
+    model = ChatGroq(model="llama-3.3-70b-versatile")
+    model = model.bind_tools(tools)
+    response = model.invoke(messages)
+    # We return a list, because this will get added to the existing list
+    return {"messages": [response]}</pre>
+
+<p>The crucial detail: this node does <strong>not</strong> decide what happens next. It just produces a message and appends it. When the model wants to retrieve, that message is an <code>AIMessage</code> with empty text and a populated <code>tool_calls</code> list:</p>
+
+<pre>AIMessage(
+    content='',
+    tool_calls=[{'name': 'retriever_vector_db_blog',
+                 'args': {'query': 'Langgraph'},
+                 'id': '8e9yyh72q',
+                 'type': 'tool_call'}],
+)</pre>
+
+<p>Notice the model <strong>chose the tool</strong> (<code>retriever_vector_db_blog</code>) and <strong>wrote the query itself</strong> (<code>"Langgraph"</code>). That's the whole decision. What turns that decision into action is the <code>tools_condition</code> edge — coming up in Step 8 — which reads this message and routes to the <code>retrieve</code> node.</p>
+
+<hr class="divider">
+
+<h2>Step 5 — The <code>grade_documents</code> Edge</h2>
+
+<p>This is the self-checking step that makes RAG "agentic." After retrieval, an LLM <strong>grades</strong> the chunks against the original question and returns a strict binary <code>yes</code> / <code>no</code>. The function's <strong>return value is a node name</strong> — <code>"generate"</code> or <code>"rewrite"</code> — which is exactly what makes it a conditional edge rather than a node.</p>
+
+<pre>from typing import Literal
+from langchain_core.prompts import PromptTemplate
+from pydantic import BaseModel, Field
+
+
+def grade_documents(state) -> Literal["generate", "rewrite"]:
+    """
+    Determines whether the retrieved documents are relevant to the question.
+
+    Args:
+        state (messages): The current state
+
+    Returns:
+        str: A decision for whether the documents are relevant or not
+    """
+    print("---CHECK RELEVANCE---")
+
+    # Data model — forces the LLM to answer with exactly 'yes' or 'no'
+    class grade(BaseModel):
+        """Binary score for relevance check."""
+        binary_score: str = Field(description="Relevance score 'yes' or 'no'")
+
+    model = ChatGroq(model="llama-3.3-70b-versatile")
+    llm_with_tool = model.with_structured_output(grade)
+
+    prompt = PromptTemplate(
+        template="""You are a grader assessing relevance of a retrieved document to a user question. \n
+        Here is the retrieved document: \n\n {context} \n\n
+        Here is the user question: {question} \n
+        If the document contains keyword(s) or semantic meaning related to the user question, grade it as relevant. \n
+        Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question.""",
+        input_variables=["context", "question"],
+    )
+
+    chain = prompt | llm_with_tool
+
+    messages = state["messages"]
+    last_message = messages[-1]      # the retrieved documents
+    question = messages[0].content   # the original question
+    docs = last_message.content
+
+    scored_result = chain.invoke({"question": question, "context": docs})
+    score = scored_result.binary_score
+
+    if score == "yes":
+        print("---DECISION: DOCS RELEVANT---")
+        return "generate"
+    else:
+        print("---DECISION: DOCS NOT RELEVANT---")
+        return "rewrite"</pre>
+
+<p>Three things are happening here, and each is worth a closer look.</p>
+
+<table>
+  <thead>
+    <tr><th>Mechanism</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>class grade(BaseModel)</code></td><td>A one-field Pydantic model. It's the <strong>schema</strong> for the answer we want — a single <code>binary_score</code> string.</td></tr>
+    <tr><td><code>with_structured_output(grade)</code></td><td>Forces the LLM to return an <em>instance of that model</em>, not free text. The output is guaranteed to have a <code>.binary_score</code> attribute.</td></tr>
+    <tr><td><code>messages[0]</code> &amp; <code>messages[-1]</code></td><td>The question (first message) and the retrieved docs (latest message) — pulled straight out of the growing state.</td></tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">Why force a binary score?</div>
+  <p>A conditional edge has to return one of a fixed set of node names. If we let the grader reply in prose ("These documents seem somewhat related…"), we'd have to parse that text and guess. <code>with_structured_output</code> removes the guesswork: the LLM is constrained to fill in the <code>grade</code> schema, so <code>score</code> is reliably <code>"yes"</code> or <code>"no"</code>, and the routing is a clean <code>if</code>. Structured output is how you turn an LLM's judgement into <strong>control flow</strong>.</p>
+</div>
+
+<hr class="divider">
+
+<h2>Step 6 — The <code>generate</code> Node</h2>
+
+<p>If the docs passed the grade, generation is ordinary RAG: feed the question and the retrieved context into a concise answer prompt and parse the result to a string. This is the classic <code>rlm/rag-prompt</code>, written inline so there are no hidden dependencies.</p>
+
+<pre>from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+
+
+def generate(state):
+    """
+    Generate answer
+
+    Args:
+        state (messages): The current state
+
+    Returns:
+        dict: The updated message
+    """
+    print("---GENERATE---")
+    messages = state["messages"]
+    question = messages[0].content
+    last_message = messages[-1]
+    docs = last_message.content
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("human",
+         "You are an assistant for question-answering tasks. "
+         "Use the following pieces of retrieved context to answer the question. "
+         "If you don't know the answer, just say that you don't know. "
+         "Use three sentences maximum and keep the answer concise.\n"
+         "Question: {question}\nContext: {context}\nAnswer:")
+    ])
+
+    llm = ChatGroq(model="llama-3.3-70b-versatile")
+    rag_chain = prompt | llm | StrOutputParser()
+
+    response = rag_chain.invoke({"context": docs, "question": question})
+    return {"messages": [response]}</pre>
+
+<p>The prompt does two protective things: it tells the model to <strong>say "I don't know"</strong> rather than invent an answer when the context is thin, and it <strong>caps the answer at three sentences</strong> so the output stays tight. Because <code>generate</code> flows straight to <code>END</code>, whatever it appends is the final answer.</p>
+
+<hr class="divider">
+
+<h2>Step 7 — The <code>rewrite</code> Node</h2>
+
+<p>If the docs failed the grade, we don't give up — we improve the <em>question</em>. The rewrite node asks the LLM to reason about the underlying intent and produce a sharper query, which is appended to the state and sent back to the agent for another attempt.</p>
+
+<pre>from langchain_core.messages import HumanMessage
+
+
+def rewrite(state):
+    """
+    Transform the query to produce a better question.
+
+    Args:
+        state (messages): The current state
+
+    Returns:
+        dict: The updated state with re-phrased question
+    """
+    print("---TRANSFORM QUERY---")
+    messages = state["messages"]
+    question = messages[0].content
+
+    msg = [HumanMessage(content=f""" \n
+    Look at the input and try to reason about the underlying semantic intent / meaning. \n
+    Here is the initial question:
+    \n ------- \n
+    {question}
+    \n ------- \n
+    Formulate an improved question: """)]
+
+    model = ChatGroq(model="llama-3.3-70b-versatile")
+    response = model.invoke(msg)
+    return {"messages": [response]}</pre>
+
+<p>This is the same "question re-writing" idea you'd find in query-expansion (<a href="#chapter8-1">Chapter 8.1</a>) — but here it's wired into a <strong>loop</strong>. The improved question becomes the newest message, the graph routes back to <code>agent</code>, and the agent gets a fresh shot at retrieving with a better query.</p>
+
+<hr class="divider">
+
+<h2>Step 8 — Assemble &amp; Compile the Graph</h2>
+
+<p>Now we wire the four nodes together with the two conditional edges. Two prebuilt LangGraph pieces do the heavy lifting — <code>ToolNode</code> (runs whichever retriever the agent asked for) and <code>tools_condition</code> (the built-in "tool call → tools, else → END" router from <a href="#chapter12">Chapter 12</a>).</p>
+
+<pre>from langgraph.graph import END, StateGraph, START
+from langgraph.prebuilt import ToolNode, tools_condition
+
+workflow = StateGraph(AgentState)
+
+# Nodes
+workflow.add_node("agent", agent)
+retrieve = ToolNode([retriever_tool, retriever_tool_langchain])
+workflow.add_node("retrieve", retrieve)
+workflow.add_node("rewrite", rewrite)
+workflow.add_node("generate", generate)
+
+# Start at the agent
+workflow.add_edge(START, "agent")
+
+# Decide whether to retrieve (tool call) or finish
+workflow.add_conditional_edges(
+    "agent",
+    tools_condition,
+    {
+        "tools": "retrieve",   # the agent asked for a retriever
+        END: END,              # the agent answered directly
+    },
+)
+
+# After retrieving, grade the docs: generate or rewrite
+workflow.add_conditional_edges("retrieve", grade_documents)
+
+workflow.add_edge("generate", END)
+workflow.add_edge("rewrite", "agent")   # the loop back-edge
+
+# Compile
+graph = workflow.compile()</pre>
+
+<p>Walk the edges one at a time — this is the entire control flow of the system:</p>
+
+<table>
+  <thead>
+    <tr><th>Edge</th><th>Type</th><th>Meaning</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>START → agent</code></td><td>Plain</td><td>Every run begins at the agent.</td></tr>
+    <tr><td><code>agent → {retrieve, END}</code></td><td>Conditional (<code>tools_condition</code>)</td><td>Tool call → <code>retrieve</code>; plain answer → <code>END</code>.</td></tr>
+    <tr><td><code>retrieve → {generate, rewrite}</code></td><td>Conditional (<code>grade_documents</code>)</td><td>Our grader's return value picks the next node.</td></tr>
+    <tr><td><code>generate → END</code></td><td>Plain</td><td>The answer is ready; stop.</td></tr>
+    <tr><td><code>rewrite → agent</code></td><td>Plain</td><td>The <strong>loop back-edge</strong> — a failed retrieval gets another attempt.</td></tr>
+  </tbody>
+</table>
+
+<p>Two edges carry all the intelligence. <code>add_conditional_edges("retrieve", grade_documents)</code> hands routing to our grader — its <code>"generate"</code> / <code>"rewrite"</code> return value <em>is</em> the next node, no mapping dict needed. And <code>workflow.add_edge("rewrite", "agent")</code> is the back-edge that closes the loop: a failed retrieval doesn't end the run, it sends an improved question back to the top. Remove that one line and you'd have a plain pipeline that gives up on the first bad fetch.</p>
+
+<div class="example-block">
+  <div class="label">Nodes vs edges — the rule of thumb</div>
+  <p>If a function <strong>changes the state</strong> (adds a message, retrieves docs), it's a <strong>node</strong>. If it only <strong>looks at the state and picks a direction</strong>, it's a <strong>conditional edge</strong>. <code>agent</code>, <code>retrieve</code>, <code>generate</code>, and <code>rewrite</code> are nodes; <code>tools_condition</code> and <code>grade_documents</code> are edges. Same Python functions — different job in the graph.</p>
+</div>
+
+<h3>The Compiled Graph</h3>
+
+<p>Call <code>graph.get_graph(xray=True).draw_mermaid_png()</code> after compiling and LangGraph renders the graph you just wired. Here it is built in the site's design system — every node, every edge, both loops:</p>
+
+<svg class="diagram-svg" viewBox="0 0 940 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The compiled Agentic RAG graph from 1-AgenticRAG notebook. __start__ flows into agent. A dashed left-side path shows agent going directly to __end__ when no tool call is needed. A dashed downward path shows agent going to the tools ToolNode when a tool call is emitted, which flows to retrieve. From retrieve a dashed diagonal goes to generate (relevant docs) and another dashed diagonal goes to rewrite (not relevant). Generate flows solid to __end__. Rewrite loops back to agent via a solid curved path on the right side.">
+  <defs>
+    <marker id="c13g-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+    </marker>
+    <marker id="c13g-arr-g" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#4ecca3"/>
+    </marker>
+    <marker id="c13g-arr-r" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#ef6461"/>
+    </marker>
+    <marker id="c13g-arr-y" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#fbbf24"/>
+    </marker>
+  </defs>
+
+  <!-- __start__ -->
+  <ellipse cx="470" cy="46" rx="60" ry="26" fill="#16161a" stroke="#818cf8" stroke-width="2"/>
+  <text x="470" y="50" text-anchor="middle" fill="#818cf8" font-size="11" font-weight="700" font-family="monospace">__start__</text>
+
+  <line x1="470" y1="72" x2="470" y2="106" stroke="#818cf8" stroke-width="2" marker-end="url(#c13g-arr)"/>
+
+  <!-- agent -->
+  <rect x="352" y="108" width="236" height="60" rx="12" fill="#1a1a2e" stroke="#ef6461" stroke-width="2.5"/>
+  <text x="470" y="134" text-anchor="middle" fill="#ececf1" font-size="15" font-weight="700" font-family="system-ui">agent</text>
+  <text x="470" y="153" text-anchor="middle" fill="#76767f" font-size="9.5" font-family="monospace">LLM · bind_tools(tools)</text>
+
+  <!-- agent → tools (dashed — tools_condition: tool call path) -->
+  <line x1="470" y1="168" x2="470" y2="200" stroke="#818cf8" stroke-width="1.8" stroke-dasharray="5,4" marker-end="url(#c13g-arr)"/>
+  <text x="490" y="188" fill="#76767f" font-size="9" font-style="italic" font-family="system-ui">tool call</text>
+
+  <!-- tools (ToolNode — dashed border signals "prebuilt") -->
+  <rect x="374" y="202" width="192" height="48" rx="8" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2" stroke-dasharray="6,3"/>
+  <text x="470" y="223" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="700" font-family="system-ui">tools</text>
+  <text x="470" y="240" text-anchor="middle" fill="#76767f" font-size="9" font-family="monospace">ToolNode([retriever_A, retriever_B])</text>
+
+  <!-- tools → retrieve (dashed) -->
+  <line x1="470" y1="250" x2="470" y2="280" stroke="#818cf8" stroke-width="1.8" stroke-dasharray="5,4" marker-end="url(#c13g-arr)"/>
+
+  <!-- retrieve -->
+  <rect x="352" y="282" width="236" height="60" rx="12" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2.5"/>
+  <text x="470" y="308" text-anchor="middle" fill="#a78bfa" font-size="15" font-weight="700" font-family="system-ui">retrieve</text>
+  <text x="470" y="326" text-anchor="middle" fill="#76767f" font-size="9.5" font-family="monospace">ToolNode runs the chosen retriever</text>
+
+  <!-- retrieve → generate (dashed diagonal — grade_documents returns "generate") -->
+  <line x1="405" y1="342" x2="248" y2="392" stroke="#4ecca3" stroke-width="1.8" stroke-dasharray="5,4" marker-end="url(#c13g-arr-g)"/>
+  <text x="294" y="374" text-anchor="middle" fill="#4ecca3" font-size="9.5" font-family="system-ui">✓ relevant</text>
+
+  <!-- retrieve → rewrite (dashed diagonal — grade_documents returns "rewrite") -->
+  <line x1="535" y1="342" x2="686" y2="392" stroke="#ef6461" stroke-width="1.8" stroke-dasharray="5,4" marker-end="url(#c13g-arr-r)"/>
+  <text x="638" y="374" text-anchor="middle" fill="#ef6461" font-size="9.5" font-family="system-ui">✗ not relevant</text>
+
+  <!-- generate -->
+  <rect x="140" y="394" width="216" height="58" rx="12" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2.5"/>
+  <text x="248" y="420" text-anchor="middle" fill="#4ecca3" font-size="15" font-weight="700" font-family="system-ui">generate</text>
+  <text x="248" y="438" text-anchor="middle" fill="#76767f" font-size="9.5" font-family="monospace">answer from docs</text>
+
+  <!-- rewrite -->
+  <rect x="578" y="394" width="212" height="58" rx="12" fill="#1a1a2e" stroke="#fbbf24" stroke-width="2.5"/>
+  <text x="684" y="420" text-anchor="middle" fill="#fbbf24" font-size="15" font-weight="700" font-family="system-ui">rewrite</text>
+  <text x="684" y="438" text-anchor="middle" fill="#76767f" font-size="9.5" font-family="monospace">improve the query</text>
+
+  <!-- generate → __end__ (solid) -->
+  <line x1="248" y1="452" x2="248" y2="478" stroke="#4ecca3" stroke-width="2" marker-end="url(#c13g-arr-g)"/>
+
+  <!-- __end__ -->
+  <ellipse cx="248" cy="504" rx="62" ry="28" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2.5"/>
+  <text x="248" y="508" text-anchor="middle" fill="#4ecca3" font-size="11" font-weight="700" font-family="monospace">__end__</text>
+
+  <!-- rewrite → agent (right-side loop: solid amber) -->
+  <path d="M 790,423 C 890,423 890,138 588,138" fill="none" stroke="#fbbf24" stroke-width="2" marker-end="url(#c13g-arr-y)"/>
+  <text x="892" y="286" text-anchor="middle" fill="#fbbf24" font-size="9.5" font-style="italic" font-family="system-ui" transform="rotate(-90,892,286)">rewrite → retry</text>
+
+  <!-- agent → __end__ direct (left-side dashed: tools_condition routes to END when no tool call) -->
+  <path d="M 352,138 C 60,138 60,504 186,504" fill="none" stroke="#818cf8" stroke-width="1.8" stroke-dasharray="5,4" marker-end="url(#c13g-arr)"/>
+  <text x="58" y="322" text-anchor="middle" fill="#76767f" font-size="9" font-style="italic" font-family="system-ui" transform="rotate(-90,58,322)">no tool call → END</text>
+</svg>
+
+<p>Read the two loops: the <strong>right-side amber path</strong> (<code>rewrite → agent</code>) is the self-correction loop — a bad retrieval gets another attempt. The <strong>left-side dashed path</strong> (<code>agent → __end__</code>) is the short-circuit — when the LLM decides no retrieval is needed it answers directly and skips the whole retrieve/grade pipeline. Both are encoded in a single edge call each; LangGraph draws them automatically from the compiled graph.</p>
+
+<p>The compiled <code>graph</code> is ready to run. In <a href="#chapter13-3">13.3</a> we invoke it on three very different questions and watch each path — straight through, routed to the other store, and stuck in the rewrite loop — light up.</p>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter13-1">← 1 · Knowledge Bases &amp; Retriever Tools</a>
+    <a href="#chapter13-3" class="next">3 · Running, the Loop &amp; Hardening →</a>
+</nav>

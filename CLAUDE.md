@@ -53,7 +53,7 @@ each entry may carry a `children` array of sub-chapters. The sidebar, homepage
 cards, and routing are all *generated* from it; registering a chapter there is
 the only wiring step. There is no central route table to update.
 
-`app.js` (loaded after `chapters.js`) is the whole engine, ~460 lines, no
+`app.js` (loaded after `chapters.js`) is the whole engine, ~480 lines, no
 dependencies except highlight.js from a CDN:
 
 - **Routing is hash-based.** `handleRoute()` runs on `DOMContentLoaded` and on
@@ -81,7 +81,7 @@ dependencies except highlight.js from a CDN:
 So the data flow is: **`chapters.js` (config) → `app.js` (router + post-process)
 → `chapters/*.html` (content fragments) → `style.css` (design system)**. Cache
 busting is manual: `index.html` references `style.css`/`chapters.js`/`app.js`
-with a shared `?v=NN` query (currently `v=22`) — bump it when you change any of
+with a shared `?v=NN` query (currently `v=26`) — bump it when you change any of
 those three.
 
 ---
@@ -100,10 +100,10 @@ Do these in order. Do **not** skip the reading steps.
      `import numpy as py`, misspellings, missing final flush, etc.).
    - **`.txt` / data files** → read them; they're often the sample data used in
      the code examples.
-3. **Read the most recent existing chapter** (latest is `chapters/chapter11.html`
-   and its `chapter11-1/-2/-3` sub-chapters) to match structure, tone, and
-   components exactly. Also check `chapters.js` for the current chapter list and
-   the previous chapter's `<nav class="page-nav">`.
+3. **Read the most recent existing chapter** (latest is `chapters/chapter13.html`;
+   the newest with sub-chapters is `chapter11` + `chapter11-1/-2/-3`) to match
+   structure, tone, and components exactly. Also check `chapters.js` for the
+   current chapter list and the previous chapter's `<nav class="page-nav">`.
 4. **Find the chapter number**: the source folders are numbered (e.g.
    `8-advanced-shanking-...`), but the **website chapter number is sequential**
    (next integer after the last entry in `chapters.js`). The folder number and
@@ -140,8 +140,8 @@ RAG_webpages/
 └── chapters/
     ├── chapter1.html, chapter1-1.html   # "-1" suffix = sub-chapter (child)
     ├── chapter2.html, chapter2-1.html
-    ├── chapter3.html … chapter8.html
-    └── chapter7-1.html … chapter8-3.html   # sub-chapters
+    ├── chapter3.html … chapter13.html   # chapters 3–13 (latest is chapter13)
+    └── chapter7-1.html … chapter11-3.html   # sub-chapters (7-*, 8-*, 11-*)
 ```
 
 - A chapter HTML file is a **fragment**: no `<html>/<head>/<body>`, just the
