@@ -155,5 +155,10 @@ const chapters = [
                 description: "Invoking the agent on three questions — a clean retrieval, routing to the second store, and an off-topic query that triggers the rewrite loop — tracing the messages step by step, and bounding the loop with attempt counters and fallbacks so it never runs away."
             }
         ]
+    },
+    {
+        id: "chapter14",
+        title: "Chapter 14: ReAct Agents — Reasoning, Acting & Observing",
+        description: "How create_react_agent turns an LLM into a self-directed Think → Act → Observe loop — wrapping retrievers, Wikipedia, and ArXiv as tools, building a reusable tool factory for any text knowledge base, and understanding when to use the prebuilt ReAct agent versus a custom Agentic RAG graph."
     }
 ];

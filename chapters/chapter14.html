@@ -1,0 +1,526 @@
+<h1>Chapter 14: ReAct Agents — Reasoning, Acting &amp; Observing</h1>
+<p style="color:#888; margin-bottom: 2rem;"><em>How <code>create_react_agent</code> turns an LLM into a self-directed loop that picks the right tool, reads the result, and reasons until it has enough to answer.</em></p>
+
+<h2>Overview</h2>
+<p>
+  ReAct (Reasoning + Acting) is an agent framework where an LLM alternates between two modes:
+  <strong>reasoning</strong> — decomposing the problem and deciding what to do next — and
+  <strong>acting</strong> — calling a tool and reading the result back.
+  Each observation can trigger another round of reasoning, creating a
+  <em>Think &rarr; Act &rarr; Observe</em> loop that runs until the model is confident enough to
+  produce a final answer.
+</p>
+<p>
+  LangGraph ships a prebuilt <code>create_react_agent</code> that encodes this loop for you.
+  You supply an LLM and a list of tools; the prebuilt handles the internal node structure,
+  <code>ToolNode</code> execution, and the routing logic that decides whether to call another
+  tool or stop and respond. The result is a compiled subgraph you can drop into a
+  <code>StateGraph</code> as a single node.
+</p>
+<p>
+  In this chapter we build two ReAct agents. The first uses a FAISS-backed retriever loaded
+  from a blog post plus a Wikipedia tool. The second introduces a reusable tool factory that
+  wires any text file into a retriever, then assembles a four-tool agent covering Wikipedia,
+  ArXiv, and two private knowledge bases.
+</p>
+
+<svg class="diagram-svg" viewBox="0 0 940 285" xmlns="http://www.w3.org/2000/svg"
+  role="img" aria-label="ReAct loop: a user query enters the agent, which cycles through Think, Act (tool call), and Observe. If more information is needed it loops back to Think; when satisfied it produces a Final Answer.">
+  <defs>
+    <marker id="c14-arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#818cf8"/>
+    </marker>
+    <marker id="c14-grn" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#4ecca3"/>
+    </marker>
+    <marker id="c14-amb" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#fbbf24"/>
+    </marker>
+    <marker id="c14-pur" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#a78bfa"/>
+    </marker>
+  </defs>
+
+  <!-- User Query -->
+  <rect x="15" y="110" width="120" height="55" rx="8" fill="#16161a" stroke="#4ecca3" stroke-width="1.5"/>
+  <text x="75" y="134" text-anchor="middle" fill="#4ecca3" font-family="system-ui" font-size="13" font-weight="600">User Query</text>
+  <text x="75" y="152" text-anchor="middle" fill="#76767f" font-family="system-ui" font-size="11">Question / Task</text>
+
+  <!-- Query -> Think -->
+  <line x1="135" y1="137" x2="181" y2="137" stroke="#818cf8" stroke-width="1.5" marker-end="url(#c14-arr)"/>
+
+  <!-- Think -->
+  <rect x="185" y="110" width="130" height="55" rx="8" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="250" y="134" text-anchor="middle" fill="#818cf8" font-family="system-ui" font-size="13" font-weight="600">1. Think</text>
+  <text x="250" y="152" text-anchor="middle" fill="#b4b4be" font-family="system-ui" font-size="11">Reason &amp; Plan</text>
+
+  <!-- Think -> Act -->
+  <line x1="315" y1="137" x2="361" y2="137" stroke="#818cf8" stroke-width="1.5" marker-end="url(#c14-arr)"/>
+
+  <!-- Act -->
+  <rect x="365" y="110" width="130" height="55" rx="8" fill="#1a1a2e" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="430" y="134" text-anchor="middle" fill="#a78bfa" font-family="system-ui" font-size="13" font-weight="600">2. Act</text>
+  <text x="430" y="152" text-anchor="middle" fill="#b4b4be" font-family="system-ui" font-size="11">Call a Tool</text>
+
+  <!-- Act -> Observe -->
+  <line x1="495" y1="137" x2="541" y2="137" stroke="#818cf8" stroke-width="1.5" marker-end="url(#c14-arr)"/>
+
+  <!-- Observe -->
+  <rect x="545" y="110" width="130" height="55" rx="8" fill="#1a1a2e" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="610" y="134" text-anchor="middle" fill="#a78bfa" font-family="system-ui" font-size="13" font-weight="600">3. Observe</text>
+  <text x="610" y="152" text-anchor="middle" fill="#b4b4be" font-family="system-ui" font-size="11">Read Result</text>
+
+  <!-- Observe -> Final Answer (green, conditional) -->
+  <line x1="675" y1="137" x2="723" y2="137" stroke="#4ecca3" stroke-width="1.5" marker-end="url(#c14-grn)"/>
+  <text x="699" y="127" text-anchor="middle" fill="#4ecca3" font-family="system-ui" font-size="10">done</text>
+
+  <!-- Final Answer -->
+  <rect x="727" y="110" width="155" height="55" rx="8" fill="#16161a" stroke="#4ecca3" stroke-width="1.5"/>
+  <text x="804" y="134" text-anchor="middle" fill="#4ecca3" font-family="system-ui" font-size="13" font-weight="600">Final Answer</text>
+  <text x="804" y="152" text-anchor="middle" fill="#76767f" font-family="system-ui" font-size="11">Grounded Response</text>
+
+  <!-- Loop: Observe -> Think (amber dashed, via top) -->
+  <path d="M 610 110 L 610 62 L 250 62 L 250 110" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#c14-amb)"/>
+  <text x="430" y="50" text-anchor="middle" fill="#fbbf24" font-family="system-ui" font-size="11">loop if more info needed</text>
+
+  <!-- Tools annotation below Act -->
+  <rect x="345" y="198" width="170" height="70" rx="6" fill="#16161a" stroke="#26262c" stroke-width="1"/>
+  <text x="430" y="216" text-anchor="middle" fill="#76767f" font-family="system-ui" font-size="10" font-style="italic">Available Tools</text>
+  <text x="430" y="233" text-anchor="middle" fill="#b4b4be" font-family="monospace" font-size="10">RAGRetriever</text>
+  <text x="430" y="248" text-anchor="middle" fill="#b4b4be" font-family="monospace" font-size="10">Wikipedia</text>
+  <text x="430" y="263" text-anchor="middle" fill="#b4b4be" font-family="monospace" font-size="10">ArXiv | Custom Docs</text>
+
+  <!-- Act -> tools connector -->
+  <line x1="430" y1="165" x2="430" y2="196" stroke="#a78bfa" stroke-width="1" stroke-dasharray="3,2" marker-end="url(#c14-pur)"/>
+</svg>
+
+<div class="example-block">
+  <div class="label">The Core Idea</div>
+  <p>
+    <strong>Think:</strong> the LLM reasons about the query and selects which tool to call.<br>
+    <strong>Act:</strong> the chosen tool (RAG retriever, Wikipedia, ArXiv&hellip;) is executed.<br>
+    <strong>Observe:</strong> the LLM reads the result and decides: answer now, or call another tool?<br>
+    This cycle repeats until the model produces a final response — or a configured limit is hit.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>What is ReAct?</h2>
+
+<h3>Reasoning + Acting</h3>
+<p>
+  ReAct was introduced in a 2022 paper by Yao et al. and has become the dominant paradigm
+  for tool-calling agents. The name is a portmanteau of <strong>Re</strong>asoning and
+  <strong>Act</strong>ing. Two limitations motivate it:
+</p>
+<p>
+  Chain-of-thought prompting improves reasoning but cannot pull in new information — the LLM
+  is limited to its training data. Tool-use alone (just calling an API) doesn't help if the
+  LLM can't interpret the result and decide whether to query again. ReAct combines both:
+  reason, act, read the result, reason again, and repeat.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Phase</th><th>What happens</th><th>Who drives it</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Think</strong></td>
+      <td>LLM reasons about the current state and selects the next tool and its input</td>
+      <td>LLM</td>
+    </tr>
+    <tr>
+      <td><strong>Act</strong></td>
+      <td>The selected tool executes — RAG retrieval, Wikipedia lookup, ArXiv search&hellip;</td>
+      <td>Tool (Python function)</td>
+    </tr>
+    <tr>
+      <td><strong>Observe</strong></td>
+      <td>The tool result is appended to the message history; LLM decides what to do next</td>
+      <td>LLM + LangGraph <code>ToolNode</code></td>
+    </tr>
+    <tr>
+      <td><strong>Final Answer</strong></td>
+      <td>LLM stops calling tools and returns a synthesised, grounded response</td>
+      <td>LLM</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Why it matters for RAG</h3>
+<p>
+  Vanilla RAG fires one retrieval, then generates. If the retrieval misses, the answer is
+  wrong and you never know. ReAct lets the agent retrieve, recognise the result is
+  insufficient, call a second source (e.g. Wikipedia), and synthesise both before answering.
+  This multi-hop, self-correcting behaviour is the core upgrade ReAct brings to RAG pipelines.
+</p>
+
+<hr class="divider">
+
+<h2>Part 1: A Basic ReAct Agent</h2>
+<p>
+  We start with a two-tool agent: a FAISS retriever built from Lilian Weng's LLM agents
+  blog post, and a Wikipedia tool. <code>create_react_agent</code> wires them into a
+  prebuilt Think &rarr; Act &rarr; Observe graph automatically.
+</p>
+
+<h3>Step 1 — Imports &amp; Building the RAG Retriever</h3>
+<pre>
+import os
+from langgraph.prebuilt import create_react_agent
+from langchain_classic.agents import Tool
+from langchain_classic.tools import WikipediaQueryRun
+from langchain_classic.utilities import WikipediaAPIWrapper
+from langchain_community.vectorstores import FAISS
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.document_loaders import WebBaseLoader
+from langchain_classic.text_splitter import RecursiveCharacterTextSplitter
+from langgraph.graph import END, StateGraph
+from typing import Annotated, TypedDict, Sequence
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+from langgraph.graph.message import add_messages
+
+# Load content from Lilian Weng's LLM-powered agents blog post
+docs = WebBaseLoader("https://lilianweng.github.io/posts/2023-06-23-agent/").load()
+splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+chunks = splitter.split_documents(docs)
+
+embedding = OpenAIEmbeddings()
+vectorstore = FAISS.from_documents(chunks, embedding)
+retriever = vectorstore.as_retriever()
+</pre>
+
+<h3>Step 2 — Wrapping the Retriever as a Tool</h3>
+<p>
+  LangGraph tools need three things: a <strong>name</strong>, a <strong>description</strong>
+  the LLM reads to decide when to use the tool, and a <strong>callable</strong> that
+  accepts a single string query and returns a string result.
+</p>
+<pre>
+def retriever_tool_func(query: str) -> str:
+    print("📚 Using RAGRetriever tool")
+    docs = retriever.invoke(query)
+    return "\n".join([doc.page_content for doc in docs])
+
+retriever_tool = Tool(
+    name="RAGRetriever",
+    description="Use this tool to fetch relevant knowledge base info",
+    func=retriever_tool_func
+)
+</pre>
+
+<h3>Step 3 — Adding Wikipedia</h3>
+<pre>
+wiki_tool = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper())
+</pre>
+
+<h3>Step 4 — Initialise the LLM</h3>
+<pre>
+from langchain.chat_models import init_chat_model
+
+os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
+llm = init_chat_model("openai:gpt-4o")
+</pre>
+
+<h3>Step 5 — Create the ReAct Agent</h3>
+<p>
+  <code>create_react_agent</code> from <code>langgraph.prebuilt</code> builds the entire
+  Think &rarr; Act &rarr; Observe subgraph from the model and tool list. It returns a
+  compiled <code>StateGraph</code> you can plug straight into an outer graph as a node.
+</p>
+<pre>
+tools = [retriever_tool, wiki_tool]
+react_node = create_react_agent(llm, tools)
+</pre>
+
+<div class="example-block">
+  <div class="label">Deprecation Note</div>
+  <p>
+    In LangGraph v1.0+, <code>create_react_agent</code> has moved to
+    <code>langchain.agents</code>. The import above still works in earlier versions
+    but produces a deprecation warning. Update to
+    <code>from langchain.agents import create_react_agent</code> for new projects.
+  </p>
+</div>
+
+<h3>Step 6 — Define State &amp; Build the Graph</h3>
+<p>
+  The outer graph is intentionally minimal: one node that runs the full ReAct loop,
+  then terminates. The internal Think &rarr; Act &rarr; Observe cycle is handled inside
+  <code>react_node</code>.
+</p>
+<pre>
+class AgentState(TypedDict):
+    messages: Annotated[Sequence[BaseMessage], add_messages]
+
+builder = StateGraph(AgentState)
+builder.add_node("react_agent", react_node)
+builder.set_entry_point("react_agent")
+builder.add_edge("react_agent", END)
+
+graph = builder.compile()
+</pre>
+
+<h3>Step 7 — Run the Agent</h3>
+<pre>
+user_query = "What is an agent loop and how does Wikipedia describe autonomous agents?"
+state = {"messages": [HumanMessage(content=user_query)]}
+result = graph.invoke(state)
+
+print("\n✅ Final Answer:\n", result["messages"][-1].content)
+</pre>
+
+<div class="example-block">
+  <div class="label">Output — Two-Source Synthesis</div>
+  <p><strong>Tools called:</strong> <code>RAGRetriever</code> &rarr; Wikipedia (internally by the LLM)</p>
+  <p>
+    <strong>Agent Loop (from RAG source):</strong> An iterative process where an LLM-backed
+    agent learns from its actions and improves over time, enabling autonomous scientific
+    discovery and planning — as seen in AutoGPT and BabyAGI.<br><br>
+    <strong>Autonomous Agents (Wikipedia):</strong> An AI system that perceives its environment,
+    takes actions to achieve goals independently, and can improve performance through machine
+    learning. Studied across cognitive science, ethics, and philosophy.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Part 2: A Generic Multi-Tool Agent</h2>
+<p>
+  The second half of the notebook introduces a reusable pattern: a factory function that
+  turns <em>any</em> text file into a retriever tool in one call. We then assemble a
+  four-tool agent covering Wikipedia, ArXiv, and two internal knowledge bases.
+</p>
+
+<h3>A Reusable Retriever Factory</h3>
+<p>
+  Instead of hand-writing a retriever closure for each knowledge base,
+  <code>make_retriever_tool_from_text</code> takes a file path, name, and description
+  and returns a ready-to-use <code>Tool</code>. The closure captures the retriever,
+  so each call produces an independent tool with its own vector store.
+</p>
+<pre>
+from langchain_community.document_loaders import ArxivLoader, TextLoader
+
+def make_retriever_tool_from_text(file, name, desc):
+    docs = TextLoader(file, encoding="utf-8").load()
+    chunks = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50).split_documents(docs)
+    vs = FAISS.from_documents(chunks, OpenAIEmbeddings())
+    retriever = vs.as_retriever()
+
+    def tool_func(query: str) -> str:
+        print(f"📚 Using tool: {name}")
+        results = retriever.invoke(query)
+        return "\n\n".join(doc.page_content for doc in results)
+
+    return Tool(name=name, description=desc, func=tool_func)
+</pre>
+
+<h3>Wikipedia &amp; ArXiv Tools</h3>
+<p>
+  In Part 2 the Wikipedia tool is wrapped in a <code>Tool</code> object (rather than
+  passed raw as <code>WikipediaQueryRun</code>) to ensure full compatibility with
+  <code>ToolNode</code>. The ArXiv tool fetches recent academic papers via
+  <code>ArxivLoader</code> and truncates results to keep context manageable.
+</p>
+<pre>
+# Wikipedia — wrapped for ToolNode compatibility
+wiki_tool = Tool(
+    name="Wikipedia",
+    description="Use this tool to fetch general world knowledge from Wikipedia.",
+    func=WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper()).run
+)
+
+# ArXiv — fetch recent academic papers
+def arxiv_search(query: str) -> str:
+    print("🧪 Searching ArXiv...")
+    results = ArxivLoader(query).load()
+    return "\n\n".join(doc.page_content[:1000] for doc in results[:2]) or "No papers found."
+
+arxiv_tool = Tool(
+    name="ArxivSearch",
+    description="Use this tool to fetch recent academic papers on technical topics.",
+    func=arxiv_search
+)
+</pre>
+
+<h3>Internal Document Retrievers</h3>
+<p>
+  Two private text files are turned into retriever tools with a single factory call each.
+  The description is the LLM's only signal for when to use a tool — a precise description
+  routes queries to the right knowledge base without any explicit routing code.
+</p>
+<pre>
+internal_tool_1 = make_retriever_tool_from_text(
+    "sample_docs.txt",
+    "InternalTechDocs",
+    "Search internal tech documents for proprietary architecture and methods."
+)
+
+internal_tool_2 = make_retriever_tool_from_text(
+    "research_notes.txt",
+    "InternalResearchNotes",
+    "Search internal research notes for experimental results and agent designs."
+)
+</pre>
+
+<h3>Assembling the Multi-Tool Agent</h3>
+<p>
+  Recreate <code>react_node</code> with all four tools, then build the outer graph.
+  The outer graph structure is identical to Part 1 — one node, one edge to
+  <code>END</code>. Swapping in more tools requires only changing what you pass to
+  <code>create_react_agent</code>.
+</p>
+<pre>
+# Re-create react_node with the full four-tool set
+tools = [wiki_tool, arxiv_tool, internal_tool_1, internal_tool_2]
+react_node = create_react_agent(llm, tools)
+
+class AgentState(TypedDict):
+    messages: Annotated[Sequence[BaseMessage], add_messages]
+
+builder = StateGraph(AgentState)
+builder.add_node("agentic_rag", react_node)
+builder.set_entry_point("agentic_rag")
+builder.add_edge("agentic_rag", END)
+
+graph = builder.compile()
+</pre>
+
+<h3>Running the Multi-Tool Agent</h3>
+<pre>
+query = "What do our internal research notes say about transformer variants, and what does ArXiv suggest recently?"
+
+state = {"messages": [HumanMessage(content=query)]}
+result = graph.invoke(state)
+
+print("\n✅ Final Answer:\n", result["messages"][-1].content)
+</pre>
+
+<div class="example-block">
+  <div class="label">Output — Multi-Tool Synthesis</div>
+  <p><strong>Tools called:</strong> <code>InternalResearchNotes</code> &rarr; <code>ArxivSearch</code></p>
+  <p>
+    <strong>From internal research notes:</strong> Recent transformer variants explore
+    external tool API integration (TALM, Toolformer). Sensory, short-term, and long-term
+    memory concepts are central for tasks like HotpotQA and FEVER.<br><br>
+    <strong>From ArXiv:</strong> Transformers continue to evolve across domains. Vision
+    Transformers (ViTs) replace CNN-style patch processing. The 2017 "Attention Is All
+    You Need" paper laid the groundwork for cross-domain applications including image
+    recognition and autonomous driving.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Tool Design Requirements</h2>
+<p>
+  Every LangGraph-compatible tool must satisfy three requirements.
+  The description is the most important: the LLM never sees the tool's source code —
+  it decides when to call a tool <em>solely</em> based on the description string.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Requirement</th><th>Why it matters</th><th>Example</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>name</strong></td>
+      <td>Identifies the tool in the message history and in structured tool-call responses</td>
+      <td><code>RAGRetriever</code>, <code>Wikipedia</code>, <code>ArxivSearch</code></td>
+    </tr>
+    <tr>
+      <td><strong>description</strong></td>
+      <td>The LLM reads this to decide whether a given query should go to this tool</td>
+      <td><code>"Use this tool to fetch recent academic papers on technical topics."</code></td>
+    </tr>
+    <tr>
+      <td><strong>func</strong></td>
+      <td>A callable accepting a single <code>str</code> query and returning a <code>str</code> result</td>
+      <td><code>retriever_tool_func</code>, <code>arxiv_search</code>, <code>tool_func</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">Tip: Description quality determines routing accuracy</div>
+  <p>
+    If two tools have vague descriptions the LLM will pick arbitrarily — or call both
+    when one would do. Write descriptions that state precisely <em>what knowledge</em>
+    lives in each tool.<br><br>
+    <strong>Vague:</strong> <code>"Search documents."</code><br>
+    <strong>Precise:</strong> <code>"Search internal research notes for experimental results and agent designs."</code>
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>ReAct vs. Custom Agentic RAG</h2>
+<p>
+  Chapter 13 built a custom Agentic RAG graph with explicit relevance grading and a
+  controlled rewrite loop. <code>create_react_agent</code> is a higher-level abstraction —
+  faster to prototype but less controllable. Here is when to reach for each.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Aspect</th><th>create_react_agent (this chapter)</th><th>Custom Agentic RAG (Ch. 13)</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Setup complexity</td>
+      <td>Minimal — one function call</td>
+      <td>Higher — define nodes, edges, grader</td>
+    </tr>
+    <tr>
+      <td>Loop control</td>
+      <td>Automatic (prebuilt Think/Act/Observe)</td>
+      <td>Manual — you control every edge and condition</td>
+    </tr>
+    <tr>
+      <td>Relevance grading</td>
+      <td>None — raw tool output goes straight to LLM</td>
+      <td>Explicit structured-output grader per retrieved doc</td>
+    </tr>
+    <tr>
+      <td>Rewrite on bad retrieval</td>
+      <td>Not built-in</td>
+      <td>Yes — query rewrite node feeds back into retrieval</td>
+    </tr>
+    <tr>
+      <td>Multi-tool routing</td>
+      <td>LLM decides solely from tool descriptions</td>
+      <td>LLM routes via descriptions + your custom graph logic</td>
+    </tr>
+    <tr>
+      <td>Loop safety</td>
+      <td>Bounded by LangGraph's recursion limit</td>
+      <td>You control attempt counters and fallback branches</td>
+    </tr>
+    <tr>
+      <td>Best for</td>
+      <td>Rapid prototyping, multi-source search agents</td>
+      <td>Production RAG with quality gates and controlled recovery</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+<div class="example-block">
+  <div class="label">Four Things to Remember</div>
+  <p><strong>1.</strong> ReAct = Think &rarr; Act &rarr; Observe, repeated until the model is satisfied. <code>create_react_agent</code> encodes this loop — supply an LLM and a list of tools and the subgraph is built for you.</p>
+  <p><strong>2.</strong> Every tool needs three things: a <strong>name</strong>, a <strong>description</strong> the LLM reasons from, and a <strong>callable</strong> that accepts and returns a string. The description is the routing mechanism — write it precisely.</p>
+  <p><strong>3.</strong> <code>make_retriever_tool_from_text</code> is a reusable factory: load a file, chunk it, embed it, wrap the retriever in a <code>Tool</code>. One pattern that scales to any number of private knowledge bases without repeated boilerplate.</p>
+  <p><strong>4.</strong> Use <code>create_react_agent</code> for speed and multi-source breadth; use a custom graph (Chapter 13) when you need explicit relevance grading, controlled rewrite loops, or fine-grained quality gates before generation.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter13">&larr; Chapter 13: Agentic RAG &mdash; Retrieval as a Decision</a>
+    <span></span>
+</nav>
