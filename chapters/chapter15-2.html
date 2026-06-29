@@ -1,0 +1,319 @@
+<h1>Self-Reflection</h1>
+<p style="color:#888; margin-bottom: 2rem;"><em>The LLM grades its own answer: &ldquo;Is this clear, complete, and accurate?&rdquo; If not, the graph loops back and tries again.</em></p>
+
+<h2>Overview</h2>
+<p>
+  In <a href="#chapter15-1">15.1</a>, the graph ran in a straight line: plan, retrieve, answer,
+  done. There was no check on whether the answer was actually good. In production, that's
+  dangerous &mdash; the LLM will confidently answer from incomplete or irrelevant context and
+  never tell you it guessed.
+</p>
+<p>
+  <strong>Self-reflection</strong> adds a quality gate. After generating an answer, a second LLM
+  call acts as a critic: &ldquo;Is this complete and correct?&rdquo; If the verdict is
+  <strong>NO</strong>, the graph loops back to retrieval and tries again. If the verdict is
+  <strong>YES</strong> (or we've hit the attempt limit), the graph exits. This is the chapter's
+  first <strong>conditional edge</strong> &mdash; the mechanism that turns a pipeline into a
+  loop.
+</p>
+
+<div class="example-block">
+  <div class="label">Where this fits</div>
+  <p>
+    From <code>4-Selfreflection.ipynb</code>, building block <strong>2 of 5</strong>. The
+    retriever and responder from basic RAG are unchanged; we add a <code>reflector</code> node
+    and a routing function that decides whether to exit or retry. Next in
+    <a href="#chapter15-3">15.3</a>: splitting multi-topic questions into sub-queries.
+  </p>
+</div>
+
+<svg class="diagram-svg" viewBox="0 0 940 372" xmlns="http://www.w3.org/2000/svg"
+  role="img" aria-label="Self-Reflection RAG graph, top to bottom: a Question enters the retriever, then the responder generates an answer, then the reflector judges it. If YES or the attempt limit is reached the graph goes to done and ends; if NO it loops back up to the retriever to try again.">
+  <defs>
+    <marker id="c15d3-arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#818cf8"/></marker>
+    <marker id="c15d3-grn" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4ecca3"/></marker>
+    <marker id="c15d3-amb" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#fbbf24"/></marker>
+    <marker id="c15d3-red" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#ef6461"/></marker>
+  </defs>
+  <text x="470" y="16" text-anchor="middle" fill="#4ecca3" font-family="system-ui" font-size="12" font-weight="600">Question</text>
+  <line x1="470" y1="22" x2="470" y2="44" stroke="#818cf8" stroke-width="1.5" marker-end="url(#c15d3-arr)"/>
+  <rect x="360" y="46" width="220" height="50" rx="8" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="470" y="76" text-anchor="middle" fill="#818cf8" font-family="system-ui" font-size="14" font-weight="600">retriever</text>
+  <line x1="470" y1="96" x2="470" y2="126" stroke="#818cf8" stroke-width="1.5" marker-end="url(#c15d3-arr)"/>
+  <rect x="360" y="128" width="220" height="54" rx="8" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="470" y="152" text-anchor="middle" fill="#818cf8" font-family="system-ui" font-size="14" font-weight="600">responder</text>
+  <text x="470" y="171" text-anchor="middle" fill="#b4b4be" font-family="system-ui" font-size="11">generate answer (attempts + 1)</text>
+  <line x1="470" y1="182" x2="470" y2="212" stroke="#818cf8" stroke-width="1.5" marker-end="url(#c15d3-arr)"/>
+  <rect x="360" y="214" width="220" height="56" rx="8" fill="#1a1a2e" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="470" y="238" text-anchor="middle" fill="#fbbf24" font-family="system-ui" font-size="14" font-weight="600">reflector</text>
+  <text x="470" y="257" text-anchor="middle" fill="#b4b4be" font-family="system-ui" font-size="11">complete &amp; correct?  YES / NO</text>
+  <line x1="470" y1="270" x2="470" y2="300" stroke="#4ecca3" stroke-width="1.5" marker-end="url(#c15d3-grn)"/>
+  <text x="556" y="288" text-anchor="middle" fill="#4ecca3" font-family="system-ui" font-size="10">YES / attempts &ge; 2</text>
+  <rect x="360" y="302" width="220" height="46" rx="8" fill="#16161a" stroke="#4ecca3" stroke-width="1.5"/>
+  <text x="470" y="330" text-anchor="middle" fill="#4ecca3" font-family="monospace" font-size="13" font-weight="600">done &rarr; END</text>
+  <path d="M 580 242 L 770 242 L 770 71 L 584 71" fill="none" stroke="#ef6461" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#c15d3-red)"/>
+  <text x="784" y="160" fill="#ef6461" font-family="system-ui" font-size="11" transform="rotate(-90 784 160)">NO &rarr; retrieve again</text>
+</svg>
+
+<p>
+  Follow the red dashed arrow on the right: when the reflector says NO, control jumps back to
+  the retriever. The same question is searched again (we haven't changed the query yet &mdash;
+  that improvement comes in <a href="#chapter15-4">15.4</a>). The green path down to
+  <code>done</code> fires when the answer passes <em>or</em> we've already tried twice.
+</p>
+
+<hr class="divider">
+
+<h2>Step 1 &mdash; Setup &amp; State</h2>
+<p>
+  The knowledge base is <code>sample_docs.txt</code> &mdash; notes on agent loops and transformer
+  systems. The ingestion is the same one-liner from earlier chapters. What's new is the state:
+  three extra fields that track the reflection verdict and how many times we've tried.
+</p>
+
+<h3>Imports, LLM, and vector store</h3>
+<pre>
+import os
+from typing import List
+from pydantic import BaseModel
+from langchain_openai import OpenAIEmbeddings
+from langchain_classic.schema import Document
+from langchain_classic.text_splitter import RecursiveCharacterTextSplitter
+from langchain_classic.vectorstores import FAISS
+from langchain_community.document_loaders import TextLoader
+from langchain.chat_models import init_chat_model
+from langgraph.graph import StateGraph, END
+
+llm = init_chat_model("openai:gpt-4o")
+
+docs = TextLoader("sample_docs.txt").load()
+chunks = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50).split_documents(docs)
+vectorstore = FAISS.from_documents(chunks, OpenAIEmbeddings())
+retriever = vectorstore.as_retriever()
+</pre>
+
+<h3>The state schema</h3>
+<p>
+  Everything the graph needs to carry between nodes lives here. The three new fields are what
+  make self-reflection possible.
+</p>
+<pre>
+class RAGReflectionState(BaseModel):
+    question: str
+    retrieved_docs: List[Document] = []
+    answer: str = ""
+    reflection: str = ""
+    revised: bool = False
+    attempts: int = 0
+</pre>
+
+<table>
+  <thead>
+    <tr><th>Field</th><th>Set by</th><th>Purpose</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>reflection</code></td><td><code>reflect_on_answer</code></td><td>The critic's full text response (YES/NO + explanation).</td></tr>
+    <tr><td><code>revised</code></td><td><code>reflect_on_answer</code></td><td><code>True</code> when the answer failed the check &mdash; signals a retry is needed.</td></tr>
+    <tr><td><code>attempts</code></td><td><code>generate_answer</code></td><td>Incremented each time the responder runs. Caps the loop at 2 tries.</td></tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">Watch the naming</div>
+  <p>
+    <code>revised</code> sounds like &ldquo;already fixed,&rdquo; but it actually means
+    <strong>&ldquo;needs revision&rdquo;</strong> &mdash; it's <code>True</code> when the
+    reflector says NO. The conditional edge checks <code>not s.revised</code> to decide whether
+    to exit. Read the field as &ldquo;retry needed&rdquo; and the logic clicks.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Step 2 &mdash; The Nodes</h2>
+<p>
+  Four node functions. The first two (retrieve, generate) are familiar from basic RAG. The third
+  (reflect) is the new critic. The fourth (finalize) is a no-op exit node &mdash; LangGraph
+  needs a named destination for the conditional edge to route to.
+</p>
+
+<h3>Node 1 &mdash; <code>retrieve_docs</code></h3>
+<p>Unchanged from basic RAG. Fetch top-k chunks for the question.</p>
+<pre>
+def retrieve_docs(state: RAGReflectionState) -> RAGReflectionState:
+    docs = retriever.invoke(state.question)
+    return state.model_copy(update={"retrieved_docs": docs})
+</pre>
+
+<h3>Node 2 &mdash; <code>generate_answer</code></h3>
+<p>
+  Format the retrieved context into a prompt, call the LLM, and store the answer. Critically,
+  this node also increments <code>attempts</code> &mdash; that's how the loop knows when to
+  stop even if the reflector keeps saying NO.
+</p>
+<pre>
+def generate_answer(state: RAGReflectionState) -> RAGReflectionState:
+    context = "\n\n".join([doc.page_content for doc in state.retrieved_docs])
+    prompt = f"""
+Use the following context to answer the question:
+
+Context:
+{context}
+
+Question:
+{state.question}
+"""
+    answer = llm.invoke(prompt).content.strip()
+    return state.model_copy(update={"answer": answer, "attempts": state.attempts + 1})
+</pre>
+
+<h3>Node 3 &mdash; <code>reflect_on_answer</code> (the critic)</h3>
+<p>
+  A <strong>separate LLM call</strong> that reads the question and the draft answer, then
+  returns a structured verdict. We ask the model to respond in a fixed format
+  (<code>Reflection: YES</code> or <code>Reflection: NO</code>) so we can parse it reliably.
+  If the response contains <code>reflection: yes</code>, the answer passed; otherwise we set
+  <code>revised = True</code> to trigger a retry.
+</p>
+<pre>
+def reflect_on_answer(state: RAGReflectionState) -> RAGReflectionState:
+    prompt = f"""
+Reflect on the following answer to see if it fully addresses the question.
+State YES if it is complete and correct, or NO with an explanation.
+
+Question: {state.question}
+
+Answer: {state.answer}
+
+Respond like:
+Reflection: YES or NO
+Explanation: ...
+"""
+    result = llm.invoke(prompt).content
+    is_ok = "reflection: yes" in result.lower()
+    return state.model_copy(update={"reflection": result, "revised": not is_ok})
+</pre>
+
+<h3>Node 4 &mdash; <code>finalize</code></h3>
+<p>
+  Returns the state unchanged. It exists only as a named exit node the conditional edge can
+  route to before hitting <code>END</code>.
+</p>
+<pre>
+def finalize(state: RAGReflectionState) -> RAGReflectionState:
+    return state
+</pre>
+
+<hr class="divider">
+
+<h2>Step 3 &mdash; The Conditional Edge</h2>
+<p>
+  This is the most important piece of the sub-chapter. After the reflector runs, a small
+  function inspects the state and returns the <em>name</em> of the next node. LangGraph calls
+  this a <strong>conditional edge</strong> &mdash; it's how you turn a straight pipeline into a
+  loop without writing any explicit <code>while</code> logic.
+</p>
+
+<h3>Wiring the graph</h3>
+<pre>
+builder = StateGraph(RAGReflectionState)
+
+builder.add_node("retriever", retrieve_docs)
+builder.add_node("responder", generate_answer)
+builder.add_node("reflector", reflect_on_answer)
+builder.add_node("done", finalize)
+
+builder.set_entry_point("retriever")
+builder.add_edge("retriever", "responder")
+builder.add_edge("responder", "reflector")
+</pre>
+
+<p>
+  So far, still a straight line: retriever &rarr; responder &rarr; reflector. The conditional
+  edge after reflector is where the loop appears.
+</p>
+
+<h3>The routing function</h3>
+<pre>
+builder.add_conditional_edges(
+    "reflector",
+    lambda s: "done" if not s.revised or s.attempts >= 2 else "retriever"
+)
+
+builder.add_edge("done", END)
+graph = builder.compile()
+</pre>
+
+<p>
+  Read the lambda carefully. It returns <code>"done"</code> (exit) when <em>either</em>:
+</p>
+<ul>
+  <li><code>not s.revised</code> &mdash; the reflector said YES, answer is good enough.</li>
+  <li><code>s.attempts >= 2</code> &mdash; we've tried twice and must stop regardless.</li>
+</ul>
+<p>
+  Otherwise it returns <code>"retriever"</code>, and the graph loops back to fetch documents
+  again. The <code>attempts >= 2</code> guard is non-negotiable in production &mdash; without
+  it, a stubborn critic can spin forever.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Reflector says</th><th>Attempts</th><th>Next node</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>YES</td><td>1</td><td><code>done</code> &rarr; END</td></tr>
+    <tr><td>NO</td><td>1</td><td><code>retriever</code> (retry)</td></tr>
+    <tr><td>NO</td><td>2</td><td><code>done</code> &rarr; END (cap hit)</td></tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Step 4 &mdash; Run It</h2>
+<p>
+  Ask about transformer variants in production. On a well-indexed knowledge base, the first
+  answer is usually good enough and the reflector passes it on the first try.
+</p>
+<pre>
+user_query = "What are the transformer variants in production deployments?"
+init_state = RAGReflectionState(question=user_query)
+result = graph.invoke(init_state)
+
+print("\n🧠 Final Answer:\n", result["answer"])
+print("\n🔁 Reflection Log:\n", result["reflection"])
+print("🔄 Total Attempts:", result["attempts"])
+</pre>
+
+<p>
+  Print all three outputs. The reflection log shows you <em>why</em> the critic accepted or
+  rejected the answer &mdash; useful when debugging a graph that keeps looping.
+</p>
+
+<div class="example-block">
+  <div class="label">Output &mdash; Self-Graded Answer</div>
+  <p>
+    <strong>Final Answer:</strong> Production transformer variants include <strong>BERT</strong>
+    (classification, QA), the <strong>GPT</strong> series (generation, chat),
+    <strong>RoBERTa</strong>, <strong>DistilBERT</strong> (smaller/faster),
+    <strong>ALBERT</strong> (parameter-efficient), <strong>XLNet</strong>,
+    <strong>T5</strong> (text-to-text), and open-source <strong>GPT-Neo / GPT-J</strong>.
+  </p>
+  <p><strong>Reflection:</strong> <code>Reflection: YES</code> &mdash; the answer is complete and accurate. <strong>Total Attempts:</strong> 1 (no retry needed).</p>
+</div>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+<div class="example-block">
+  <div class="label">Remember These Three</div>
+  <p><strong>1.</strong> A <code>reflector</code> node is a second LLM call that grades the first answer before the graph exits.</p>
+  <p><strong>2.</strong> <code>add_conditional_edges</code> is what makes the graph autonomous &mdash; a function reads the state and returns the name of the next node.</p>
+  <p><strong>3.</strong> Always cap retries with an <code>attempts</code> counter. Without it, a stubborn critic can loop forever.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter15-1">&larr; 1 &middot; Chain-of-Thought RAG</a>
+    <a href="#chapter15-3" class="next">3 &middot; Query Planning &amp; Decomposition &rarr;</a>
+</nav>

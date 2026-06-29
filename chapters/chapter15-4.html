@@ -1,0 +1,310 @@
+<h1>Iterative Retrieval</h1>
+<p style="color:#888; margin-bottom: 2rem;"><em>Don't settle for the first batch of documents. Reflect on the answer, rewrite the query, and retrieve again until the context is good enough.</em></p>
+
+<h2>Overview</h2>
+<p>
+  In <a href="#chapter15-2">15.2</a>, the graph looped back to retrieval when the answer failed
+  the reflector's check &mdash; but it searched with the <strong>same query</strong> every time.
+  If the original question was vague or poorly phrased, retrying with identical words won't help.
+  You need to <strong>rewrite the query</strong> before searching again.
+</p>
+<p>
+  <strong>Iterative Retrieval</strong> adds a <code>refine</code> node that sits between
+  reflection and the next retrieval pass. When the reflector says the answer is incomplete, the
+  refine node asks the LLM for a better search query, stores it in
+  <code>refined_question</code>, and the retriever uses that on the next pass. Combined with the
+  self-reflection pattern from 15.2, you get a graph that thinks about its answer <em>and</em>
+  improves its search strategy.
+</p>
+
+<div class="example-block">
+  <div class="label">Where this fits</div>
+  <p>
+    From <code>6-iterativeretrieval.ipynb</code>, building block <strong>4 of 5</strong>.
+    Next in <a href="#chapter15-5">15.5</a>: pulling from four different sources and synthesizing
+    one answer.
+  </p>
+</div>
+
+<div class="example-block">
+  <div class="label">Why Use It?</div>
+  <p>
+    In standard RAG, a single retrieval is done and the LLM answers from it &mdash; if the
+    documents were incomplete or irrelevant, the answer fails silently. In iterative RAG, the
+    agent reflects on the retrieved content and the answer it produced; if it is unsure, it
+    refines its search like a human researcher would, then retrieves with the improved query.
+  </p>
+</div>
+
+<svg class="diagram-svg" viewBox="0 0 940 360" xmlns="http://www.w3.org/2000/svg"
+  role="img" aria-label="Iterative Retrieval graph, top to bottom: a Question enters retrieve, then answer, then reflect. If the answer is sufficient or the attempt limit is reached it ends; otherwise it goes to a refine node on the right that rewrites the query and loops back up to retrieve.">
+  <defs>
+    <marker id="c15d5-arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#818cf8"/></marker>
+    <marker id="c15d5-grn" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4ecca3"/></marker>
+    <marker id="c15d5-amb" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#fbbf24"/></marker>
+    <marker id="c15d5-red" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#ef6461"/></marker>
+  </defs>
+  <text x="470" y="16" text-anchor="middle" fill="#4ecca3" font-family="system-ui" font-size="12" font-weight="600">Question</text>
+  <line x1="470" y1="22" x2="470" y2="44" stroke="#818cf8" stroke-width="1.5" marker-end="url(#c15d5-arr)"/>
+  <rect x="360" y="46" width="220" height="50" rx="8" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="470" y="70" text-anchor="middle" fill="#818cf8" font-family="system-ui" font-size="14" font-weight="600">retrieve</text>
+  <text x="470" y="88" text-anchor="middle" fill="#b4b4be" font-family="system-ui" font-size="10">refined query or original</text>
+  <line x1="470" y1="96" x2="470" y2="126" stroke="#818cf8" stroke-width="1.5" marker-end="url(#c15d5-arr)"/>
+  <rect x="360" y="128" width="220" height="50" rx="8" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="470" y="152" text-anchor="middle" fill="#818cf8" font-family="system-ui" font-size="14" font-weight="600">answer</text>
+  <text x="470" y="170" text-anchor="middle" fill="#b4b4be" font-family="system-ui" font-size="10">generate (attempts + 1)</text>
+  <line x1="470" y1="178" x2="470" y2="206" stroke="#818cf8" stroke-width="1.5" marker-end="url(#c15d5-arr)"/>
+  <rect x="360" y="208" width="220" height="54" rx="8" fill="#1a1a2e" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="470" y="232" text-anchor="middle" fill="#fbbf24" font-family="system-ui" font-size="14" font-weight="600">reflect</text>
+  <text x="470" y="251" text-anchor="middle" fill="#b4b4be" font-family="system-ui" font-size="11">sufficient?  YES / NO</text>
+  <line x1="470" y1="262" x2="470" y2="292" stroke="#4ecca3" stroke-width="1.5" marker-end="url(#c15d5-grn)"/>
+  <text x="556" y="280" text-anchor="middle" fill="#4ecca3" font-family="system-ui" font-size="10">YES / attempts &ge; 2</text>
+  <rect x="360" y="294" width="220" height="46" rx="8" fill="#16161a" stroke="#4ecca3" stroke-width="1.5"/>
+  <text x="470" y="322" text-anchor="middle" fill="#4ecca3" font-family="monospace" font-size="14" font-weight="600">END</text>
+  <rect x="655" y="120" width="210" height="56" rx="8" fill="#1a1a2e" stroke="#ef6461" stroke-width="1.5"/>
+  <text x="760" y="144" text-anchor="middle" fill="#ef6461" font-family="system-ui" font-size="14" font-weight="600">refine</text>
+  <text x="760" y="163" text-anchor="middle" fill="#b4b4be" font-family="system-ui" font-size="11">rewrite the query</text>
+  <path d="M 580 235 L 760 235 L 760 178" fill="none" stroke="#ef6461" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#c15d5-red)"/>
+  <text x="640" y="227" text-anchor="middle" fill="#ef6461" font-family="system-ui" font-size="10">NO</text>
+  <path d="M 760 120 L 760 71 L 584 71" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#c15d5-amb)"/>
+  <text x="690" y="63" text-anchor="middle" fill="#fbbf24" font-family="system-ui" font-size="10">retry with refined query</text>
+</svg>
+
+<p>
+  Trace the loop on the right side of the diagram: reflect says NO &rarr; refine rewrites the
+  query &rarr; retrieve searches again with the new wording &rarr; answer &rarr; reflect again.
+  The amber arrow back up to retrieve is the iterative part. The green path down to END fires
+  when the answer is good enough or we've hit the attempt cap.
+</p>
+
+<hr class="divider">
+
+<h2>Step 1 &mdash; Setup &amp; State</h2>
+<p>
+  Same ingestion as 15.2 (<code>sample_docs.txt</code>). The state adds two fields that 15.2
+  didn't have: <code>refined_question</code> holds the rewritten search query, and
+  <code>verified</code> is a boolean the reflector sets.
+</p>
+
+<h3>Imports, LLM, and retriever</h3>
+<pre>
+import os
+from typing import List
+from pydantic import BaseModel
+from langchain.chat_models import init_chat_model
+from langchain_openai import OpenAIEmbeddings
+from langchain_classic.schema import Document
+from langchain_classic.vectorstores import FAISS
+from langchain_community.document_loaders import TextLoader
+from langchain_classic.text_splitter import RecursiveCharacterTextSplitter
+from langgraph.graph import StateGraph, END
+
+llm = init_chat_model("openai:gpt-4o")
+
+docs = TextLoader("sample_docs.txt", encoding="utf-8").load()
+chunks = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50).split_documents(docs)
+vectorstore = FAISS.from_documents(chunks, OpenAIEmbeddings())
+retriever = vectorstore.as_retriever()
+</pre>
+
+<h3>The state schema</h3>
+<pre>
+class IterativeRAGState(BaseModel):
+    question: str
+    refined_question: str = ""
+    retrieved_docs: List[Document] = []
+    answer: str = ""
+    verified: bool = False
+    attempts: int = 0
+</pre>
+
+<table>
+  <thead>
+    <tr><th>Field</th><th>When it's set</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>refined_question</code></td><td>After <code>refine_query</code> runs</td><td>The improved search query for the next retrieval pass. Empty on the first pass.</td></tr>
+    <tr><td><code>verified</code></td><td>After <code>reflect_on_answer</code> runs</td><td><code>True</code> if the reflector said the answer is sufficient.</td></tr>
+    <tr><td><code>attempts</code></td><td>Each time <code>generate_answer</code> runs</td><td>Safety counter &mdash; loop stops when this reaches 2.</td></tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Step 2 &mdash; The Nodes</h2>
+<p>
+  Four nodes form the loop. The retrieve and answer nodes are familiar. The reflect node checks
+  quality. The refine node is the new piece &mdash; it only runs when reflection fails.
+</p>
+
+<h3>Node 1 &mdash; <code>retrieve_docs</code></h3>
+<p>
+  The key line is <code>state.refined_question or state.question</code>. On the first pass,
+  <code>refined_question</code> is empty, so the retriever uses the original question. On later
+  passes, it uses the rewritten query from the refine node.
+</p>
+<pre>
+def retrieve_docs(state: IterativeRAGState) -> IterativeRAGState:
+    query = state.refined_question or state.question
+    docs = retriever.invoke(query)
+    return state.model_copy(update={"retrieved_docs": docs})
+</pre>
+
+<h3>Node 2 &mdash; <code>generate_answer</code></h3>
+<p>
+  Always answers the <em>original</em> question (<code>state.question</code>), even if retrieval
+  used a refined query. The refined query is only for finding better documents &mdash; the
+  user's question hasn't changed. Also increments <code>attempts</code>.
+</p>
+<pre>
+def generate_answer(state: IterativeRAGState) -> IterativeRAGState:
+    context = "\n\n".join(doc.page_content for doc in state.retrieved_docs)
+    prompt = f"""Use the following context to answer the question:
+
+Context:
+{context}
+
+Question:
+{state.question}
+"""
+    response = llm.invoke(prompt.strip()).content.strip()
+    return state.model_copy(update={"answer": response, "attempts": state.attempts + 1})
+</pre>
+
+<h3>Node 3 &mdash; <code>reflect_on_answer</code></h3>
+<p>
+  Ask the LLM whether the answer is complete. Sets <code>verified = True</code> if the response
+  contains &ldquo;yes&rdquo;. This is a simpler check than 15.2's structured format &mdash; in
+  production you'd want stricter parsing, but it works for the demo.
+</p>
+<pre>
+def reflect_on_answer(state: IterativeRAGState) -> IterativeRAGState:
+    prompt = f"""
+Evaluate whether the answer below is factually sufficient and complete.
+
+Question: {state.question}
+Answer: {state.answer}
+
+Respond 'YES' if it's complete, otherwise 'NO' with feedback.
+"""
+    feedback = llm.invoke(prompt).content.lower()
+    verified = "yes" in feedback
+    return state.model_copy(update={"verified": verified})
+</pre>
+
+<h3>Node 4 &mdash; <code>refine_query</code></h3>
+<p>
+  Only reached when reflection fails. The LLM sees the original question and the incomplete
+  answer, then suggests a better search query. That suggestion goes into
+  <code>refined_question</code>, and the graph loops back to retrieve with it.
+</p>
+<pre>
+def refine_query(state: IterativeRAGState) -> IterativeRAGState:
+    prompt = f"""
+The answer appears incomplete. Suggest a better version of the query that would help
+retrieve more relevant context.
+
+Original Question: {state.question}
+Current Answer: {state.answer}
+"""
+    new_query = llm.invoke(prompt).content.strip()
+    return state.model_copy(update={"refined_question": new_query})
+</pre>
+
+<hr class="divider">
+
+<h2>Step 3 &mdash; Build the Loop</h2>
+<p>
+  Wire the four nodes and add the conditional edge after <code>reflect</code>. Unlike 15.2,
+  the &ldquo;retry&rdquo; path goes to <code>refine</code> first (not straight back to
+  retrieve), and the conditional can route directly to <code>END</code> when done.
+</p>
+<pre>
+builder = StateGraph(IterativeRAGState)
+
+builder.add_node("retrieve", retrieve_docs)
+builder.add_node("answer", generate_answer)
+builder.add_node("reflect", reflect_on_answer)
+builder.add_node("refine", refine_query)
+
+builder.set_entry_point("retrieve")
+builder.add_edge("retrieve", "answer")
+builder.add_edge("answer", "reflect")
+
+builder.add_conditional_edges(
+    "reflect",
+    lambda s: END if s.verified or s.attempts >= 2 else "refine"
+)
+
+builder.add_edge("refine", "retrieve")
+graph = builder.compile()
+</pre>
+
+<p>
+  Follow one iteration mentally. Pass 1: retrieve with original query &rarr; answer &rarr;
+  reflect says NO &rarr; refine writes a better query. Pass 2: retrieve with refined query
+  &rarr; answer &rarr; reflect says YES &rarr; END. If reflect keeps saying NO, the
+  <code>attempts >= 2</code> guard forces exit anyway.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Pass</th><th>Search query used</th><th>What changes</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>Original question</td><td>First retrieval; answer may be thin.</td></tr>
+    <tr><td>2</td><td>Refined question</td><td>Better-targeted retrieval after refine node.</td></tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Step 4 &mdash; Run It</h2>
+<p>
+  The test query is deliberately vague &mdash; &ldquo;agent loops and transformer-based
+  systems?&rdquo; &mdash; to show how the graph handles an underspecified question. On a good
+  knowledge base, one pass is often enough.
+</p>
+<pre>
+query = "agent loops and transformer-based systems?"
+initial_state = IterativeRAGState(question=query)
+final = graph.invoke(initial_state)
+
+print("✅ Final Answer:\n", final["answer"])
+print("\n🧠 Verified:", final["verified"])
+print("🔁 Attempts:", final["attempts"])
+</pre>
+
+<div class="example-block">
+  <div class="label">Output &mdash; One Pass Was Enough</div>
+  <p>
+    <strong>Final Answer:</strong> Agent loops (think &rarr; act &rarr; observe) and
+    transformer-based systems are complementary. The agent loop provides adaptability and
+    real-time decision-making; transformers supply the heavy language understanding inside the
+    agent's <em>thinking</em> phase &mdash; powering memory (summarising past dialogue),
+    planning (predicting future states), and tool interaction (parsing commands).
+  </p>
+  <p><strong>Verified:</strong> <code>True</code> &nbsp;|&nbsp; <strong>Attempts:</strong> 1 &mdash; the first retrieval was sufficient, so the refine loop never fired.</p>
+</div>
+
+<p>
+  When <code>Attempts: 1</code>, the refine node never ran &mdash; that's a success, not a
+  failure. The loop is there for when the first pass <em>isn't</em> enough. To see it fire,
+  try a question your knowledge base can't answer well on the first try.
+</p>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+<div class="example-block">
+  <div class="label">Remember These Three</div>
+  <p><strong>1.</strong> Iterative retrieval fixes <em>bad queries</em>, not just bad answers &mdash; the <code>refine</code> node rewrites what you search for.</p>
+  <p><strong>2.</strong> <code>retrieve</code> uses <code>refined_question or question</code> so the first pass uses the original and later passes use the rewrite.</p>
+  <p><strong>3.</strong> Same safety pattern as 15.2: <code>attempts &gt;= 2</code> caps the loop.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter15-3">&larr; 3 &middot; Query Planning &amp; Decomposition</a>
+    <a href="#chapter15-5" class="next">5 &middot; Answer Synthesis from Multiple Sources &rarr;</a>
+</nav>

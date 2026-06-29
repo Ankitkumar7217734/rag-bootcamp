@@ -1,0 +1,351 @@
+<h1>Chain-of-Thought RAG</h1>
+<p style="color:#888; margin-bottom: 2rem;"><em>Before retrieving, reason. Chain-of-Thought RAG decomposes a complex question into intermediate steps, retrieves for each step, and only then synthesizes the final answer.</em></p>
+
+<h2>Overview</h2>
+<p>
+  In every RAG pipeline you've built so far, retrieval happens <strong>once</strong>, against the
+  raw user question. That works for simple lookups &mdash; &ldquo;What is FAISS?&rdquo; &mdash; but
+  falls apart when the question is layered. &ldquo;What additional experiments were run in the
+  transformer evaluation, and why do they matter?&rdquo; requires the system to understand
+  <em>what pieces</em> the question contains before it knows what to search for.
+</p>
+<p>
+  <strong>Chain-of-Thought (CoT) in RAG</strong> fixes this by inserting a <strong>planning
+  step</strong> before retrieval. The LLM first breaks the question into 2&ndash;3 reasoning
+  sub-steps, then the retriever searches for <em>each sub-step separately</em>, pools the
+  documents, and only then generates the final answer. Think of it as the model writing a
+  scratchpad before opening the filing cabinet.
+</p>
+
+<div class="example-block">
+  <div class="label">Where this fits</div>
+  <p>
+    This is building block <strong>1 of 5</strong> in <a href="#chapter15">Chapter 15</a>,
+    from <code>3-COTRag.ipynb</code>. The graph is a straight chain:
+    <code>planner &rarr; retriever &rarr; responder</code> &mdash; the same spine as basic RAG,
+    with a planner bolted onto the front. There are no loops yet; that comes in
+    <a href="#chapter15-2">15.2</a>.
+  </p>
+</div>
+
+<div class="example-block">
+  <div class="label">The CoT Loop</div>
+  <p>
+    <strong>Step 1 &mdash; Reason:</strong> decompose the question into sub-steps.<br>
+    <strong>Step 2 &mdash; Act:</strong> retrieve documents for each step.<br>
+    <strong>Step 3 &mdash; Observe:</strong> combine the retrieved context.<br>
+    <strong>Step 4 &mdash; Reflect:</strong> generate the final, reasoned answer.
+  </p>
+</div>
+
+<svg class="diagram-svg" viewBox="0 0 940 376" xmlns="http://www.w3.org/2000/svg"
+  role="img" aria-label="Chain-of-Thought RAG graph, top to bottom: a Question enters the planner which decomposes it into reasoning steps, then the retriever fetches documents for each step, the responder synthesizes the final answer, and the graph ends.">
+  <defs>
+    <marker id="c15d2-arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#818cf8"/></marker>
+    <marker id="c15d2-grn" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4ecca3"/></marker>
+    <marker id="c15d2-amb" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#fbbf24"/></marker>
+  </defs>
+  <text x="470" y="16" text-anchor="middle" fill="#4ecca3" font-family="system-ui" font-size="12" font-weight="600">Question</text>
+  <line x1="470" y1="22" x2="470" y2="44" stroke="#818cf8" stroke-width="1.5" marker-end="url(#c15d2-arr)"/>
+  <rect x="360" y="46" width="220" height="56" rx="8" fill="#1a1a2e" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="470" y="70" text-anchor="middle" fill="#fbbf24" font-family="system-ui" font-size="14" font-weight="600">planner</text>
+  <text x="470" y="89" text-anchor="middle" fill="#b4b4be" font-family="system-ui" font-size="11">decompose into sub-steps</text>
+  <rect x="648" y="44" width="214" height="78" rx="6" fill="#16161a" stroke="#26262c" stroke-width="1"/>
+  <text x="755" y="62" text-anchor="middle" fill="#76767f" font-family="system-ui" font-size="10" font-style="italic">Reasoning Steps</text>
+  <text x="660" y="80" fill="#b4b4be" font-family="monospace" font-size="10">1. baseline metrics</text>
+  <text x="660" y="96" fill="#b4b4be" font-family="monospace" font-size="10">2. gaps to address</text>
+  <text x="660" y="112" fill="#b4b4be" font-family="monospace" font-size="10">3. extra experiments</text>
+  <line x1="580" y1="74" x2="644" y2="74" stroke="#fbbf24" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#c15d2-amb)"/>
+  <line x1="470" y1="102" x2="470" y2="132" stroke="#818cf8" stroke-width="1.5" marker-end="url(#c15d2-arr)"/>
+  <rect x="360" y="134" width="220" height="56" rx="8" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="470" y="158" text-anchor="middle" fill="#818cf8" font-family="system-ui" font-size="14" font-weight="600">retriever</text>
+  <text x="470" y="177" text-anchor="middle" fill="#b4b4be" font-family="system-ui" font-size="11">retrieve per step</text>
+  <line x1="470" y1="190" x2="470" y2="220" stroke="#818cf8" stroke-width="1.5" marker-end="url(#c15d2-arr)"/>
+  <rect x="360" y="222" width="220" height="56" rx="8" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="470" y="246" text-anchor="middle" fill="#818cf8" font-family="system-ui" font-size="14" font-weight="600">responder</text>
+  <text x="470" y="265" text-anchor="middle" fill="#b4b4be" font-family="system-ui" font-size="11">synthesize final answer</text>
+  <line x1="470" y1="278" x2="470" y2="308" stroke="#4ecca3" stroke-width="1.5" marker-end="url(#c15d2-grn)"/>
+  <rect x="360" y="310" width="220" height="46" rx="8" fill="#16161a" stroke="#4ecca3" stroke-width="1.5"/>
+  <text x="470" y="338" text-anchor="middle" fill="#4ecca3" font-family="monospace" font-size="14" font-weight="600">END</text>
+</svg>
+
+<p>
+  Read the diagram top to bottom: the question never goes straight to the retriever. It passes
+  through <code>planner</code> first, which produces a list of sub-steps stored in the graph
+  state. The retriever then runs once <em>per sub-step</em>, and the responder reads all pooled
+  documents to write one final answer to the <em>original</em> question.
+</p>
+
+<hr class="divider">
+
+<h2>What We're Building</h2>
+<p>
+  By the end of this sub-chapter you'll have a working LangGraph with three nodes and three
+  straight edges &mdash; no conditions, no loops. The knowledge base is
+  <code>research_notes.txt</code>, an internal experiment log about transformer evaluation. We'll
+  walk through the build in six steps: set up the vector store, initialise the LLM, define the
+  state, write the three node functions, wire the graph, and run a test query.
+</p>
+
+<hr class="divider">
+
+<h2>Step 1 &mdash; Imports &amp; the Vector Store</h2>
+<p>
+  Start with the usual ingestion pipeline from earlier chapters: <strong>load &rarr; split &rarr;
+  embed &rarr; store</strong>. The only new import here is <code>StateGraph</code> from LangGraph,
+  which we'll use later to wire the nodes together.
+</p>
+
+<h3>Imports</h3>
+<pre>
+import os
+from typing import List
+from pydantic import BaseModel
+from langchain_classic.schema import Document
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.document_loaders import TextLoader
+from langchain_classic.vectorstores import FAISS
+from langchain_classic.text_splitter import RecursiveCharacterTextSplitter
+from langgraph.graph import StateGraph, END
+</pre>
+
+<h3>Build the retriever</h3>
+<p>
+  <code>TextLoader</code> reads the raw file. <code>RecursiveCharacterTextSplitter</code> breaks
+  it into 500-character chunks with 50 characters of overlap so sentences at chunk boundaries
+  aren't lost. <code>FAISS.from_documents</code> embeds every chunk and stores the vectors.
+  <code>as_retriever()</code> wraps the store in the standard search interface we'll call with
+  <code>retriever.invoke(query)</code>.
+</p>
+<pre>
+docs = TextLoader("research_notes.txt", encoding="utf-8").load()
+splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+chunks = splitter.split_documents(docs)
+embedding = OpenAIEmbeddings()
+vectorstore = FAISS.from_documents(chunks, embedding)
+retriever = vectorstore.as_retriever()
+</pre>
+
+<p>
+  At this point you have a searchable index over the experiment log. Nothing agentic yet &mdash;
+  just the same retriever you'd use in a plain RAG pipeline.
+</p>
+
+<hr class="divider">
+
+<h2>Step 2 &mdash; Initialise the LLM</h2>
+<p>
+  The planner and responder nodes both need an LLM. We use <code>init_chat_model</code> with
+  GPT-4o &mdash; the same pattern from Chapters 13&ndash;14. Load your API key from
+  <code>.env</code> before calling the model.
+</p>
+<pre>
+from langchain.chat_models import init_chat_model
+from dotenv import load_dotenv
+
+load_dotenv()
+os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
+llm = init_chat_model("openai:gpt-4o")
+</pre>
+
+<hr class="divider">
+
+<h2>Step 3 &mdash; The State</h2>
+<p>
+  LangGraph passes a single state object from node to node. Each node reads what it needs, does
+  its work, and returns an updated copy. We use a Pydantic <code>BaseModel</code> so fields are
+  typed and validated, and <code>model_copy(update={...})</code> gives us a clean way to update
+  just the fields that changed.
+</p>
+<pre>
+class RAGCoTState(BaseModel):
+    question: str
+    sub_steps: List[str] = []
+    retrieved_docs: List[Document] = []
+    answer: str = ""
+</pre>
+
+<table>
+  <thead>
+    <tr><th>Field</th><th>Set by</th><th>Purpose</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>question</code></td><td>You, at invoke time</td><td>The original user question &mdash; never modified.</td></tr>
+    <tr><td><code>sub_steps</code></td><td><code>plan_steps</code></td><td>The reasoning steps the planner extracted from the question.</td></tr>
+    <tr><td><code>retrieved_docs</code></td><td><code>retrieve_per_step</code></td><td>All documents fetched across every sub-step, pooled together.</td></tr>
+    <tr><td><code>answer</code></td><td><code>generate_answer</code></td><td>The final synthesized response.</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Notice the flow: each field is written by exactly one node, in order. By the time
+  <code>generate_answer</code> runs, <code>sub_steps</code> and <code>retrieved_docs</code> are
+  already populated.
+</p>
+
+<hr class="divider">
+
+<h2>Step 4 &mdash; The Nodes</h2>
+<p>
+  Three functions, three jobs. Each takes the current state and returns an updated state. We'll
+  write them one at a time so you can see exactly what each step does before moving on.
+</p>
+
+<h3>Node 1 &mdash; <code>plan_steps</code> (Reason)</h3>
+<p>
+  This is the CoT step. We ask the LLM to break the question into 2&ndash;3 reasoning steps.
+  The response comes back as plain text (often a numbered list); we split on newlines and strip
+  bullet markers to get a clean list of strings. That list goes into <code>sub_steps</code>.
+</p>
+<pre>
+def plan_steps(state: RAGCoTState) -> RAGCoTState:
+    prompt = f"Break the question into 2-3 reasoning steps: \n\n {state.question}"
+    result = llm.invoke(prompt).content
+    subqs = [line.strip("- ") for line in result.split("\n") if line.strip()]
+    return state.model_copy(update={"sub_steps": subqs})
+</pre>
+
+<p>
+  <strong>Why not retrieve against the raw question?</strong> Because a vague or multi-part
+  question embeds poorly. &ldquo;Additional experiments in transformer evaluation&rdquo; as a
+  search query might miss chunks about FlashAttention2 or LoRA tuning. Sub-steps like
+  &ldquo;identify gaps in standard evaluation&rdquo; retrieve much more precisely.
+</p>
+
+<h3>Node 2 &mdash; <code>retrieve_per_step</code> (Act)</h3>
+<p>
+  Loop over every sub-step and call the retriever once per step. All returned documents are
+  appended to a single list &mdash; we don't deduplicate here, which is fine for a first pass.
+  The pooled list lands in <code>retrieved_docs</code>.
+</p>
+<pre>
+def retrieve_per_step(state: RAGCoTState) -> RAGCoTState:
+    all_docs = []
+    for sub in state.sub_steps:
+        docs = retriever.invoke(sub)
+        all_docs.extend(docs)
+    return state.model_copy(update={"retrieved_docs": all_docs})
+</pre>
+
+<h3>Node 3 &mdash; <code>generate_answer</code> (Observe + Reflect)</h3>
+<p>
+  Concatenate every retrieved chunk into one context block, then ask the LLM to synthesize a
+  final answer to the <em>original</em> question (not the sub-steps). The prompt explicitly
+  tells the model to reason over the combined evidence.
+</p>
+<pre>
+def generate_answer(state: RAGCoTState) -> RAGCoTState:
+    context = "\n\n".join([doc.page_content for doc in state.retrieved_docs])
+    prompt = f"""
+You are answering a complex question using reasoning and retrieved documents.
+
+Question: {state.question}
+
+Relevant Information:
+{context}
+
+Now synthesize a well-reasoned final answer.
+"""
+    result = llm.invoke(prompt).content.strip()
+    return state.model_copy(update={"answer": result})
+</pre>
+
+<hr class="divider">
+
+<h2>Step 5 &mdash; Build &amp; Compile the Graph</h2>
+<p>
+  Now wire the three nodes into a LangGraph. The pattern is always the same: create a
+  <code>StateGraph</code>, register each node by name, set the entry point, add edges between
+  nodes, and call <code>compile()</code>.
+</p>
+<pre>
+builder = StateGraph(RAGCoTState)
+builder.add_node("planner", plan_steps)
+builder.add_node("retriever", retrieve_per_step)
+builder.add_node("responder", generate_answer)
+
+builder.set_entry_point("planner")
+builder.add_edge("planner", "retriever")
+builder.add_edge("retriever", "responder")
+builder.add_edge("responder", END)
+
+graph = builder.compile()
+</pre>
+
+<table>
+  <thead>
+    <tr><th>Edge</th><th>What happens</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>planner &rarr; retriever</code></td><td>Sub-steps are ready; retrieval begins.</td></tr>
+    <tr><td><code>retriever &rarr; responder</code></td><td>Documents are pooled; answer generation begins.</td></tr>
+    <tr><td><code>responder &rarr; END</code></td><td>Answer is written; graph exits.</td></tr>
+  </tbody>
+</table>
+
+<p>
+  This is still a <strong>straight line</strong> &mdash; no conditional edges, no loops. That
+  simplicity is intentional: CoT RAG is the smallest upgrade from basic RAG, and you'll need
+  this same three-node spine in every later sub-chapter.
+</p>
+
+<hr class="divider">
+
+<h2>Step 6 &mdash; Run It</h2>
+<p>
+  Create an initial state with just the question, invoke the graph, and read back the final
+  state. LangGraph returns the state as a dict, so access fields with bracket notation.
+</p>
+<pre>
+query = "What are the additional experiments in Transformer evaluation?"
+state = RAGCoTState(question=query)
+final = graph.invoke(state)
+
+print("\n🪜 Reasoning Steps:", final["sub_steps"])
+print("\n✅ Final Answer:\n", final["answer"])
+</pre>
+
+<p>
+  Watch the printed reasoning steps first &mdash; they tell you <em>what the planner thought
+  the question needed</em>. Then read the final answer and check whether the retrieved context
+  actually supported it. If the sub-steps look wrong, the retriever searched for the wrong things
+  and the answer will drift.
+</p>
+
+<div class="example-block">
+  <div class="label">Output &mdash; Reasoned Synthesis</div>
+  <p><strong>Reasoning Steps:</strong> (1) understand the baseline evaluation metrics, (2) identify gaps the standard evaluation misses, (3) propose additional experiments.</p>
+  <p>
+    <strong>Final Answer:</strong> The additional experiments in the transformer evaluation log
+    include <strong>FlashAttention2</strong> (integrated into LLaMA2, ~50% lower context
+    latency), <strong>Chain-of-Thought prompting</strong> (+8% on logic tasks, +3% from
+    reflective prompting), <strong>tool-augmented prompting</strong> (LangGraph + Wikipedia +
+    SQL), a <strong>human evaluation protocol</strong> (annotators plus GPT-4 as a synthetic
+    judge), <strong>retrieval experiments</strong> (hybrid dense + sparse, Weaviate vs FAISS +
+    BM25), <strong>LoRA tuning</strong> (rank 8, ~60% less GPU memory), and a
+    <strong>safety</strong> suite (Detoxify, zero-shot out-of-scope filter, red teaming).
+  </p>
+</div>
+
+<p>
+  The planner's sub-steps guided retrieval toward evaluation gaps and experiments, not just a
+  generic search for &ldquo;transformer evaluation.&rdquo; That's the whole point of CoT RAG:
+  <strong>better retrieval queries produce better answers</strong>, without changing the
+  retriever itself.
+</p>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+<div class="example-block">
+  <div class="label">Remember These Three</div>
+  <p><strong>1.</strong> CoT RAG adds a <code>planner</code> node <em>before</em> retrieval so the retriever searches for sub-steps, not just the raw question.</p>
+  <p><strong>2.</strong> The graph is still a straight chain &mdash; no loops yet. That makes it the simplest upgrade from basic RAG.</p>
+  <p><strong>3.</strong> Pool all retrieved docs, then synthesize once. The reasoning steps guide <em>what</em> to retrieve; the responder still answers the original question.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter15">&larr; Chapter 15: Autonomous RAG &mdash; Planning, Reflecting &amp; Self-Correcting</a>
+    <a href="#chapter15-2" class="next">2 &middot; Self-Reflection &rarr;</a>
+</nav>

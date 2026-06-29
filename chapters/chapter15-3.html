@@ -1,0 +1,324 @@
+<h1>Query Planning &amp; Decomposition</h1>
+<p style="color:#888; margin-bottom: 2rem;"><em>Split a complex query into explicit sub-questions, retrieve for each one, then merge the context into a single consolidated answer.</em></p>
+
+<h2>Overview</h2>
+<p>
+  Some questions aren't hard because they're deep &mdash; they're hard because they span
+  <strong>multiple topics in one sentence</strong>. &ldquo;Explain how agent loops work and what
+  are the challenges in diffusion video generation?&rdquo; touches two completely different
+  subjects. A single retrieval against the raw question might pull chunks about agents but miss
+  the diffusion video content entirely (or vice versa).
+</p>
+<p>
+  <strong>Query Planning and Decomposition</strong> handles this by splitting the question into
+  2&ndash;3 explicit sub-questions first, retrieving for each one separately, pooling all the
+  documents, and then answering the original question once from the combined context. It's like
+  reverse-engineering a compound question into parts you can search for individually.
+</p>
+
+<div class="example-block">
+  <div class="label">Where this fits</div>
+  <p>
+    From <code>5-QueryPlanningdecomposition.ipynb</code>, building block <strong>3 of 5</strong>.
+    The graph shape looks like <a href="#chapter15-1">15.1</a> (planner &rarr; retriever &rarr;
+    responder), but the planner here produces <em>searchable sub-queries</em>, not reasoning
+    steps. The knowledge base is two Lilian Weng blog posts scraped from the web. Next in
+    <a href="#chapter15-4">15.4</a>: looping back with a refined query when retrieval falls short.
+  </p>
+</div>
+
+<h3>CoT vs. Query Planning &mdash; what's the difference?</h3>
+<p>
+  Both techniques decompose a question, which is why they're easy to confuse. The difference is
+  <em>intent</em>: CoT produces a reasoning scratchpad; query planning produces explicit search
+  queries.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Aspect</th><th>Chain-of-Thought (15.1)</th><th>Query Planning (this section)</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Purpose</strong></td>
+      <td>Let the LLM reason step-by-step before searching</td>
+      <td>Break a complex query into structured sub-queries</td>
+    </tr>
+    <tr>
+      <td><strong>Output of planner</strong></td>
+      <td>Reasoning steps (&ldquo;understand baseline metrics&rdquo;)</td>
+      <td>Sub-questions (&ldquo;What are agent loops?&rdquo;)</td>
+    </tr>
+    <tr>
+      <td><strong>Best for</strong></td>
+      <td>Deep, single-topic questions that need structured thinking</td>
+      <td>Multi-topic questions spanning different domains in one store</td>
+    </tr>
+    <tr>
+      <td><strong>Flow</strong></td>
+      <td>Think &rarr; Retrieve &rarr; Answer</td>
+      <td>Plan all &rarr; Retrieve all &rarr; Answer once</td>
+    </tr>
+  </tbody>
+</table>
+
+<svg class="diagram-svg" viewBox="0 0 940 524" xmlns="http://www.w3.org/2000/svg"
+  role="img" aria-label="Query Planning and Decomposition graph, top to bottom: a complex question enters the planner, which fans out into three sub-questions SQ1, SQ2, SQ3; each sub-question is retrieved separately; the three retrievals merge into a combine-context node; the responder synthesizes one answer; the graph ends with the final answer.">
+  <defs>
+    <marker id="c15d4-arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#818cf8"/></marker>
+    <marker id="c15d4-grn" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4ecca3"/></marker>
+    <marker id="c15d4-amb" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#fbbf24"/></marker>
+  </defs>
+  <text x="470" y="18" text-anchor="middle" fill="#4ecca3" font-family="system-ui" font-size="12" font-weight="600">Complex Question</text>
+  <line x1="470" y1="24" x2="470" y2="46" stroke="#818cf8" stroke-width="1.5" marker-end="url(#c15d4-arr)"/>
+  <rect x="360" y="48" width="220" height="52" rx="8" fill="#1a1a2e" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="470" y="70" text-anchor="middle" fill="#fbbf24" font-family="system-ui" font-size="14" font-weight="600">planner</text>
+  <text x="470" y="89" text-anchor="middle" fill="#b4b4be" font-family="system-ui" font-size="11">break into 2&ndash;3 sub-questions</text>
+  <line x1="470" y1="100" x2="220" y2="138" stroke="#fbbf24" stroke-width="1.4" marker-end="url(#c15d4-amb)"/>
+  <line x1="470" y1="100" x2="470" y2="138" stroke="#fbbf24" stroke-width="1.4" marker-end="url(#c15d4-amb)"/>
+  <line x1="470" y1="100" x2="720" y2="138" stroke="#fbbf24" stroke-width="1.4" marker-end="url(#c15d4-amb)"/>
+  <rect x="120" y="140" width="200" height="46" rx="8" fill="#16161a" stroke="#a78bfa" stroke-width="1.4"/>
+  <text x="220" y="168" text-anchor="middle" fill="#a78bfa" font-family="system-ui" font-size="13" font-weight="600">Sub-question 1</text>
+  <rect x="370" y="140" width="200" height="46" rx="8" fill="#16161a" stroke="#a78bfa" stroke-width="1.4"/>
+  <text x="470" y="168" text-anchor="middle" fill="#a78bfa" font-family="system-ui" font-size="13" font-weight="600">Sub-question 2</text>
+  <rect x="620" y="140" width="200" height="46" rx="8" fill="#16161a" stroke="#a78bfa" stroke-width="1.4"/>
+  <text x="720" y="168" text-anchor="middle" fill="#a78bfa" font-family="system-ui" font-size="13" font-weight="600">Sub-question 3</text>
+  <line x1="220" y1="186" x2="220" y2="212" stroke="#818cf8" stroke-width="1.4" marker-end="url(#c15d4-arr)"/>
+  <line x1="470" y1="186" x2="470" y2="212" stroke="#818cf8" stroke-width="1.4" marker-end="url(#c15d4-arr)"/>
+  <line x1="720" y1="186" x2="720" y2="212" stroke="#818cf8" stroke-width="1.4" marker-end="url(#c15d4-arr)"/>
+  <rect x="120" y="214" width="200" height="44" rx="8" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.4"/>
+  <text x="220" y="241" text-anchor="middle" fill="#818cf8" font-family="system-ui" font-size="13" font-weight="600">retrieve</text>
+  <rect x="370" y="214" width="200" height="44" rx="8" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.4"/>
+  <text x="470" y="241" text-anchor="middle" fill="#818cf8" font-family="system-ui" font-size="13" font-weight="600">retrieve</text>
+  <rect x="620" y="214" width="200" height="44" rx="8" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.4"/>
+  <text x="720" y="241" text-anchor="middle" fill="#818cf8" font-family="system-ui" font-size="13" font-weight="600">retrieve</text>
+  <line x1="220" y1="258" x2="455" y2="300" stroke="#818cf8" stroke-width="1.4" marker-end="url(#c15d4-arr)"/>
+  <line x1="470" y1="258" x2="470" y2="300" stroke="#818cf8" stroke-width="1.4" marker-end="url(#c15d4-arr)"/>
+  <line x1="720" y1="258" x2="485" y2="300" stroke="#818cf8" stroke-width="1.4" marker-end="url(#c15d4-arr)"/>
+  <rect x="360" y="302" width="220" height="48" rx="8" fill="#16161a" stroke="#4ecca3" stroke-width="1.4"/>
+  <text x="470" y="331" text-anchor="middle" fill="#4ecca3" font-family="system-ui" font-size="13" font-weight="600">combine context</text>
+  <line x1="470" y1="350" x2="470" y2="382" stroke="#818cf8" stroke-width="1.5" marker-end="url(#c15d4-arr)"/>
+  <rect x="360" y="384" width="220" height="54" rx="8" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="470" y="408" text-anchor="middle" fill="#818cf8" font-family="system-ui" font-size="14" font-weight="600">responder</text>
+  <text x="470" y="427" text-anchor="middle" fill="#b4b4be" font-family="system-ui" font-size="11">synthesize one answer</text>
+  <line x1="470" y1="438" x2="470" y2="468" stroke="#4ecca3" stroke-width="1.5" marker-end="url(#c15d4-grn)"/>
+  <rect x="360" y="470" width="220" height="46" rx="8" fill="#16161a" stroke="#4ecca3" stroke-width="1.5"/>
+  <text x="470" y="498" text-anchor="middle" fill="#4ecca3" font-family="system-ui" font-size="13" font-weight="600">Final Answer</text>
+</svg>
+
+<p>
+  The diagram shows the fan-out clearly: one complex question becomes three sub-questions, each
+  gets its own retrieval pass, and all results merge before the responder writes a single answer.
+  In code, the fan-out happens inside one node (<code>retrieve_for_each</code>) rather than as
+  three separate graph nodes &mdash; simpler to build, same effect.
+</p>
+
+<hr class="divider">
+
+<h2>Step 1 &mdash; Load from the Web &amp; Embed</h2>
+<p>
+  Instead of a local text file, we scrape two blog posts with <code>WebBaseLoader</code>. Both
+  posts land in the same FAISS index, which is exactly the scenario decomposition is designed for:
+  one vector store, two unrelated topics, one compound question.
+</p>
+
+<h3>Imports and LLM</h3>
+<pre>
+import os
+from typing import List
+from pydantic import BaseModel
+from langchain_openai import OpenAIEmbeddings
+from langchain_classic.schema import Document
+from langchain_classic.text_splitter import RecursiveCharacterTextSplitter
+from langchain_classic.vectorstores import FAISS
+from langchain_community.document_loaders import TextLoader, WebBaseLoader
+from langchain.chat_models import init_chat_model
+from langgraph.graph import StateGraph, END
+
+llm = init_chat_model("openai:gpt-4o")
+</pre>
+
+<h3>Scrape, chunk, and index</h3>
+<p>
+  Loop over the URLs and extend a single <code>docs</code> list. After splitting and embedding,
+  chunks from <em>both</em> posts live side by side in the same vector store. The retriever has
+  no idea which post a chunk came from &mdash; it just returns the nearest vectors to whatever
+  query you pass.
+</p>
+<pre>
+urls = [
+    "https://lilianweng.github.io/posts/2023-06-23-agent/",
+    "https://lilianweng.github.io/posts/2024-04-12-diffusion-video/"
+]
+docs = []
+for url in urls:
+    docs.extend(WebBaseLoader(url).load())
+
+splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+chunks = splitter.split_documents(docs)
+embedding = OpenAIEmbeddings()
+vectorstore = FAISS.from_documents(chunks, embedding)
+retriever = vectorstore.as_retriever()
+</pre>
+
+<p>
+  You may see a <code>USER_AGENT environment variable not set</code> warning when scraping.
+  That's normal and doesn't block the pipeline.
+</p>
+
+<hr class="divider">
+
+<h2>Step 2 &mdash; State &amp; Nodes</h2>
+
+<h3>The state</h3>
+<p>
+  Same four fields as CoT, but the planner output is called <code>sub_questions</code> instead
+  of <code>sub_steps</code> &mdash; a small naming choice that signals these are search queries,
+  not reasoning steps.
+</p>
+<pre>
+class RAGState(BaseModel):
+    question: str
+    sub_questions: List[str] = []
+    retrieved_docs: List[Document] = []
+    answer: str = ""
+</pre>
+
+<h3>Node 1 &mdash; <code>plan_query</code></h3>
+<p>
+  Ask the LLM to break the compound question into 2&ndash;3 standalone sub-questions. Each
+  sub-question should be specific enough to retrieve against on its own. The prompt ends with
+  <code>Sub-questions:</code> to nudge the model into list format.
+</p>
+<pre>
+def plan_query(state: RAGState) -> RAGState:
+    prompt = f"""
+Break the following complex question into 2-3 sub-questions:
+
+Question: {state.question}
+
+Sub-questions:
+"""
+    result = llm.invoke(prompt)
+    sub_questions = [line.strip("- ").strip() for line in result.content.strip().split("\n") if line.strip()]
+    return RAGState(question=state.question, sub_questions=sub_questions)
+</pre>
+
+<h3>Node 2 &mdash; <code>retrieve_for_each</code></h3>
+<p>
+  For each sub-question, call the retriever and collect all returned documents into one list.
+  Because both blog posts share the same index, a sub-question about &ldquo;agent loops&rdquo;
+  pulls from the agents post, and one about &ldquo;diffusion video challenges&rdquo; pulls from
+  the video post &mdash; automatically, with no routing logic.
+</p>
+<pre>
+def retrieve_for_each(state: RAGState) -> RAGState:
+    all_docs = []
+    for sub in state.sub_questions:
+        docs = retriever.invoke(sub)
+        all_docs.extend(docs)
+    return RAGState(question=state.question, sub_questions=state.sub_questions, retrieved_docs=all_docs)
+</pre>
+
+<h3>Node 3 &mdash; <code>generate_final_answer</code></h3>
+<p>
+  Pool all documents, pass them to the LLM along with the <em>original</em> compound question
+  (not the sub-questions). The model's job is to weave both topics into one coherent answer.
+</p>
+<pre>
+def generate_final_answer(state: RAGState) -> RAGState:
+    context = "\n\n".join([doc.page_content for doc in state.retrieved_docs])
+    prompt = f"""
+Use the context below to answer the question.
+
+Context:
+{context}
+
+Question: {state.question}
+"""
+    answer = llm.invoke(prompt).content
+    return RAGState(
+        question=state.question,
+        sub_questions=state.sub_questions,
+        retrieved_docs=state.retrieved_docs,
+        answer=answer
+    )
+</pre>
+
+<hr class="divider">
+
+<h2>Step 3 &mdash; Build &amp; Run</h2>
+<p>
+  Same straight-chain wiring as 15.1: planner &rarr; retriever &rarr; responder &rarr; END.
+  Then invoke with a deliberately multi-topic question to see decomposition in action.
+</p>
+<pre>
+builder = StateGraph(RAGState)
+builder.add_node("planner", plan_query)
+builder.add_node("retriever", retrieve_for_each)
+builder.add_node("responder", generate_final_answer)
+
+builder.set_entry_point("planner")
+builder.add_edge("planner", "retriever")
+builder.add_edge("retriever", "responder")
+builder.add_edge("responder", END)
+
+graph = builder.compile()
+</pre>
+
+<p>
+  Run the graph and print the sub-questions <em>before</em> the final answer. Checking the
+  sub-questions first tells you whether the planner understood the compound nature of the query.
+</p>
+<pre>
+user_query = "Explain how agent loops work and what are the challenges in diffusion video generation?"
+initial_state = RAGState(question=user_query)
+final_state = graph.invoke(initial_state)
+
+print("\n🔍 Sub-questions:")
+for q in final_state["sub_questions"]:
+    print("-", q)
+print("\n✅ Final Answer:\n", final_state["answer"])
+</pre>
+
+<div class="example-block">
+  <div class="label">Output &mdash; Two Topics, One Answer</div>
+  <p><strong>Sub-questions:</strong></p>
+  <p>
+    1. What are agent loops, and how do they function?<br>
+    2. What specific challenges arise in generating videos with diffusion-based methods?<br>
+    3. How do agent loops interact with the challenges in diffusion video generation?
+  </p>
+  <p>
+    <strong>Final Answer:</strong> Agent loops are think&ndash;act&ndash;observe cycles that let
+    an LLM-based agent plan, use memory, and call tools. Diffusion video generation is harder
+    than image generation because it demands <em>temporal consistency</em> across frames and
+    large amounts of high-quality video&ndash;text data. Because the sub-questions retrieved
+    from the two blog posts independently, the final answer covers <em>both</em> topics
+    accurately &mdash; something a single retrieval against the raw question would have struggled
+    to do.
+  </p>
+</div>
+
+<p>
+  Compare this to what a single retrieval would return: the embedding of the full compound
+  question sits somewhere between &ldquo;agents&rdquo; and &ldquo;diffusion video&rdquo; in
+  vector space, often missing chunks from one topic entirely. Decomposition forces coverage of
+  both sides.
+</p>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+<div class="example-block">
+  <div class="label">Remember These Three</div>
+  <p><strong>1.</strong> Decomposition shines when one query spans multiple topics or knowledge domains in the same vector store.</p>
+  <p><strong>2.</strong> Plan all sub-questions first, retrieve all, answer once &mdash; different from interleaved CoT reasoning.</p>
+  <p><strong>3.</strong> The responder always answers the <em>original</em> question, not the sub-questions individually.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter15-2">&larr; 2 &middot; Self-Reflection</a>
+    <a href="#chapter15-4" class="next">4 &middot; Iterative Retrieval &rarr;</a>
+</nav>

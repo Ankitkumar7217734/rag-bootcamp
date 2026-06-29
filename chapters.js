@@ -160,5 +160,37 @@ const chapters = [
         id: "chapter14",
         title: "Chapter 14: ReAct Agents — Reasoning, Acting & Observing",
         description: "How create_react_agent turns an LLM into a self-directed Think → Act → Observe loop — wrapping retrievers, Wikipedia, and ArXiv as tools, building a reusable tool factory for any text knowledge base, and understanding when to use the prebuilt ReAct agent versus a custom Agentic RAG graph."
+    },
+    {
+        id: "chapter15",
+        title: "Chapter 15: Autonomous RAG — Planning, Reflecting & Self-Correcting",
+        description: "Building a RAG system that runs itself — five LangGraph techniques (chain-of-thought, self-reflection, query planning & decomposition, iterative retrieval, and multi-source synthesis), each built hands-on from the source notebooks, then composed into one self-managing loop.",
+        children: [
+            {
+                id: "chapter15-1",
+                title: "Chain-of-Thought RAG",
+                description: "From 3-COTRag.ipynb — a planner → retriever → responder graph that decomposes a question into reasoning steps, retrieves per step from research_notes.txt, and synthesizes one reasoned answer."
+            },
+            {
+                id: "chapter15-2",
+                title: "Self-Reflection",
+                description: "From 4-Selfreflection.ipynb — a reflector node and conditional edge that lets the LLM grade its own answer and loop back to retrieval when the response is incomplete, bounded by an attempts counter."
+            },
+            {
+                id: "chapter15-3",
+                title: "Query Planning & Decomposition",
+                description: "From 5-QueryPlanningdecomposition.ipynb — splitting a multi-topic question into sub-questions, retrieving each against Lilian Weng blog posts, and merging context into one consolidated answer."
+            },
+            {
+                id: "chapter15-4",
+                title: "Iterative Retrieval",
+                description: "From 6-iterativeretrieval.ipynb — a retrieve → answer → reflect → refine loop that rewrites the query and retrieves again when the first pass is not good enough."
+            },
+            {
+                id: "chapter15-5",
+                title: "Answer Synthesis from Multiple Sources",
+                description: "From 7-answersynthesis.ipynb — four retrieval sources (internal docs, YouTube, Wikipedia, ArXiv) merged by a synthesizer node, plus the Autonomous RAG definition, complete workflow, and Agentic-vs-Autonomous comparison."
+            }
+        ]
     }
 ];

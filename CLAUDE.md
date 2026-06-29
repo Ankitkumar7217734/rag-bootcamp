@@ -81,7 +81,7 @@ dependencies except highlight.js from a CDN:
 So the data flow is: **`chapters.js` (config) → `app.js` (router + post-process)
 → `chapters/*.html` (content fragments) → `style.css` (design system)**. Cache
 busting is manual: `index.html` references `style.css`/`chapters.js`/`app.js`
-with a shared `?v=NN` query (currently `v=26`) — bump it when you change any of
+with a shared `?v=NN` query (currently `v=28`) — bump it when you change any of
 those three.
 
 ---
@@ -100,8 +100,8 @@ Do these in order. Do **not** skip the reading steps.
      `import numpy as py`, misspellings, missing final flush, etc.).
    - **`.txt` / data files** → read them; they're often the sample data used in
      the code examples.
-3. **Read the most recent existing chapter** (latest is `chapters/chapter13.html`;
-   the newest with sub-chapters is `chapter11` + `chapter11-1/-2/-3`) to match
+3. **Read the most recent existing chapter** (latest is `chapters/chapter14.html`;
+   the newest with sub-chapters is `chapter13` + `chapter13-1/-2/-3`) to match
    structure, tone, and components exactly. Also check `chapters.js` for the
    current chapter list and the previous chapter's `<nav class="page-nav">`.
 4. **Find the chapter number**: the source folders are numbered (e.g.
@@ -140,8 +140,8 @@ RAG_webpages/
 └── chapters/
     ├── chapter1.html, chapter1-1.html   # "-1" suffix = sub-chapter (child)
     ├── chapter2.html, chapter2-1.html
-    ├── chapter3.html … chapter13.html   # chapters 3–13 (latest is chapter13)
-    └── chapter7-1.html … chapter11-3.html   # sub-chapters (7-*, 8-*, 11-*)
+    ├── chapter3.html … chapter14.html   # chapters 3–14 (latest is chapter14)
+    └── chapter7-1.html … chapter13-3.html   # sub-chapters (7-*, 8-*, 11-*, 13-*)
 ```
 
 - A chapter HTML file is a **fragment**: no `<html>/<head>/<body>`, just the
