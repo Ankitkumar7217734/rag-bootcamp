@@ -1,0 +1,357 @@
+<h1>Supervisor Multi-Agent RAG</h1>
+<p style="color:#888; margin-bottom: 2rem;"><em>A central supervisor agent routes tasks to specialized workers &mdash; a research agent with RAG and Tavily, and a math agent with arithmetic tools &mdash; one at a time, never doing the work itself.</em></p>
+
+<h2>Overview</h2>
+<p>
+  When a single agent has too many tools, routing gets unreliable. The
+  <strong>supervisor pattern</strong> solves this with a divide-and-conquer approach: create
+  expert agents for specific domains and let a <strong>supervisor LLM</strong> decide which one
+  to invoke based on the current task.
+</p>
+<p>
+  The supervisor controls all communication flow and task delegation. It reads the user query,
+  picks the right worker, waits for the result, and either assigns the next sub-task or returns
+  the final answer. It never calls retrieval or math tools itself &mdash; it only routes.
+</p>
+<p>
+  The notes draw an analogy to a <strong>project manager</strong>: the PM doesn't write code, but
+  delegates to Dev A, Dev B, or Lead A based on what's needed. In our build, the supervisor
+  delegates to a <strong>research agent</strong> (RAG + web) and a <strong>math agent</strong>
+  (add, multiply, divide).
+</p>
+
+<div class="example-block">
+  <div class="label">Where this fits</div>
+  <p>
+    Building block <strong>2 of 3</strong> in <a href="#chapter16">Chapter 16</a>. Pattern 16.1
+    used peer handoffs between two agents. Here a third layer &mdash; the supervisor &mdash;
+    sits above the workers and decides who acts next. Implemented with the prebuilt
+    <code>create_supervisor</code> from the <code>langgraph-supervisor</code> package.
+  </p>
+</div>
+
+<svg class="diagram-svg" viewBox="0 0 940 380" xmlns="http://www.w3.org/2000/svg"
+  role="img" aria-label="Supervisor pattern: a User query enters the Supervisor, which routes (dashed) to either research_agent (Tavily plus InternalResearchNotes backed by a Vector Store) or math_agent (add, multiply, divide). Each worker reports back (solid) to the Supervisor, which finally returns the answer to the user as END. Work is sequential, one agent at a time.">
+  <defs>
+    <marker id="c162-arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#818cf8"/></marker>
+    <marker id="c162-grn" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4ecca3"/></marker>
+    <marker id="c162-amb" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#fbbf24"/></marker>
+    <marker id="c162-pur" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#a78bfa"/></marker>
+  </defs>
+
+  <!-- User Query -->
+  <rect x="200" y="18" width="160" height="44" rx="8" fill="#16161a" stroke="#4ecca3" stroke-width="1.5"/>
+  <text x="280" y="46" text-anchor="middle" fill="#4ecca3" font-family="system-ui" font-size="13" font-weight="600">User Query</text>
+  <line x1="360" y1="40" x2="408" y2="40" stroke="#818cf8" stroke-width="1.6" marker-end="url(#c162-arr)"/>
+
+  <!-- Supervisor -->
+  <rect x="410" y="16" width="280" height="64" rx="8" fill="#1a1a2e" stroke="#fbbf24" stroke-width="2"/>
+  <text x="550" y="44" text-anchor="middle" fill="#fbbf24" font-family="system-ui" font-size="15" font-weight="600">Supervisor</text>
+  <text x="550" y="64" text-anchor="middle" fill="#b4b4be" font-family="system-ui" font-size="10">transfer_to_* &middot; routes, never executes tools</text>
+
+  <!-- Final Answer (END) returns to user -->
+  <line x1="690" y1="40" x2="738" y2="40" stroke="#4ecca3" stroke-width="1.6" marker-end="url(#c162-grn)"/>
+  <text x="714" y="32" text-anchor="middle" fill="#4ecca3" font-family="system-ui" font-size="9">END</text>
+  <rect x="740" y="18" width="170" height="44" rx="8" fill="#16161a" stroke="#4ecca3" stroke-width="1.5"/>
+  <text x="825" y="46" text-anchor="middle" fill="#4ecca3" font-family="system-ui" font-size="13" font-weight="600">Final Answer</text>
+
+  <!-- Route down (dashed amber): supervisor -> workers, OUTER lanes -->
+  <path d="M 470 80 L 250 80 L 250 196" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#c162-amb)"/>
+  <text x="222" y="140" text-anchor="middle" fill="#fbbf24" font-family="system-ui" font-size="10">Route</text>
+  <path d="M 630 80 L 850 80 L 850 196" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#c162-amb)"/>
+  <text x="878" y="140" text-anchor="middle" fill="#fbbf24" font-family="system-ui" font-size="10">Route</text>
+
+  <!-- Report back (solid): workers -> supervisor, INNER lanes -->
+  <path d="M 360 198 L 360 110 L 470 110 L 470 84" fill="none" stroke="#818cf8" stroke-width="1.4" marker-end="url(#c162-arr)"/>
+  <text x="392" y="128" text-anchor="middle" fill="#76767f" font-family="system-ui" font-size="9">report back</text>
+  <path d="M 740 198 L 740 110 L 630 110 L 630 84" fill="none" stroke="#a78bfa" stroke-width="1.4" marker-end="url(#c162-pur)"/>
+  <text x="708" y="128" text-anchor="middle" fill="#76767f" font-family="system-ui" font-size="9">report back</text>
+
+  <!-- research_agent -->
+  <rect x="130" y="198" width="240" height="80" rx="8" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.6"/>
+  <text x="250" y="226" text-anchor="middle" fill="#818cf8" font-family="system-ui" font-size="13" font-weight="600">research_agent</text>
+  <text x="250" y="246" text-anchor="middle" fill="#b4b4be" font-family="system-ui" font-size="10">Tavily + InternalResearchNotes</text>
+  <text x="250" y="264" text-anchor="middle" fill="#76767f" font-family="system-ui" font-size="9">RAG retrieval only &middot; no math</text>
+
+  <!-- math_agent -->
+  <rect x="630" y="198" width="240" height="80" rx="8" fill="#1a1a2e" stroke="#a78bfa" stroke-width="1.6"/>
+  <text x="750" y="226" text-anchor="middle" fill="#a78bfa" font-family="system-ui" font-size="13" font-weight="600">math_agent</text>
+  <text x="750" y="246" text-anchor="middle" fill="#b4b4be" font-family="system-ui" font-size="10">add, multiply, divide</text>
+  <text x="750" y="264" text-anchor="middle" fill="#76767f" font-family="system-ui" font-size="9">arithmetic only &middot; no retrieval</text>
+
+  <!-- Vector Store under research_agent -->
+  <line x1="250" y1="278" x2="250" y2="306" stroke="#a78bfa" stroke-width="1.3" marker-end="url(#c162-pur)"/>
+  <text x="296" y="298" text-anchor="middle" fill="#76767f" font-family="system-ui" font-size="9">retrieves</text>
+  <rect x="160" y="308" width="180" height="42" rx="6" fill="#16161a" stroke="#a78bfa" stroke-width="1.3"/>
+  <text x="250" y="334" text-anchor="middle" fill="#a78bfa" font-family="system-ui" font-size="11" font-weight="600">Vector Store (FAISS)</text>
+
+  <!-- Sequential note (bottom-right, clear of other nodes) -->
+  <rect x="560" y="300" width="310" height="56" rx="6" fill="#16161a" stroke="#26262c" stroke-width="1"/>
+  <text x="715" y="322" text-anchor="middle" fill="#76767f" font-family="system-ui" font-size="10" font-style="italic">Sequential &mdash; one agent at a time</text>
+  <text x="715" y="340" text-anchor="middle" fill="#b4b4be" font-family="system-ui" font-size="10">research first, then math, then END</text>
+</svg>
+
+<hr class="divider">
+
+<h2>Why Not Just One Agent with All Tools?</h2>
+
+<table>
+  <thead>
+    <tr><th>Single agent (6+ tools)</th><th>Supervisor + specialists</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>LLM must choose among retrieval, web search, add, multiply, divide in one prompt</td>
+      <td>Research agent sees 2 tools; math agent sees 3 &mdash; smaller decision space</td>
+    </tr>
+    <tr>
+      <td>System prompt becomes a long list of conflicting instructions</td>
+      <td>Each agent gets a tight, role-specific prompt</td>
+    </tr>
+    <tr>
+      <td>Hard to debug which tool was wrongly selected</td>
+      <td>Supervisor's routing decision is a separate, inspectable step</td>
+    </tr>
+    <tr>
+      <td>Adding a new capability means re-tuning the whole agent</td>
+      <td>Register a new worker agent; update the supervisor prompt</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Building the Worker Agents</h2>
+
+<h3>Research agent</h3>
+<p>
+  The research agent gets Tavily web search and the internal retriever. Its prompt is strict:
+  research only, no math, respond with results only:
+</p>
+
+<pre>from langchain_tavily import TavilySearch
+from langgraph.prebuilt import create_react_agent
+
+web_search = TavilySearch(max_results=3)
+
+research_agent = create_react_agent(
+    model=llm,
+    tools=[web_search, internal_tool],
+    prompt=(
+        "You are a research agent.\n\n"
+        "INSTRUCTIONS:\n"
+        "- Assist ONLY with research-related tasks, DO NOT do any math\n"
+        "- After you're done with your tasks, respond to the supervisor directly\n"
+        "- Respond ONLY with the results of your work, do NOT include ANY other text."
+    ),
+    name="research_agent",
+)</pre>
+
+<h3>Math agent</h3>
+<p>
+  Three simple arithmetic tools &mdash; enough to demonstrate domain separation. In production
+  you'd swap these for a calculator API or a code-execution sandbox:
+</p>
+
+<pre>def add(a: float, b: float):
+    """Add two numbers."""
+    return a + b
+
+def multiply(a: float, b: float):
+    """Multiply two numbers."""
+    return a * b
+
+def divide(a: float, b: float):
+    """Divide two numbers."""
+    return a * b
+
+math_agent = create_react_agent(
+    model=llm,
+    tools=[add, multiply, divide],
+    prompt=(
+        "You are a math agent.\n\n"
+        "INSTRUCTIONS:\n"
+        "- Assist ONLY with math-related tasks\n"
+        "- After you're done with your tasks, respond to the supervisor directly\n"
+        "- Respond ONLY with the results of your work, do NOT include ANY other text."
+    ),
+    name="math_agent",
+)</pre>
+
+<hr class="divider">
+
+<h2>Creating the Supervisor</h2>
+<p>
+  The <code>langgraph-supervisor</code> package provides <code>create_supervisor</code>, which
+  wires transfer tools (<code>transfer_to_research_agent</code>,
+  <code>transfer_to_math_agent</code>) and handles the message-passing protocol automatically:
+</p>
+
+<pre>from langgraph_supervisor import create_supervisor
+
+supervisor = create_supervisor(
+    model=llm,
+    agents=[research_agent, math_agent],
+    prompt=(
+        "You are a supervisor managing two agents:\n"
+        "- a research agent. Assign research-related tasks to this agent\n"
+        "- a math agent. Assign math-related tasks to this agent\n"
+        "Assign work to one agent at a time, do not call agents in parallel.\n"
+        "Do not do any work yourself."
+    ),
+    add_handoff_back_messages=True,
+    output_mode="full_history",
+).compile()</pre>
+
+<table>
+  <thead>
+    <tr><th>Parameter</th><th>Value</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>agents</code></td>
+      <td><code>[research_agent, math_agent]</code></td>
+      <td>Compiled ReAct subgraphs the supervisor can delegate to</td>
+    </tr>
+    <tr>
+      <td><code>add_handoff_back_messages</code></td>
+      <td><code>True</code></td>
+      <td>Inserts a confirmation message when control returns from a worker</td>
+    </tr>
+    <tr>
+      <td><code>output_mode</code></td>
+      <td><code>"full_history"</code></td>
+      <td>Preserves every message from supervisor and workers in the final state</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  Under the hood, the supervisor LLM sees <code>transfer_to_*</code> tools &mdash; one per worker.
+  When it calls <code>transfer_to_research_agent</code>, LangGraph invokes the research subgraph,
+  collects the result, and returns control to the supervisor for the next routing decision.
+</p>
+
+<hr class="divider">
+
+<h2>Running a Multi-Step Query</h2>
+
+<pre>response = supervisor.invoke({
+    "messages": (
+        "List all the transformer variants in production deployments from the retriever "
+        "and then tell me what is 5 plus 10"
+    )
+})</pre>
+
+<p>
+  Tracing the message history step by step:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Step</th><th>Who</th><th>What happened</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>Supervisor</td>
+      <td>Reads the query; calls <code>transfer_to_research_agent</code></td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>Research agent</td>
+      <td>Calls <code>InternalResearchNotes</code> with query &ldquo;transformer variants in production deployments&rdquo;</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Research agent</td>
+      <td>Returns list: EfficientFormer, Reformer, ViT, Swin, Wav2Vec 2.0</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>Supervisor</td>
+      <td>Calls <code>transfer_to_math_agent</code> for &ldquo;5 plus 10&rdquo;</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>Math agent</td>
+      <td>Calls <code>add(5, 10)</code> &rarr; 15</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>Supervisor</td>
+      <td>Synthesizes final answer combining research results and math result</td>
+    </tr>
+  </tbody>
+</table>
+
+<pre>print(response["messages"][-1].content)
+# The transformer variants in production deployments include:
+# 1. EfficientFormer: Optimized for mobile inference.
+# 2. Reformer: Tested for memory efficiency on embedded devices.
+# Additionally, Vision Transformers (ViT and Swin Transformer) and
+# Speech Transformers (Wav2Vec 2.0) were also evaluated.
+# As for the math question, 5 plus 10 equals 15.</pre>
+
+<hr class="divider">
+
+<h2>Supervisor vs Peer Network</h2>
+
+<table>
+  <thead>
+    <tr><th>Aspect</th><th>16.1 Peer Network</th><th>16.2 Supervisor</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Routing</strong></td>
+      <td>Fixed pipeline: researcher &rarr; writer (with loop-back)</td>
+      <td>Dynamic: supervisor picks any worker based on context</td>
+    </tr>
+    <tr>
+      <td><strong>Agent count</strong></td>
+      <td>Best for 2&ndash;3 sequential stages</td>
+      <td>Scales to N specialists with one coordinator</td>
+    </tr>
+    <tr>
+      <td><strong>Skill mix</strong></td>
+      <td>Agents in the same pipeline (research &rarr; write)</td>
+      <td>Unrelated skills (research + math + code + ...)</td>
+    </tr>
+    <tr>
+      <td><strong>Implementation</strong></td>
+      <td>Manual <code>Command(goto=...)</code> edges</td>
+      <td><code>create_supervisor</code> handles transfer tools</td>
+    </tr>
+    <tr>
+      <td><strong>Parallelism</strong></td>
+      <td>Sequential by design</td>
+      <td>This build is sequential; supervisor prompt forbids parallel calls</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">Gotcha</div>
+  <p>
+    The supervisor prompt says <strong>&ldquo;Assign work to one agent at a time&rdquo;</strong>
+    for a reason. Parallel agent invocation requires a different graph topology (fan-out /
+    fan-in nodes). Without it, the supervisor may try to call two workers simultaneously and
+    only one will execute. Keep it sequential until you explicitly build parallel branches.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+<div class="example-block">
+  <div class="label">Remember These Three</div>
+  <p><strong>1.</strong> The supervisor never executes tools &mdash; it only routes. All retrieval and math happen inside worker subgraphs with focused prompts.</p>
+  <p><strong>2.</strong> <code>create_supervisor</code> auto-generates transfer tools (<code>transfer_to_*</code>) so you don't hand-wire delegation edges for every new agent.</p>
+  <p><strong>3.</strong> Multi-step queries decompose naturally: the supervisor assigns sub-task 1 to research, waits, then assigns sub-task 2 to math, then synthesizes the final answer.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter16-1">&larr; 16.1 &middot; Multi-Agent Network</a>
+    <a href="#chapter16-3" class="next">16.3 &middot; Hierarchical Agent Teams &rarr;</a>
+</nav>

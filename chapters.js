@@ -192,5 +192,27 @@ const chapters = [
                 description: "From 7-answersynthesis.ipynb — four retrieval sources (internal docs, YouTube, Wikipedia, ArXiv) merged by a synthesizer node, plus the Autonomous RAG definition, complete workflow, and Agentic-vs-Autonomous comparison."
             }
         ]
+    },
+    {
+        id: "chapter16",
+        title: "Chapter 16: Multi-Agent RAG Systems",
+        description: "Splitting the RAG pipeline into specialized agents — a peer network with Command handoffs, a central supervisor with create_supervisor, and hierarchical nested teams for research-and-write projects — built from 8-multiagent.ipynb.",
+        children: [
+            {
+                id: "chapter16-1",
+                title: "Multi-Agent Network RAG",
+                description: "From 8-multiagent.ipynb — a researcher agent (FAISS retriever + Tavily) and a blog writer agent hand work back and forth via Command routing until one signals FINAL ANSWER."
+            },
+            {
+                id: "chapter16-2",
+                title: "Supervisor Multi-Agent RAG",
+                description: "A central supervisor delegates to a research agent (RAG + web) and a math agent (arithmetic tools) using create_supervisor from langgraph-supervisor — one worker at a time."
+            },
+            {
+                id: "chapter16-3",
+                title: "Hierarchical Agent Teams With RAG",
+                description: "Nested subgraphs — a research team (search + web scraper) and a writing team (note taker + doc writer + chart generator) — composed under a top-level supervisor for multi-phase projects."
+            }
+        ]
     }
 ];

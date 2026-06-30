@@ -1,0 +1,541 @@
+<h1>Hierarchical Agent Teams With RAG</h1>
+<p style="color:#888; margin-bottom: 2rem;"><em>When one supervisor can't manage every worker, compose nested subgraphs &mdash; a research team and a writing team, each with its own mid-level supervisor, coordinated by a top-level supervisor.</em></p>
+
+<h2>Overview</h2>
+<p>
+  The supervisor pattern from 16.2 works well for a handful of specialists. But what happens when
+  the job itself is complex &mdash; research <em>and</em> document authoring, each requiring
+  multiple sub-steps? A single supervisor routing among six or eight workers becomes a bottleneck.
+</p>
+<p>
+  The solution is <strong>hierarchical agent teams</strong>: compose separate subgraphs, each
+  with its own mid-level supervisor, and connect them under a top-level supervisor. The notes
+  describe this as distributing work when &ldquo;the job for a single worker becomes too
+  complex&rdquo; or &ldquo;the number of workers becomes too large.&rdquo;
+</p>
+<p>
+  Our build implements a <strong>research assistant</strong> that writes about transformer
+  variants: a <strong>Research Team</strong> (search + web scraper) gathers information, then a
+  <strong>Writing Team</strong> (note taker + doc writer + chart generator) produces the final
+  document. A top supervisor picks which team acts next.
+</p>
+
+<div class="example-block">
+  <div class="label">Where this fits</div>
+  <p>
+    Building block <strong>3 of 3</strong> in <a href="#chapter16">Chapter 16</a> &mdash; the most
+    complex coordination pattern. It combines everything from 16.1 (ReAct worker nodes) and 16.2
+    (supervisor routing) into <strong>nested graphs</strong>: subgraphs compiled independently,
+    then invoked as nodes in a parent graph.
+  </p>
+</div>
+
+<svg class="diagram-svg" viewBox="0 0 940 484" xmlns="http://www.w3.org/2000/svg"
+  role="img" aria-label="Hierarchical agent teams. A User Query enters the Top Supervisor, which routes (blue, outer lanes) into the Research Team subgraph or the Writing Team subgraph and receives each team's result (green, inner lanes). Inside the Research Team a Mid Supervisor dispatches search and web_scraper workers that report back. Inside the Writing Team a Mid Supervisor dispatches note_taker, doc_writer, and chart_gen workers that report back. When done, the Top Supervisor FINISHes to a Final Document.">
+  <defs>
+    <marker id="c163-arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#818cf8"/></marker>
+    <marker id="c163-grn" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4ecca3"/></marker>
+    <marker id="c163-amb" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#fbbf24"/></marker>
+    <marker id="c163-pur" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#a78bfa"/></marker>
+  </defs>
+
+  <!-- User Query -->
+  <rect x="390" y="12" width="160" height="36" rx="8" fill="#16161a" stroke="#4ecca3" stroke-width="1.5"/>
+  <text x="470" y="35" text-anchor="middle" fill="#4ecca3" font-family="system-ui" font-size="12" font-weight="600">User Query</text>
+  <line x1="470" y1="48" x2="470" y2="64" stroke="#818cf8" stroke-width="1.6" marker-end="url(#c163-arr)"/>
+
+  <!-- Top Supervisor -->
+  <rect x="330" y="66" width="280" height="54" rx="8" fill="#16161a" stroke="#fbbf24" stroke-width="2"/>
+  <text x="470" y="90" text-anchor="middle" fill="#fbbf24" font-family="system-ui" font-size="14" font-weight="600">Top Supervisor</text>
+  <text x="470" y="108" text-anchor="middle" fill="#b4b4be" font-family="system-ui" font-size="10">research_team or writing_team</text>
+
+  <!-- Route down (blue, OUTER lanes) -->
+  <path d="M 400 110 L 150 110 L 150 152" fill="none" stroke="#818cf8" stroke-width="1.5" marker-end="url(#c163-arr)"/>
+  <text x="120" y="136" text-anchor="middle" fill="#818cf8" font-family="system-ui" font-size="9">route</text>
+  <path d="M 540 110 L 800 110 L 800 152" fill="none" stroke="#818cf8" stroke-width="1.5" marker-end="url(#c163-arr)"/>
+  <text x="830" y="136" text-anchor="middle" fill="#818cf8" font-family="system-ui" font-size="9">route</text>
+
+  <!-- Result up (green, INNER lanes) -->
+  <path d="M 300 152 L 300 134 L 412 134 L 412 120" fill="none" stroke="#4ecca3" stroke-width="1.4" marker-end="url(#c163-grn)"/>
+  <text x="338" y="130" text-anchor="middle" fill="#4ecca3" font-family="system-ui" font-size="9">result</text>
+  <path d="M 640 152 L 640 134 L 528 134 L 528 120" fill="none" stroke="#4ecca3" stroke-width="1.4" marker-end="url(#c163-grn)"/>
+  <text x="602" y="130" text-anchor="middle" fill="#4ecca3" font-family="system-ui" font-size="9">result</text>
+
+  <!-- ===== Research Team Subgraph ===== -->
+  <rect x="40" y="152" width="380" height="252" rx="10" fill="#0e0e10" stroke="#4ecca3" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <text x="230" y="174" text-anchor="middle" fill="#4ecca3" font-family="system-ui" font-size="12" font-weight="600">Research Team Subgraph</text>
+
+  <rect x="130" y="184" width="200" height="40" rx="6" fill="#1a1a2e" stroke="#fbbf24" stroke-width="1.3"/>
+  <text x="230" y="209" text-anchor="middle" fill="#fbbf24" font-family="system-ui" font-size="11" font-weight="600">Mid Supervisor</text>
+
+  <rect x="60" y="254" width="150" height="58" rx="6" fill="#16161a" stroke="#818cf8" stroke-width="1.3"/>
+  <text x="135" y="279" text-anchor="middle" fill="#818cf8" font-family="system-ui" font-size="11" font-weight="600">search</text>
+  <text x="135" y="297" text-anchor="middle" fill="#76767f" font-family="system-ui" font-size="9">Tavily + Vector Store</text>
+
+  <rect x="250" y="254" width="150" height="58" rx="6" fill="#16161a" stroke="#818cf8" stroke-width="1.3"/>
+  <text x="325" y="279" text-anchor="middle" fill="#818cf8" font-family="system-ui" font-size="11" font-weight="600">web_scraper</text>
+  <text x="325" y="297" text-anchor="middle" fill="#76767f" font-family="system-ui" font-size="9">WebBaseLoader</text>
+
+  <!-- mid -> workers (amber dashed) -->
+  <path d="M 180 224 L 135 224 L 135 252" fill="none" stroke="#fbbf24" stroke-width="1.3" stroke-dasharray="4,3" marker-end="url(#c163-amb)"/>
+  <path d="M 280 224 L 325 224 L 325 252" fill="none" stroke="#fbbf24" stroke-width="1.3" stroke-dasharray="4,3" marker-end="url(#c163-amb)"/>
+
+  <!-- workers -> mid (report back, blue solid) -->
+  <path d="M 135 312 L 135 336 L 230 336 L 230 226" fill="none" stroke="#818cf8" stroke-width="1.3" marker-end="url(#c163-arr)"/>
+  <path d="M 325 312 L 325 336 L 230 336" fill="none" stroke="#818cf8" stroke-width="1.3" marker-end="url(#c163-arr)"/>
+  <text x="230" y="354" text-anchor="middle" fill="#76767f" font-family="system-ui" font-size="9">workers always report back</text>
+
+  <!-- ===== Writing Team Subgraph ===== -->
+  <rect x="520" y="152" width="360" height="252" rx="10" fill="#0e0e10" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <text x="700" y="174" text-anchor="middle" fill="#a78bfa" font-family="system-ui" font-size="12" font-weight="600">Writing Team Subgraph</text>
+
+  <rect x="600" y="184" width="200" height="40" rx="6" fill="#1a1a2e" stroke="#fbbf24" stroke-width="1.3"/>
+  <text x="700" y="209" text-anchor="middle" fill="#fbbf24" font-family="system-ui" font-size="11" font-weight="600">Mid Supervisor</text>
+
+  <rect x="534" y="254" width="104" height="58" rx="6" fill="#16161a" stroke="#a78bfa" stroke-width="1.2"/>
+  <text x="586" y="279" text-anchor="middle" fill="#a78bfa" font-family="system-ui" font-size="10" font-weight="600">note_taker</text>
+  <text x="586" y="297" text-anchor="middle" fill="#76767f" font-family="system-ui" font-size="9">create_outline</text>
+
+  <rect x="648" y="254" width="104" height="58" rx="6" fill="#16161a" stroke="#a78bfa" stroke-width="1.2"/>
+  <text x="700" y="279" text-anchor="middle" fill="#a78bfa" font-family="system-ui" font-size="10" font-weight="600">doc_writer</text>
+  <text x="700" y="297" text-anchor="middle" fill="#76767f" font-family="system-ui" font-size="9">write_document</text>
+
+  <rect x="762" y="254" width="104" height="58" rx="6" fill="#16161a" stroke="#a78bfa" stroke-width="1.2"/>
+  <text x="814" y="279" text-anchor="middle" fill="#a78bfa" font-family="system-ui" font-size="10" font-weight="600">chart_gen</text>
+  <text x="814" y="297" text-anchor="middle" fill="#76767f" font-family="system-ui" font-size="9">python_repl</text>
+
+  <!-- mid -> workers (amber dashed) -->
+  <path d="M 650 224 L 586 224 L 586 252" fill="none" stroke="#fbbf24" stroke-width="1.3" stroke-dasharray="4,3" marker-end="url(#c163-amb)"/>
+  <path d="M 700 224 L 700 252" fill="none" stroke="#fbbf24" stroke-width="1.3" stroke-dasharray="4,3" marker-end="url(#c163-amb)"/>
+  <path d="M 750 224 L 814 224 L 814 252" fill="none" stroke="#fbbf24" stroke-width="1.3" stroke-dasharray="4,3" marker-end="url(#c163-amb)"/>
+
+  <!-- workers -> mid (report back, purple solid) -->
+  <path d="M 586 312 L 586 336 L 700 336 L 700 226" fill="none" stroke="#a78bfa" stroke-width="1.3" marker-end="url(#c163-pur)"/>
+  <path d="M 814 312 L 814 336 L 700 336" fill="none" stroke="#a78bfa" stroke-width="1.3" marker-end="url(#c163-pur)"/>
+  <text x="700" y="354" text-anchor="middle" fill="#76767f" font-family="system-ui" font-size="9">workers always report back</text>
+
+  <!-- Top supervisor -> Final Document (FINISH, right outer rail) -->
+  <path d="M 610 93 L 908 93 L 908 444 L 612 444" fill="none" stroke="#4ecca3" stroke-width="1.5" marker-end="url(#c163-grn)"/>
+  <text x="901" y="270" text-anchor="end" fill="#4ecca3" font-family="system-ui" font-size="10">FINISH</text>
+
+  <rect x="330" y="422" width="280" height="48" rx="8" fill="#16161a" stroke="#4ecca3" stroke-width="1.5"/>
+  <text x="470" y="444" text-anchor="middle" fill="#4ecca3" font-family="system-ui" font-size="13" font-weight="600">Final Document</text>
+  <text x="470" y="462" text-anchor="middle" fill="#76767f" font-family="system-ui" font-size="10">outline + .md saved to temp dir</text>
+</svg>
+
+<hr class="divider">
+
+<h2>State and the Supervisor Factory</h2>
+<p>
+  Hierarchical teams extend <code>MessagesState</code> with a <code>next</code> field that tracks
+  the supervisor's routing decision. A reusable factory builds any supervisor node:
+</p>
+
+<pre>from typing import List, Optional, Literal
+from typing_extensions import TypedDict
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import HumanMessage
+from langgraph.graph import StateGraph, MessagesState, START, END
+from langgraph.types import Command
+
+class State(MessagesState):
+    next: str
+
+def make_supervisor_node(llm: BaseChatModel, members: list[str]):
+    options = ["FINISH"] + members
+    system_prompt = (
+        "You are a supervisor tasked with managing a conversation between the"
+        f" following workers: {members}. Given the following user request,"
+        " respond with the worker to act next. Each worker will perform a"
+        " task and respond with their results and status. When finished,"
+        " respond with FINISH."
+    )
+
+    class Router(TypedDict):
+        """Worker to route to next. If no workers needed, route to FINISH."""
+        next: Literal[*options]
+
+    def supervisor_node(state: State) -> Command[Literal[*members, "__end__"]]:
+        messages = [{"role": "system", "content": system_prompt}] + state["messages"]
+        response = llm.with_structured_output(Router).invoke(messages)
+        goto = response["next"]
+        if goto == "FINISH":
+            goto = END
+        return Command(goto=goto, update={"next": goto})
+
+    return supervisor_node</pre>
+
+<p>
+  Unlike the prebuilt <code>create_supervisor</code>, this factory uses
+  <strong>structured output</strong> (<code>Router</code> TypedDict) to pick the next worker.
+  The same factory is reused at every level &mdash; just pass a different <code>members</code>
+  list.
+</p>
+
+<hr class="divider">
+
+<h2>Research Team Subgraph</h2>
+<p>
+  The research team has two workers: a <strong>search agent</strong> (Tavily + internal
+  retriever) and a <strong>web scraper agent</strong> (fetches full page content from URLs).
+  Each worker is a ReAct subgraph wrapped as a node that always reports back to the team's
+  supervisor:
+</p>
+
+<h3>Tools</h3>
+
+<pre>from langchain_community.document_loaders import WebBaseLoader
+from langchain_tavily import TavilySearch
+from langchain_core.tools import tool
+from langgraph.prebuilt import create_react_agent
+
+tavily_tool = TavilySearch(max_results=5)
+
+@tool
+def scrape_webpages(urls: List[str]) -> str:
+    """Use requests and bs4 to scrape the provided web pages for detailed information."""
+    loader = WebBaseLoader(urls)
+    docs = loader.load()
+    return "\n\n".join(
+        f'&lt;Document name="{doc.metadata.get("title", "")}"&gt;\n'
+        f'{doc.page_content}\n&lt;/Document&gt;'
+        for doc in docs
+    )</pre>
+
+<h3>Worker nodes</h3>
+
+<pre>search_agent = create_react_agent(llm, tools=[tavily_tool, internal_tool])
+
+def search_node(state: State) -> Command[Literal["supervisor"]]:
+    result = search_agent.invoke(state)
+    return Command(
+        update={"messages": [
+            HumanMessage(content=result["messages"][-1].content, name="search")
+        ]},
+        goto="supervisor",
+    )
+
+web_scraper_agent = create_react_agent(llm, tools=[scrape_webpages])
+
+def web_scraper_node(state: State) -> Command[Literal["supervisor"]]:
+    result = web_scraper_agent.invoke(state)
+    return Command(
+        update={"messages": [
+            HumanMessage(content=result["messages"][-1].content, name="web_scraper")
+        ]},
+        goto="supervisor",
+    )</pre>
+
+<h3>Compile the research subgraph</h3>
+
+<pre>research_supervisor = make_supervisor_node(llm, ["search", "web_scraper"])
+
+research_builder = StateGraph(State)
+research_builder.add_node("supervisor", research_supervisor)
+research_builder.add_node("search", search_node)
+research_builder.add_node("web_scraper", web_scraper_node)
+research_builder.add_edge(START, "supervisor")
+
+research_graph = research_builder.compile()</pre>
+
+<hr class="divider">
+
+<h2>Writing Team Subgraph</h2>
+<p>
+  The writing team produces the final deliverable. Three workers collaborate under their own
+  mid-level supervisor:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Worker</th><th>Tools</th><th>Role</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>note_taker</code></td>
+      <td><code>create_outline</code>, <code>read_document</code></td>
+      <td>Reads research output and creates a structured outline</td>
+    </tr>
+    <tr>
+      <td><code>doc_writer</code></td>
+      <td><code>write_document</code>, <code>edit_document</code>, <code>read_document</code></td>
+      <td>Writes and edits the full document from the outline</td>
+    </tr>
+    <tr>
+      <td><code>chart_generator</code></td>
+      <td><code>read_document</code>, <code>python_repl_tool</code></td>
+      <td>Generates charts via Python code execution</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  All document tools write to a shared temporary directory (<code>WORKING_DIRECTORY</code>):
+</p>
+
+<pre>from pathlib import Path
+from tempfile import TemporaryDirectory
+from langchain_experimental.utilities import PythonREPL
+
+_TEMP = TemporaryDirectory()
+WORKING_DIRECTORY = Path(_TEMP.name)
+
+@tool
+def create_outline(
+    points: Annotated[List[str], "List of main points or sections."],
+    file_name: Annotated[str, "File path to save the outline."],
+) -> str:
+    """Create and save an outline."""
+    with (WORKING_DIRECTORY / file_name).open("w") as file:
+        for i, point in enumerate(points):
+            file.write(f"{i + 1}. {point}\n")
+    return f"Outline saved to {file_name}"
+
+@tool
+def write_document(
+    content: Annotated[str, "Text content to be written into the document."],
+    file_name: Annotated[str, "File path to save the document."],
+) -> str:
+    """Create and save a text document."""
+    with (WORKING_DIRECTORY / file_name).open("w") as file:
+        file.write(content)
+    return f"Document saved to {file_name}"
+
+@tool
+def edit_document(
+    file_name: Annotated[str, "Path of the document to be edited."],
+    inserts: Annotated[Dict[int, str], "Line number to text mapping."],
+) -> str:
+    """Edit a document by inserting text at specific line numbers."""
+    with (WORKING_DIRECTORY / file_name).open("r") as file:
+        lines = file.readlines()
+    for line_number, text in sorted(inserts.items()):
+        lines.insert(line_number - 1, text + "\n")
+    with (WORKING_DIRECTORY / file_name).open("w") as file:
+        file.writelines(lines)
+    return f"Document edited and saved to {file_name}"
+
+@tool
+def read_document(
+    file_name: Annotated[str, "File path to read the document from."],
+    start: Annotated[Optional[int], "The start line. Default is 0"] = None,
+    end: Annotated[Optional[int], "The end line. Default is None"] = None,
+) -> str:
+    """Read the specified document."""
+    with (WORKING_DIRECTORY / file_name).open("r") as file:
+        lines = file.readlines()
+    if start is None:
+        start = 0
+    return "\n".join(lines[start:end])
+
+repl = PythonREPL()
+
+@tool
+def python_repl_tool(
+    code: Annotated[str, "The python code to execute to generate your chart."],
+):
+    """Execute python code. Print values with print(...) to see output."""
+    try:
+        result = repl.run(code)
+    except BaseException as e:
+        return f"Failed to execute. Error: {repr(e)}"
+    return f"Successfully executed:\n```python\n{code}\n```\nStdout: {result}"</pre>
+
+<h3>Worker nodes and compilation</h3>
+
+<pre>doc_writer_agent = create_react_agent(
+    llm,
+    tools=[write_document, edit_document, read_document],
+    prompt="You can read, write and edit documents based on note-taker's outlines.",
+)
+
+note_taking_agent = create_react_agent(
+    llm,
+    tools=[create_outline, read_document],
+    prompt="You can read documents and create outlines for the document writer.",
+)
+
+chart_generating_agent = create_react_agent(
+    llm, tools=[read_document, python_repl_tool]
+)
+
+# Each worker wraps the ReAct subgraph and reports back to the writing supervisor
+def doc_writing_node(state: State) -> Command[Literal["supervisor"]]:
+    result = doc_writer_agent.invoke(state)
+    return Command(
+        update={"messages": [
+            HumanMessage(content=result["messages"][-1].content, name="doc_writer")
+        ]},
+        goto="supervisor",
+    )
+
+# ... same pattern for note_taking_node and chart_generating_node ...
+
+doc_writing_supervisor = make_supervisor_node(
+    llm, ["doc_writer", "note_taker", "chart_generator"]
+)
+
+paper_writing_builder = StateGraph(State)
+paper_writing_builder.add_node("supervisor", doc_writing_supervisor)
+paper_writing_builder.add_node("doc_writer", doc_writing_node)
+paper_writing_builder.add_node("note_taker", note_taking_node)
+paper_writing_builder.add_node("chart_generator", chart_generating_node)
+paper_writing_builder.add_edge(START, "supervisor")
+
+paper_writing_graph = paper_writing_builder.compile()</pre>
+
+<hr class="divider">
+
+<h2>Top-Level Graph &mdash; Composing Subgraphs</h2>
+<p>
+  The top-level graph treats each compiled subgraph as a single node. When the top supervisor
+  routes to <code>research_team</code>, the entire research subgraph runs to completion before
+  control returns:
+</p>
+
+<pre>def call_research_team(state: State) -> Command[Literal["supervisor"]]:
+    response = research_graph.invoke({"messages": state["messages"][-1]})
+    return Command(
+        update={"messages": [
+            HumanMessage(content=response["messages"][-1].content, name="research_team")
+        ]},
+        goto="supervisor",
+    )
+
+def call_paper_writing_team(state: State) -> Command[Literal["supervisor"]]:
+    response = paper_writing_graph.invoke({"messages": state["messages"][-1]})
+    return Command(
+        update={"messages": [
+            HumanMessage(content=response["messages"][-1].content, name="writing_team")
+        ]},
+        goto="supervisor",
+    )
+
+teams_supervisor = make_supervisor_node(llm, ["research_team", "writing_team"])
+
+super_builder = StateGraph(State)
+super_builder.add_node("supervisor", teams_supervisor)
+super_builder.add_node("research_team", call_research_team)
+super_builder.add_node("writing_team", call_paper_writing_team)
+super_builder.add_edge(START, "supervisor")
+
+super_graph = super_builder.compile()</pre>
+
+<p>
+  This is the key architectural insight: <strong>a compiled graph is just a callable</strong>.
+  <code>research_graph.invoke(...)</code> runs the full inner loop (mid-supervisor &rarr; search
+  &rarr; supervisor &rarr; web_scraper &rarr; supervisor &rarr; FINISH) and returns the final
+  message. The top supervisor sees one message from &ldquo;research_team&rdquo; and decides
+  whether to send work to the writing team next.
+</p>
+
+<hr class="divider">
+
+<h2>Running the Full Hierarchy</h2>
+
+<pre>response = super_graph.invoke({
+    "messages": [
+        ("user", "Write about transformer variants in production deployments.")
+    ],
+})</pre>
+
+<p>
+  The execution trace follows three levels of supervision:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Level</th><th>Supervisor decides</th><th>Workers execute</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Top</strong></td>
+      <td>Route to <code>research_team</code></td>
+      <td>Research subgraph runs</td>
+    </tr>
+    <tr>
+      <td><strong>Research (mid)</strong></td>
+      <td><code>search</code> &rarr; then <code>web_scraper</code> &rarr; FINISH</td>
+      <td>Tavily + FAISS retrieval, then full-page scrape</td>
+    </tr>
+    <tr>
+      <td><strong>Top</strong></td>
+      <td>Route to <code>writing_team</code></td>
+      <td>Writing subgraph runs</td>
+    </tr>
+    <tr>
+      <td><strong>Writing (mid)</strong></td>
+      <td><code>note_taker</code> &rarr; <code>doc_writer</code> &rarr; FINISH</td>
+      <td>Outline saved, document written to temp dir</td>
+    </tr>
+    <tr>
+      <td><strong>Top</strong></td>
+      <td>FINISH</td>
+      <td>Final message confirms document creation</td>
+    </tr>
+  </tbody>
+</table>
+
+<pre>print(response["messages"][-1].content)
+# The document "Transformer Variants in Production Deployments" and its
+# outline have been successfully created and saved.</pre>
+
+<hr class="divider">
+
+<h2>Three Patterns Compared</h2>
+
+<table>
+  <thead>
+    <tr><th>Pattern</th><th>Agents</th><th>Coordination</th><th>Complexity</th><th>Best for</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>16.1 Network</strong></td>
+      <td>2 peers</td>
+      <td><code>Command(goto=...)</code></td>
+      <td>Low</td>
+      <td>Sequential pipelines (research &rarr; write)</td>
+    </tr>
+    <tr>
+      <td><strong>16.2 Supervisor</strong></td>
+      <td>1 + N workers</td>
+      <td><code>create_supervisor</code></td>
+      <td>Medium</td>
+      <td>Mixed skills under one task (research + math)</td>
+    </tr>
+    <tr>
+      <td><strong>16.3 Hierarchy</strong></td>
+      <td>1 + 2 teams &times; M workers</td>
+      <td>Nested subgraphs + structured routing</td>
+      <td>High</td>
+      <td>Multi-phase projects (research &rarr; outline &rarr; write &rarr; chart)</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">Safety Note</div>
+  <p>
+    The <code>python_repl_tool</code> executes arbitrary code locally via
+    <code>PythonREPL</code>. The notebook includes an explicit warning: this is unsafe in
+    production without a sandbox. Replace it with a containerized code runner or a chart-generation
+    API before deploying.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+<div class="example-block">
+  <div class="label">Remember These Four</div>
+  <p><strong>1.</strong> <strong>A compiled LangGraph is a callable.</strong> Subgraphs run independently and return a result message to the parent graph &mdash; this is how hierarchy works.</p>
+  <p><strong>2.</strong> <strong>Reuse the supervisor factory.</strong> <code>make_supervisor_node</code> with structured output works at every level; only the <code>members</code> list changes.</p>
+  <p><strong>3.</strong> <strong>Workers always report back.</strong> Every worker node ends with <code>goto="supervisor"</code> so the mid-level supervisor can pick the next step or FINISH.</p>
+  <p><strong>4.</strong> <strong>Start flat, add hierarchy when needed.</strong> Don't jump to three levels on day one. Begin with a peer network or single supervisor; promote to nested teams when worker count or task complexity demands it.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter16-2">&larr; 16.2 &middot; Supervisor Multi-Agent RAG</a>
+    <span></span>
+</nav>
