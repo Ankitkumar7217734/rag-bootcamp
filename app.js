@@ -147,6 +147,7 @@ async function loadChapter(id) {
         buildTOC(main);
         highlightCode(main);
         addCopyButtons(main);
+        addDiagramCopyButtons(main);
         wrapScrollables(main);
         window.scrollTo(0, 0);
     } catch (e) {
@@ -211,6 +212,123 @@ function addCopyButtons(scope) {
 }
 
 /**
+ * Add a "Copy image" button to every inline diagram. Each <svg.diagram-svg> is
+ * wrapped in a positioned container (like code blocks) so the button floats in
+ * the top-right corner. Rasterizes the SVG to PNG and copies it to the clipboard.
+ */
+function addDiagramCopyButtons(scope) {
+    const diagrams = scope.querySelectorAll('svg.diagram-svg');
+
+    diagrams.forEach(svg => {
+        if (svg.parentElement && svg.parentElement.classList.contains('diagram-block')) return;
+
+        const wrap = document.createElement('div');
+        wrap.className = 'diagram-block';
+        svg.parentNode.insertBefore(wrap, svg);
+        wrap.appendChild(svg);
+
+        const btn = document.createElement('button');
+        btn.className = 'copy-btn diagram-copy-btn';
+        btn.type = 'button';
+        btn.setAttribute('aria-label', 'Copy diagram as image');
+        btn.textContent = 'Copy image';
+
+        btn.addEventListener('click', () => {
+            btn.disabled = true;
+            copyDiagramImage(svg)
+                .then(() => flashButton(btn, 'Copied!', 'copied', 'Copy image'))
+                .catch(() => flashButton(btn, 'Failed', 'failed', 'Copy image'))
+                .finally(() => { btn.disabled = false; });
+        });
+
+        wrap.appendChild(btn);
+    });
+}
+
+/** Read rendered width/height from viewBox or attributes. */
+function svgDimensions(svg) {
+    const vb = svg.viewBox.baseVal;
+    if (vb && vb.width > 0 && vb.height > 0) {
+        return { width: vb.width, height: vb.height };
+    }
+    const parts = (svg.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+    if (parts.length === 4 && parts[2] > 0 && parts[3] > 0) {
+        return { width: parts[2], height: parts[3] };
+    }
+    return {
+        width: parseFloat(svg.getAttribute('width')) || svg.clientWidth || 940,
+        height: parseFloat(svg.getAttribute('height')) || svg.clientHeight || 400,
+    };
+}
+
+/**
+ * Clone an inline <svg> with explicit dimensions for raster export.
+ */
+function prepareSvgClone(svg) {
+    const clone = svg.cloneNode(true);
+    const { width, height } = svgDimensions(svg);
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    clone.setAttribute('width', String(width));
+    clone.setAttribute('height', String(height));
+    if (!clone.getAttribute('viewBox')) {
+        clone.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    }
+    return { clone, width, height };
+}
+
+/**
+ * Render an SVG element to a PNG Blob (2x resolution for crisp pastes).
+ */
+function svgToPngBlob(svg) {
+    const { clone, width, height } = prepareSvgClone(svg);
+    const svgString = new XMLSerializer().serializeToString(clone);
+    const scale = 2;
+    const url = URL.createObjectURL(new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' }));
+
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            URL.revokeObjectURL(url);
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.round(width * scale);
+                canvas.height = Math.round(height * scale);
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.scale(scale, scale);
+                ctx.drawImage(img, 0, 0, width, height);
+                canvas.toBlob(
+                    blob => blob ? resolve(blob) : reject(new Error('PNG export failed')),
+                    'image/png'
+                );
+            } catch (err) {
+                reject(err);
+            }
+        };
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error('SVG rasterization failed'));
+        };
+        img.src = url;
+    });
+}
+
+/**
+ * Copy a diagram to the clipboard as a PNG image.
+ */
+function copyDiagramImage(svg) {
+    return svgToPngBlob(svg).then(blob => {
+        if (!navigator.clipboard || !window.isSecureContext || typeof ClipboardItem === 'undefined') {
+            throw new Error('Clipboard image copy not supported');
+        }
+        return navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': blob }),
+        ]);
+    });
+}
+
+/**
  * Wrap wide elements (tables and diagrams) in a horizontally scrollable
  * container so they stay readable on narrow screens instead of overflowing the
  * page or being crushed into the viewport. The wrapper only scrolls on small
@@ -230,12 +348,12 @@ function wrapScrollables(scope) {
     });
 }
 
-function flashButton(btn, label, cls) {
-    const original = 'Copy';
+function flashButton(btn, label, cls, original) {
+    const reset = original || 'Copy';
     btn.textContent = label;
     btn.classList.add(cls);
     setTimeout(() => {
-        btn.textContent = original;
+        btn.textContent = reset;
         btn.classList.remove(cls);
     }, 1800);
 }

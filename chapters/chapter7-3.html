@@ -49,45 +49,47 @@
 <svg class="diagram-svg" viewBox="0 0 940 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="MMR first selects D1 for highest relevance, then compares D2 and D3; D3 wins because it is less redundant, giving a diverse final set D1 and D3">
   <defs>
     <marker id="c7c-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#4338ca"/>
     </marker>
   </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
 
   <!-- Step 1: candidates by relevance -->
-  <text x="150" y="30" text-anchor="middle" fill="#4ecca3" font-size="12" font-weight="700" font-family="system-ui" letter-spacing="1">STEP 1 · RELEVANCE</text>
-  <rect x="40" y="46" width="220" height="34" rx="6" fill="#16161a" stroke="#4ecca3" stroke-width="1.8"/>
-  <text x="60" y="68" fill="#4ecca3" font-size="13" font-family="monospace">D1  sim(d,q) = 0.95 ✓</text>
-  <rect x="40" y="86" width="220" height="34" rx="6" fill="#16161a" stroke="#36363e" stroke-width="1.5"/>
-  <text x="60" y="108" fill="#b4b4be" font-size="13" font-family="monospace">D2  sim(d,q) = 0.93</text>
-  <rect x="40" y="126" width="220" height="34" rx="6" fill="#16161a" stroke="#36363e" stroke-width="1.5"/>
-  <text x="60" y="148" fill="#b4b4be" font-size="13" font-family="monospace">D3  sim(d,q) = 0.80</text>
-  <text x="150" y="184" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Pick highest → <tspan fill="#4ecca3" font-weight="700">D1 selected</tspan></text>
+  <text x="150" y="30" text-anchor="middle" fill="#047857" font-size="12" font-weight="700" font-family="system-ui" letter-spacing="1">STEP 1 · RELEVANCE</text>
+  <rect x="40" y="46" width="220" height="34" rx="6" fill="#ffffff" stroke="#059669" stroke-width="1.8"/>
+  <text x="60" y="68" fill="#047857" font-size="13" font-family="monospace">D1  sim(d,q) = 0.95 ✓</text>
+  <rect x="40" y="86" width="220" height="34" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="60" y="108" fill="#374151" font-size="13" font-family="monospace">D2  sim(d,q) = 0.93</text>
+  <rect x="40" y="126" width="220" height="34" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="60" y="148" fill="#374151" font-size="13" font-family="monospace">D3  sim(d,q) = 0.80</text>
+  <text x="150" y="184" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">Pick highest → <tspan fill="#047857" font-weight="700">D1 selected</tspan></text>
 
-  <line x1="270" y1="103" x2="320" y2="103" stroke="#818cf8" stroke-width="2" marker-end="url(#c7c-arr)"/>
+  <line x1="270" y1="103" x2="320" y2="103" stroke="#4f46e5" stroke-width="2" marker-end="url(#c7c-arr)"/>
 
   <!-- Step 2: MMR with lambda = 0.7 -->
-  <text x="560" y="30" text-anchor="middle" fill="#fbbf24" font-size="12" font-weight="700" font-family="system-ui" letter-spacing="1">STEP 2 · MMR  (λ = 0.7, penalise redundancy with D1)</text>
+  <text x="560" y="30" text-anchor="middle" fill="#b45309" font-size="12" font-weight="700" font-family="system-ui" letter-spacing="1">STEP 2 · MMR  (λ = 0.7, penalise redundancy with D1)</text>
 
-  <rect x="330" y="50" width="460" height="50" rx="8" fill="#16161a" stroke="#ef6461" stroke-width="1.6"/>
-  <text x="350" y="72" fill="#ef6461" font-size="13" font-family="monospace">MMR(D2) = 0.7·0.93 − 0.3·0.90 = 0.381</text>
-  <text x="350" y="90" fill="#76767f" font-size="11" font-family="system-ui">D2 ≈ D1 (both about vector stores) → redundant, penalised</text>
+  <rect x="330" y="50" width="460" height="50" rx="8" fill="#ffffff" stroke="#dc2626" stroke-width="1.6"/>
+  <text x="350" y="72" fill="#dc2626" font-size="13" font-family="monospace">MMR(D2) = 0.7·0.93 − 0.3·0.90 = 0.381</text>
+  <text x="350" y="90" fill="#64748b" font-size="11" font-family="system-ui">D2 ≈ D1 (both about vector stores) → redundant, penalised</text>
 
-  <rect x="330" y="110" width="460" height="50" rx="8" fill="#16161a" stroke="#4ecca3" stroke-width="1.8"/>
-  <text x="350" y="132" fill="#4ecca3" font-size="13" font-family="monospace">MMR(D3) = 0.7·0.80 − 0.3·0.30 = 0.47 ✓</text>
-  <text x="350" y="150" fill="#76767f" font-size="11" font-family="system-ui">D3 is a different topic (agents) → diverse, wins despite lower relevance</text>
+  <rect x="330" y="110" width="460" height="50" rx="8" fill="#ffffff" stroke="#059669" stroke-width="1.8"/>
+  <text x="350" y="132" fill="#047857" font-size="13" font-family="monospace">MMR(D3) = 0.7·0.80 − 0.3·0.30 = 0.47 ✓</text>
+  <text x="350" y="150" fill="#64748b" font-size="11" font-family="system-ui">D3 is a different topic (agents) → diverse, wins despite lower relevance</text>
 
-  <line x1="560" y1="160" x2="560" y2="196" stroke="#818cf8" stroke-width="2" marker-end="url(#c7c-arr)"/>
+  <line x1="560" y1="160" x2="560" y2="196" stroke="#4f46e5" stroke-width="2" marker-end="url(#c7c-arr)"/>
 
   <!-- Result row -->
-  <rect x="120" y="210" width="320" height="86" rx="10" fill="#16161a" stroke="#a78bfa" stroke-width="2"/>
-  <text x="280" y="238" text-anchor="middle" fill="#a78bfa" font-size="14" font-weight="700" font-family="system-ui">With MMR: D1 + D3</text>
-  <text x="280" y="262" text-anchor="middle" fill="#4ecca3" font-size="12" font-family="system-ui">diverse — retrieval + agents ✓</text>
-  <text x="280" y="282" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">richer context for the LLM</text>
+  <rect x="120" y="210" width="320" height="86" rx="10" fill="#ffffff" stroke="#7c3aed" stroke-width="2"/>
+  <text x="280" y="238" text-anchor="middle" fill="#6d28d9" font-size="14" font-weight="700" font-family="system-ui">With MMR: D1 + D3</text>
+  <text x="280" y="262" text-anchor="middle" fill="#047857" font-size="12" font-family="system-ui">diverse — retrieval + agents ✓</text>
+  <text x="280" y="282" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">richer context for the LLM</text>
 
-  <rect x="500" y="210" width="320" height="86" rx="10" fill="#16161a" stroke="#36363e" stroke-width="1.5" stroke-dasharray="5 4"/>
-  <text x="660" y="238" text-anchor="middle" fill="#b4b4be" font-size="14" font-weight="700" font-family="system-ui">Without MMR: D1 + D2</text>
-  <text x="660" y="262" text-anchor="middle" fill="#ef6461" font-size="12" font-family="system-ui">redundant — both vector stores ✗</text>
-  <text x="660" y="282" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">wasted context window</text>
+  <rect x="500" y="210" width="320" height="86" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text x="660" y="238" text-anchor="middle" fill="#374151" font-size="14" font-weight="700" font-family="system-ui">Without MMR: D1 + D2</text>
+  <text x="660" y="262" text-anchor="middle" fill="#dc2626" font-size="12" font-family="system-ui">redundant — both vector stores ✗</text>
+  <text x="660" y="282" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">wasted context window</text>
 </svg>
 
 <p><strong>Step 1 — pick the most relevant.</strong> By cosine similarity to the query, D1 (0.95) wins and is selected first.</p>

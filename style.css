@@ -775,7 +775,8 @@ pre code.hljs {
 }
 
 /* Code block + copy button */
-.code-block {
+.code-block,
+.diagram-block {
     position: relative;
 }
 
@@ -810,6 +811,7 @@ pre code.hljs {
 
 /* Reveal on hover/focus; keep visible on touch (no hover) */
 .code-block:hover .copy-btn,
+.diagram-block:hover .copy-btn,
 .copy-btn:focus-visible {
     opacity: 1;
 }
@@ -847,8 +849,9 @@ img {
     max-width: 100%;
     border-radius: var(--radius);
     margin: 1.75rem 0;
-    border: 1px solid var(--border);
+    border: 1px solid #cbd5e1;
     box-shadow: var(--shadow-md);
+    background: #ffffff;
     transition: transform var(--t-slow) var(--ease),
                 box-shadow var(--t-slow) var(--ease),
                 border-color var(--t-slow) var(--ease);
@@ -958,13 +961,25 @@ td {
     width: 100%;
     margin: 2rem 0;
     border-radius: var(--radius);
-    border: 1px solid var(--border);
+    border: 1px solid #cbd5e1;
     box-shadow: var(--shadow-md);
     transition: box-shadow var(--t-slow) var(--ease);
+    background: #ffffff;
 }
 
 .diagram-svg:hover {
     box-shadow: var(--shadow-lg);
+}
+
+/* Legacy alias — same as default diagram canvas */
+.diagram-svg--light {
+    background: #ffffff;
+    border-color: #cbd5e1;
+}
+
+/* Copy button sits above the diagram; light diagrams keep a dark-theme chip */
+.diagram-block .diagram-copy-btn {
+    z-index: 1;
 }
 
 /* =====================================================

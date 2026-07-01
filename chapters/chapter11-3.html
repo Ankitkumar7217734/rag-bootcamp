@@ -77,47 +77,49 @@ llm_groq.invoke("Hey I am Ankit and i Like to watch cricket")</pre>
 <svg class="diagram-svg" viewBox="0 0 940 270" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Binding a tool to an LLM. A user natural-language input enters the LLM, which acts as the brain. A tool, defined by its docstring, is converted to a JSON schema and bound to the LLM. Sources for tools include third-party APIs, a weather API, and external databases. When asked a matching question, the LLM emits a structured tool call naming the function and its arguments rather than a plain text answer.">
   <defs>
     <marker id="c11d-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#4338ca"/>
     </marker>
     <marker id="c11d-grn" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#4ecca3"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#047857"/>
     </marker>
   </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
 
   <!-- input -->
-  <rect x="25" y="100" width="120" height="48" rx="8" fill="#16161a" stroke="#fbbf24" stroke-width="1.8"/>
-  <text x="85" y="121" text-anchor="middle" fill="#fbbf24" font-size="11.5" font-weight="600" font-family="system-ui">User Input</text>
-  <text x="85" y="138" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">natural language</text>
+  <rect x="25" y="100" width="120" height="48" rx="8" fill="#ffffff" stroke="#d97706" stroke-width="1.8"/>
+  <text x="85" y="121" text-anchor="middle" fill="#b45309" font-size="11.5" font-weight="600" font-family="system-ui">User Input</text>
+  <text x="85" y="138" text-anchor="middle" fill="#64748b" font-size="10" font-family="system-ui">natural language</text>
 
-  <line x1="145" y1="124" x2="190" y2="124" stroke="#818cf8" stroke-width="2" marker-end="url(#c11d-arr)"/>
+  <line x1="145" y1="124" x2="190" y2="124" stroke="#4f46e5" stroke-width="2" marker-end="url(#c11d-arr)"/>
 
   <!-- LLM brain -->
-  <rect x="192" y="86" width="180" height="78" rx="10" fill="#1a1a2e" stroke="#ef6461" stroke-width="2.5"/>
-  <text x="282" y="120" text-anchor="middle" fill="#ececf1" font-size="15" font-weight="700" font-family="system-ui">LLM</text>
-  <text x="282" y="142" text-anchor="middle" fill="#ef6461" font-size="11" font-weight="600" font-family="system-ui">the Brain</text>
+  <rect x="192" y="86" width="180" height="78" rx="10" fill="#ffffff" stroke="#dc2626" stroke-width="2.5"/>
+  <text x="282" y="120" text-anchor="middle" fill="#1e293b" font-size="15" font-weight="700" font-family="system-ui">LLM</text>
+  <text x="282" y="142" text-anchor="middle" fill="#dc2626" font-size="11" font-weight="600" font-family="system-ui">the Brain</text>
 
   <!-- tool def -->
-  <rect x="470" y="22" width="200" height="64" rx="9" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2"/>
-  <text x="570" y="48" text-anchor="middle" fill="#4ecca3" font-size="12.5" font-weight="700" font-family="system-ui">Tool — add()</text>
-  <text x="570" y="68" text-anchor="middle" fill="#76767f" font-size="10" font-family="monospace">docstring → JSON schema</text>
+  <rect x="470" y="22" width="200" height="64" rx="9" fill="#ffffff" stroke="#059669" stroke-width="2"/>
+  <text x="570" y="48" text-anchor="middle" fill="#047857" font-size="12.5" font-weight="700" font-family="system-ui">Tool — add()</text>
+  <text x="570" y="68" text-anchor="middle" fill="#64748b" font-size="10" font-family="monospace">docstring → JSON schema</text>
 
   <!-- bind arrow -->
-  <path d="M470,60 Q410,60 374,108" fill="none" stroke="#4ecca3" stroke-width="2" marker-end="url(#c11d-grn)"/>
-  <text x="430" y="50" text-anchor="middle" fill="#4ecca3" font-size="11" font-style="italic" font-family="system-ui">bind_tools()</text>
+  <path d="M470,60 Q410,60 374,108" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#c11d-grn)"/>
+  <text x="430" y="50" text-anchor="middle" fill="#047857" font-size="11" font-style="italic" font-family="system-ui">bind_tools()</text>
 
   <!-- sources -->
-  <rect x="470" y="104" width="200" height="44" rx="8" fill="#16161a" stroke="#a78bfa" stroke-width="1.6"/>
-  <text x="570" y="123" text-anchor="middle" fill="#a78bfa" font-size="11" font-weight="600" font-family="system-ui">3rd-party API · Weather API</text>
-  <text x="570" y="139" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">external database</text>
-  <line x1="470" y1="126" x2="376" y2="126" stroke="#a78bfa" stroke-width="1.6" marker-end="url(#c11d-arr)"/>
+  <rect x="470" y="104" width="200" height="44" rx="8" fill="#ffffff" stroke="#7c3aed" stroke-width="1.6"/>
+  <text x="570" y="123" text-anchor="middle" fill="#6d28d9" font-size="11" font-weight="600" font-family="system-ui">3rd-party API · Weather API</text>
+  <text x="570" y="139" text-anchor="middle" fill="#64748b" font-size="10" font-family="system-ui">external database</text>
+  <line x1="470" y1="126" x2="376" y2="126" stroke="#7c3aed" stroke-width="1.6" marker-end="url(#c11d-arr)"/>
 
   <!-- output: tool call -->
-  <line x1="372" y1="140" x2="470" y2="200" stroke="#818cf8" stroke-width="2" marker-end="url(#c11d-arr)"/>
-  <rect x="472" y="178" width="270" height="56" rx="9" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
-  <text x="607" y="202" text-anchor="middle" fill="#818cf8" font-size="12.5" font-weight="700" font-family="system-ui">Structured tool_call</text>
-  <text x="607" y="221" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="monospace">{name: "add", args: {a, b}}</text>
+  <line x1="372" y1="140" x2="470" y2="200" stroke="#4f46e5" stroke-width="2" marker-end="url(#c11d-arr)"/>
+  <rect x="472" y="178" width="270" height="56" rx="9" fill="#ffffff" stroke="#4f46e5" stroke-width="2"/>
+  <text x="607" y="202" text-anchor="middle" fill="#4338ca" font-size="12.5" font-weight="700" font-family="system-ui">Structured tool_call</text>
+  <text x="607" y="221" text-anchor="middle" fill="#64748b" font-size="10.5" font-family="monospace">{name: "add", args: {a, b}}</text>
 
-  <text x="282" y="200" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">decides: call a tool?</text>
+  <text x="282" y="200" text-anchor="middle" fill="#64748b" font-size="10.5" font-family="system-ui">decides: call a tool?</text>
 </svg>
 
 <h3>Defining a tool</h3>
@@ -248,53 +250,55 @@ display(Image(graph.get_graph().draw_mermaid_png()))</pre>
 <svg class="diagram-svg" viewBox="0 0 940 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The router agent graph. START flows into the llm_tools node. A conditional edge called tools_condition then routes two ways: if the AI message is a tool call, it goes down to the tools node which runs the tool and returns to END; if it is a direct natural-language response, it goes straight to END. The dashed branch from tools back up to llm_tools shows the full agent loop variant where tool results are fed back to the model.">
   <defs>
     <marker id="c11e-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#4338ca"/>
     </marker>
     <marker id="c11e-grn" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#4ecca3"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#047857"/>
     </marker>
     <marker id="c11e-mut" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#76767f"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#64748b"/>
     </marker>
   </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
 
   <!-- START -->
-  <rect x="60" y="128" width="116" height="42" rx="21" fill="#16161a" stroke="#818cf8" stroke-width="2"/>
-  <text x="118" y="154" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="700" font-family="monospace">START</text>
+  <rect x="60" y="128" width="116" height="42" rx="21" fill="#ffffff" stroke="#4f46e5" stroke-width="2"/>
+  <text x="118" y="154" text-anchor="middle" fill="#4338ca" font-size="13" font-weight="700" font-family="monospace">START</text>
 
-  <line x1="176" y1="149" x2="226" y2="149" stroke="#818cf8" stroke-width="2" marker-end="url(#c11e-arr)"/>
+  <line x1="176" y1="149" x2="226" y2="149" stroke="#4f46e5" stroke-width="2" marker-end="url(#c11e-arr)"/>
 
   <!-- llm_tools -->
-  <rect x="228" y="120" width="190" height="58" rx="9" fill="#1a1a2e" stroke="#ef6461" stroke-width="2.5"/>
-  <text x="323" y="144" text-anchor="middle" fill="#ececf1" font-size="13.5" font-weight="700" font-family="system-ui">llm_tools</text>
-  <text x="323" y="163" text-anchor="middle" fill="#ef6461" font-size="10.5" font-family="system-ui">LLM + bound tools (Brain)</text>
+  <rect x="228" y="120" width="190" height="58" rx="9" fill="#ffffff" stroke="#dc2626" stroke-width="2.5"/>
+  <text x="323" y="144" text-anchor="middle" fill="#1e293b" font-size="13.5" font-weight="700" font-family="system-ui">llm_tools</text>
+  <text x="323" y="163" text-anchor="middle" fill="#dc2626" font-size="10.5" font-family="system-ui">LLM + bound tools (Brain)</text>
 
   <!-- conditional node label -->
-  <text x="500" y="100" text-anchor="middle" fill="#fbbf24" font-size="11.5" font-style="italic" font-weight="600" font-family="system-ui">tools_condition</text>
+  <text x="500" y="100" text-anchor="middle" fill="#b45309" font-size="11.5" font-style="italic" font-weight="600" font-family="system-ui">tools_condition</text>
 
   <!-- branch up to END (direct) -->
-  <path d="M418,135 Q560,110 700,135" fill="none" stroke="#818cf8" stroke-width="2" marker-end="url(#c11e-arr)"/>
-  <text x="560" y="124" text-anchor="middle" fill="#818cf8" font-size="10.5" font-family="system-ui">direct response →</text>
+  <path d="M418,135 Q560,110 700,135" fill="none" stroke="#4f46e5" stroke-width="2" marker-end="url(#c11e-arr)"/>
+  <text x="560" y="124" text-anchor="middle" fill="#4338ca" font-size="10.5" font-family="system-ui">direct response →</text>
 
   <!-- branch down to tools -->
-  <path d="M418,164 Q540,210 618,236" fill="none" stroke="#818cf8" stroke-width="2" marker-end="url(#c11e-arr)"/>
-  <text x="520" y="226" text-anchor="middle" fill="#818cf8" font-size="10.5" font-family="system-ui">tool call →</text>
+  <path d="M418,164 Q540,210 618,236" fill="none" stroke="#4f46e5" stroke-width="2" marker-end="url(#c11e-arr)"/>
+  <text x="520" y="226" text-anchor="middle" fill="#4338ca" font-size="10.5" font-family="system-ui">tool call →</text>
 
   <!-- tools node -->
-  <rect x="540" y="238" width="190" height="56" rx="9" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2.5"/>
-  <text x="635" y="262" text-anchor="middle" fill="#4ecca3" font-size="13.5" font-weight="700" font-family="system-ui">tools</text>
-  <text x="635" y="281" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">ToolNode · runs add()</text>
+  <rect x="540" y="238" width="190" height="56" rx="9" fill="#ffffff" stroke="#059669" stroke-width="2.5"/>
+  <text x="635" y="262" text-anchor="middle" fill="#047857" font-size="13.5" font-weight="700" font-family="system-ui">tools</text>
+  <text x="635" y="281" text-anchor="middle" fill="#64748b" font-size="10.5" font-family="system-ui">ToolNode · runs add()</text>
 
   <!-- tools to END -->
-  <path d="M730,255 Q800,230 800,180" fill="none" stroke="#4ecca3" stroke-width="2" marker-end="url(#c11e-grn)"/>
+  <path d="M730,255 Q800,230 800,180" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#c11e-grn)"/>
 
   <!-- END -->
-  <rect x="742" y="128" width="116" height="42" rx="21" fill="#16161a" stroke="#818cf8" stroke-width="2"/>
-  <text x="800" y="154" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="700" font-family="monospace">END</text>
+  <rect x="742" y="128" width="116" height="42" rx="21" fill="#ffffff" stroke="#4f46e5" stroke-width="2"/>
+  <text x="800" y="154" text-anchor="middle" fill="#4338ca" font-size="13" font-weight="700" font-family="monospace">END</text>
 
   <!-- agent loop variant (dashed) -->
-  <path d="M540,266 Q360,300 323,180" fill="none" stroke="#76767f" stroke-width="1.6" stroke-dasharray="6,4" marker-end="url(#c11e-mut)"/>
-  <text x="360" y="252" text-anchor="middle" fill="#76767f" font-size="10" font-style="italic" font-family="system-ui">agent loop: feed result back to the LLM</text>
+  <path d="M540,266 Q360,300 323,180" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-dasharray="6,4" marker-end="url(#c11e-mut)"/>
+  <text x="360" y="252" text-anchor="middle" fill="#64748b" font-size="10" font-style="italic" font-family="system-ui">agent loop: feed result back to the LLM</text>
 </svg>
 
 <div class="example-block">

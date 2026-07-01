@@ -9,37 +9,39 @@
 <svg class="diagram-svg" viewBox="0 0 940 150" xmlns="http://www.w3.org/2000/svg" aria-label="Online query and generation pipeline">
   <defs>
     <marker id="a" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-      <path d="M0,0 L0,6 L8,3 z" fill="#818cf8"/>
+      <path d="M0,0 L0,6 L8,3 z" fill="#4338ca"/>
     </marker>
   </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
 
-  <rect x="12" y="30" width="128" height="80" rx="8" fill="#16161a" stroke="#ffd166" stroke-width="1.5"/>
-  <text x="76" y="64" text-anchor="middle" fill="#ffd166" font-size="13" font-weight="600" font-family="system-ui">User</text>
-  <text x="76" y="85" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Query</text>
 
-  <line x1="142" y1="70" x2="178" y2="70" stroke="#818cf8" stroke-width="1.8" marker-end="url(#a)"/>
+  <rect x="12" y="30" width="128" height="80" rx="8" fill="#ffffff" stroke="#d97706" stroke-width="1.5"/>
+  <text x="76" y="64" text-anchor="middle" fill="#b45309" font-size="13" font-weight="600" font-family="system-ui">User</text>
+  <text x="76" y="85" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">Query</text>
 
-  <rect x="181" y="30" width="152" height="80" rx="8" fill="#1a1a2e" stroke="#6366f1" stroke-width="1.5"/>
-  <text x="257" y="64" text-anchor="middle" fill="#6366f1" font-size="13" font-weight="600" font-family="system-ui">Embedding</text>
-  <text x="257" y="85" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Query → Vector</text>
+  <line x1="142" y1="70" x2="178" y2="70" stroke="#4f46e5" stroke-width="1.8" marker-end="url(#a)"/>
 
-  <line x1="335" y1="70" x2="371" y2="70" stroke="#818cf8" stroke-width="1.8" marker-end="url(#a)"/>
+  <rect x="181" y="30" width="152" height="80" rx="8" fill="#ffffff" stroke="#4f46e5" stroke-width="1.5"/>
+  <text x="257" y="64" text-anchor="middle" fill="#4338ca" font-size="13" font-weight="600" font-family="system-ui">Embedding</text>
+  <text x="257" y="85" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">Query → Vector</text>
 
-  <rect x="374" y="30" width="160" height="80" rx="8" fill="#1a1a2e" stroke="#4ecca3" stroke-width="1.5"/>
-  <text x="454" y="64" text-anchor="middle" fill="#4ecca3" font-size="13" font-weight="600" font-family="system-ui">Similarity</text>
-  <text x="454" y="85" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Search Vector DB</text>
+  <line x1="335" y1="70" x2="371" y2="70" stroke="#4f46e5" stroke-width="1.8" marker-end="url(#a)"/>
 
-  <line x1="536" y1="70" x2="572" y2="70" stroke="#818cf8" stroke-width="1.8" marker-end="url(#a)"/>
+  <rect x="374" y="30" width="160" height="80" rx="8" fill="#ffffff" stroke="#059669" stroke-width="1.5"/>
+  <text x="454" y="64" text-anchor="middle" fill="#047857" font-size="13" font-weight="600" font-family="system-ui">Similarity</text>
+  <text x="454" y="85" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">Search Vector DB</text>
 
-  <rect x="575" y="30" width="158" height="80" rx="8" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.5"/>
-  <text x="654" y="64" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="600" font-family="system-ui">Augment</text>
-  <text x="654" y="85" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Query + Context</text>
+  <line x1="536" y1="70" x2="572" y2="70" stroke="#4f46e5" stroke-width="1.8" marker-end="url(#a)"/>
 
-  <line x1="735" y1="70" x2="771" y2="70" stroke="#818cf8" stroke-width="1.8" marker-end="url(#a)"/>
+  <rect x="575" y="30" width="158" height="80" rx="8" fill="#ffffff" stroke="#4f46e5" stroke-width="1.5"/>
+  <text x="654" y="64" text-anchor="middle" fill="#4338ca" font-size="13" font-weight="600" font-family="system-ui">Augment</text>
+  <text x="654" y="85" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">Query + Context</text>
 
-  <rect x="774" y="30" width="150" height="80" rx="8" fill="#1a1a2e" stroke="#a78bfa" stroke-width="1.5"/>
-  <text x="849" y="64" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="600" font-family="system-ui">LLM</text>
-  <text x="849" y="85" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Generate Answer</text>
+  <line x1="735" y1="70" x2="771" y2="70" stroke="#4f46e5" stroke-width="1.8" marker-end="url(#a)"/>
+
+  <rect x="774" y="30" width="150" height="80" rx="8" fill="#ffffff" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="849" y="64" text-anchor="middle" fill="#6d28d9" font-size="13" font-weight="600" font-family="system-ui">LLM</text>
+  <text x="849" y="85" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">Generate Answer</text>
 </svg>
 
 <hr class="divider">
@@ -63,38 +65,40 @@ Embedding:   [0.3, 0.4, 0.6, 0.2, ...]    ← now a vector</pre>
 <svg class="diagram-svg" viewBox="0 0 840 270" xmlns="http://www.w3.org/2000/svg" aria-label="Cosine similarity vs Euclidean distance illustration">
   <defs>
     <marker id="arrow" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
-      <path d="M0,0 L0,6 L7,3 z" fill="#818cf8"/>
+      <path d="M0,0 L0,6 L7,3 z" fill="#4338ca"/>
     </marker>
   </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
 
   <!-- Cosine similarity panel -->
-  <rect x="20" y="12" width="382" height="246" rx="10" fill="#16161a" stroke="#26262c" stroke-width="1"/>
-  <text x="211" y="46" text-anchor="middle" fill="#818cf8" font-size="15" font-weight="700" font-family="system-ui">Cosine Similarity</text>
-  <text x="211" y="68" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Measures the angle between two vectors</text>
+  <rect x="20" y="12" width="382" height="246" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1"/>
+  <text x="211" y="46" text-anchor="middle" fill="#4338ca" font-size="15" font-weight="700" font-family="system-ui">Cosine Similarity</text>
+  <text x="211" y="68" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">Measures the angle between two vectors</text>
 
   <!-- Vectors from origin at (120, 220) -->
-  <line x1="120" y1="220" x2="290" y2="110" stroke="#4ecca3" stroke-width="2" marker-end="url(#arrow)"/>
-  <line x1="120" y1="220" x2="320" y2="150" stroke="#a78bfa" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="120" y1="220" x2="290" y2="110" stroke="#059669" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="120" y1="220" x2="320" y2="150" stroke="#7c3aed" stroke-width="2" marker-end="url(#arrow)"/>
   <!-- Arc showing angle -->
-  <path d="M 158,192 A 46,46 0 0,1 172,172" stroke="#ffd166" stroke-width="1.5" fill="none"/>
-  <text x="192" y="170" fill="#ffd166" font-size="12" font-family="system-ui">θ small = similar</text>
-  <text x="294" y="106" fill="#4ecca3" font-size="12" font-family="system-ui">Query</text>
-  <text x="324" y="147" fill="#a78bfa" font-size="12" font-family="system-ui">Chunk</text>
-  <text x="211" y="248" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Score: 1.0 = identical · 0.0 = unrelated</text>
+  <path d="M 158,192 A 46,46 0 0,1 172,172" stroke="#d97706" stroke-width="1.5" fill="none"/>
+  <text x="192" y="170" fill="#b45309" font-size="12" font-family="system-ui">θ small = similar</text>
+  <text x="294" y="106" fill="#047857" font-size="12" font-family="system-ui">Query</text>
+  <text x="324" y="147" fill="#6d28d9" font-size="12" font-family="system-ui">Chunk</text>
+  <text x="211" y="248" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">Score: 1.0 = identical · 0.0 = unrelated</text>
 
   <!-- Euclidean distance panel -->
-  <rect x="438" y="12" width="382" height="246" rx="10" fill="#16161a" stroke="#26262c" stroke-width="1"/>
-  <text x="629" y="46" text-anchor="middle" fill="#6366f1" font-size="15" font-weight="700" font-family="system-ui">Euclidean Distance</text>
-  <text x="629" y="68" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Measures straight-line distance in vector space</text>
+  <rect x="438" y="12" width="382" height="246" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1"/>
+  <text x="629" y="46" text-anchor="middle" fill="#4338ca" font-size="15" font-weight="700" font-family="system-ui">Euclidean Distance</text>
+  <text x="629" y="68" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">Measures straight-line distance in vector space</text>
 
   <!-- Two points with a line -->
-  <circle cx="540" cy="160" r="9" fill="#4ecca3"/>
-  <circle cx="720" cy="188" r="9" fill="#a78bfa"/>
-  <line x1="540" y1="160" x2="720" y2="188" stroke="#ffd166" stroke-width="1.5" stroke-dasharray="6,4"/>
-  <text x="630" y="152" text-anchor="middle" fill="#ffd166" font-size="12" font-family="system-ui">distance d</text>
-  <text x="516" y="180" fill="#4ecca3" font-size="12" font-family="system-ui">Query</text>
-  <text x="727" y="210" fill="#a78bfa" font-size="12" font-family="system-ui">Chunk</text>
-  <text x="629" y="248" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Score: 0 = identical · higher = less similar</text>
+  <circle cx="540" cy="160" r="9" fill="#047857"/>
+  <circle cx="720" cy="188" r="9" fill="#6d28d9"/>
+  <line x1="540" y1="160" x2="720" y2="188" stroke="#d97706" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <text x="630" y="152" text-anchor="middle" fill="#b45309" font-size="12" font-family="system-ui">distance d</text>
+  <text x="516" y="180" fill="#047857" font-size="12" font-family="system-ui">Query</text>
+  <text x="727" y="210" fill="#6d28d9" font-size="12" font-family="system-ui">Chunk</text>
+  <text x="629" y="248" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">Score: 0 = identical · higher = less similar</text>
 </svg>
 
 <table>
@@ -116,56 +120,58 @@ Embedding:   [0.3, 0.4, 0.6, 0.2, ...]    ← now a vector</pre>
 <svg class="diagram-svg" viewBox="0 0 840 290" xmlns="http://www.w3.org/2000/svg" aria-label="Retrieved chunks being combined with original query">
   <defs>
     <marker id="arr4" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-      <path d="M0,0 L0,6 L8,3 z" fill="#818cf8"/>
+      <path d="M0,0 L0,6 L8,3 z" fill="#4338ca"/>
     </marker>
     <marker id="arr4y" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-      <path d="M0,0 L0,6 L8,3 z" fill="#ffd166"/>
+      <path d="M0,0 L0,6 L8,3 z" fill="#b45309"/>
     </marker>
   </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
 
   <!-- Three retrieved docs (left column) -->
-  <rect x="12" y="18" width="158" height="62" rx="6" fill="#1a1a2e" stroke="#4ecca3" stroke-width="1.5"/>
-  <text x="91" y="44" text-anchor="middle" fill="#4ecca3" font-size="13" font-weight="600" font-family="system-ui">D1 — Chunk</text>
-  <text x="91" y="64" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">sim: 0.94</text>
+  <rect x="12" y="18" width="158" height="62" rx="6" fill="#ffffff" stroke="#059669" stroke-width="1.5"/>
+  <text x="91" y="44" text-anchor="middle" fill="#047857" font-size="13" font-weight="600" font-family="system-ui">D1 — Chunk</text>
+  <text x="91" y="64" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">sim: 0.94</text>
 
-  <rect x="12" y="98" width="158" height="62" rx="6" fill="#1a1a2e" stroke="#4ecca3" stroke-width="1.5"/>
-  <text x="91" y="124" text-anchor="middle" fill="#4ecca3" font-size="13" font-weight="600" font-family="system-ui">D2 — Chunk</text>
-  <text x="91" y="144" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">sim: 0.89</text>
+  <rect x="12" y="98" width="158" height="62" rx="6" fill="#ffffff" stroke="#059669" stroke-width="1.5"/>
+  <text x="91" y="124" text-anchor="middle" fill="#047857" font-size="13" font-weight="600" font-family="system-ui">D2 — Chunk</text>
+  <text x="91" y="144" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">sim: 0.89</text>
 
-  <rect x="12" y="178" width="158" height="62" rx="6" fill="#1a1a2e" stroke="#4ecca3" stroke-width="1.5"/>
-  <text x="91" y="204" text-anchor="middle" fill="#4ecca3" font-size="13" font-weight="600" font-family="system-ui">D3 — Chunk</text>
-  <text x="91" y="224" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">sim: 0.82</text>
+  <rect x="12" y="178" width="158" height="62" rx="6" fill="#ffffff" stroke="#059669" stroke-width="1.5"/>
+  <text x="91" y="204" text-anchor="middle" fill="#047857" font-size="13" font-weight="600" font-family="system-ui">D3 — Chunk</text>
+  <text x="91" y="224" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">sim: 0.82</text>
 
   <!-- Arrows from D1, D2, D3 converging to Augmented Context center (~y=140) -->
-  <line x1="172" y1="49" x2="342" y2="122" stroke="#818cf8" stroke-width="1.5" marker-end="url(#arr4)"/>
-  <line x1="172" y1="129" x2="342" y2="137" stroke="#818cf8" stroke-width="1.5" marker-end="url(#arr4)"/>
-  <line x1="172" y1="209" x2="342" y2="152" stroke="#818cf8" stroke-width="1.5" marker-end="url(#arr4)"/>
+  <line x1="172" y1="49" x2="342" y2="122" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#arr4)"/>
+  <line x1="172" y1="129" x2="342" y2="137" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#arr4)"/>
+  <line x1="172" y1="209" x2="342" y2="152" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#arr4)"/>
 
   <!-- Original Query — placed BELOW the chunks, clearly separated -->
-  <rect x="192" y="248" width="162" height="36" rx="6" fill="#16161a" stroke="#ffd166" stroke-width="1.5"/>
-  <text x="273" y="264" text-anchor="middle" fill="#ffd166" font-size="12" font-weight="600" font-family="system-ui">Original Query</text>
-  <text x="273" y="278" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">"What is RAG?"</text>
+  <rect x="192" y="248" width="162" height="36" rx="6" fill="#ffffff" stroke="#d97706" stroke-width="1.5"/>
+  <text x="273" y="264" text-anchor="middle" fill="#b45309" font-size="12" font-weight="600" font-family="system-ui">Original Query</text>
+  <text x="273" y="278" text-anchor="middle" fill="#64748b" font-size="11" font-family="system-ui">"What is RAG?"</text>
   <!-- Arrow from Query going up-right into bottom of Augmented Context -->
-  <line x1="354" y1="252" x2="430" y2="192" stroke="#ffd166" stroke-width="1.5" marker-end="url(#arr4y)"/>
+  <line x1="354" y1="252" x2="430" y2="192" stroke="#d97706" stroke-width="1.5" marker-end="url(#arr4y)"/>
 
   <!-- Augmented Context box -->
-  <rect x="346" y="82" width="192" height="118" rx="8" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.5"/>
-  <text x="442" y="110" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="600" font-family="system-ui">Augmented Context</text>
-  <text x="442" y="130" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Query + D1 text</text>
-  <text x="442" y="148" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">+ D2 text + D3 text</text>
-  <text x="442" y="166" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">+ metadata</text>
+  <rect x="346" y="82" width="192" height="118" rx="8" fill="#ffffff" stroke="#4f46e5" stroke-width="1.5"/>
+  <text x="442" y="110" text-anchor="middle" fill="#4338ca" font-size="13" font-weight="600" font-family="system-ui">Augmented Context</text>
+  <text x="442" y="130" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">Query + D1 text</text>
+  <text x="442" y="148" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">+ D2 text + D3 text</text>
+  <text x="442" y="166" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">+ metadata</text>
 
   <!-- Arrow to LLM -->
-  <line x1="540" y1="141" x2="578" y2="141" stroke="#818cf8" stroke-width="1.5" marker-end="url(#arr4)"/>
+  <line x1="540" y1="141" x2="578" y2="141" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#arr4)"/>
 
   <!-- LLM -->
-  <rect x="581" y="106" width="140" height="70" rx="8" fill="#1a1a2e" stroke="#a78bfa" stroke-width="1.5"/>
-  <text x="651" y="138" text-anchor="middle" fill="#a78bfa" font-size="15" font-weight="700" font-family="system-ui">LLM</text>
-  <text x="651" y="160" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">Generate answer</text>
+  <rect x="581" y="106" width="140" height="70" rx="8" fill="#ffffff" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="651" y="138" text-anchor="middle" fill="#6d28d9" font-size="15" font-weight="700" font-family="system-ui">LLM</text>
+  <text x="651" y="160" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">Generate answer</text>
 
   <!-- Arrow to checkmark -->
-  <line x1="723" y1="141" x2="766" y2="141" stroke="#818cf8" stroke-width="1.5" marker-end="url(#arr4)"/>
-  <text x="780" y="147" fill="#4ecca3" font-size="20" font-family="system-ui">✓</text>
+  <line x1="723" y1="141" x2="766" y2="141" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#arr4)"/>
+  <text x="780" y="147" fill="#047857" font-size="20" font-family="system-ui">✓</text>
 </svg>
 
 <h3>Step 4 — Enriching with Metadata</h3>
@@ -247,72 +253,74 @@ Embedding:   [0.3, 0.4, 0.6, 0.2, ...]    ← now a vector</pre>
 <svg class="diagram-svg" viewBox="0 0 1060 360" xmlns="http://www.w3.org/2000/svg" aria-label="Complete RAG end-to-end flow from user query to final answer">
   <defs>
     <marker id="ae" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-      <path d="M0,0 L0,6 L8,3 z" fill="#818cf8"/>
+      <path d="M0,0 L0,6 L8,3 z" fill="#4338ca"/>
     </marker>
   </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
 
   <!-- Phase labels -->
-  <text x="15" y="32" fill="#4f4f57" font-size="12" font-weight="700" font-family="system-ui" letter-spacing="1">OFFLINE (Ingestion)</text>
-  <text x="15" y="215" fill="#4f4f57" font-size="12" font-weight="700" font-family="system-ui" letter-spacing="1">ONLINE (Query Time)</text>
+  <text x="15" y="32" fill="#ffffff" font-size="12" font-weight="700" font-family="system-ui" letter-spacing="1">OFFLINE (Ingestion)</text>
+  <text x="15" y="215" fill="#ffffff" font-size="12" font-weight="700" font-family="system-ui" letter-spacing="1">ONLINE (Query Time)</text>
 
   <!-- ═══ OFFLINE ROW (center y=81) ═══ -->
-  <rect x="15" y="46" width="122" height="70" rx="6" fill="#16161a" stroke="#36363e" stroke-width="1.2"/>
-  <text x="76" y="76" text-anchor="middle" fill="#b4b4be" font-size="12" font-weight="600" font-family="system-ui">Documents</text>
-  <text x="76" y="96" text-anchor="middle" fill="#4f4f57" font-size="11" font-family="system-ui">PDF · CSV · Web</text>
+  <rect x="15" y="46" width="122" height="70" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="76" y="76" text-anchor="middle" fill="#374151" font-size="12" font-weight="600" font-family="system-ui">Documents</text>
+  <text x="76" y="96" text-anchor="middle" fill="#ffffff" font-size="11" font-family="system-ui">PDF · CSV · Web</text>
 
-  <line x1="139" y1="81" x2="172" y2="81" stroke="#818cf8" stroke-width="1.5" marker-end="url(#ae)"/>
+  <line x1="139" y1="81" x2="172" y2="81" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#ae)"/>
 
-  <rect x="175" y="46" width="122" height="70" rx="6" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.2"/>
-  <text x="236" y="76" text-anchor="middle" fill="#818cf8" font-size="12" font-weight="600" font-family="system-ui">Splitter</text>
-  <text x="236" y="96" text-anchor="middle" fill="#4f4f57" font-size="11" font-family="system-ui">Chunks</text>
+  <rect x="175" y="46" width="122" height="70" rx="6" fill="#ffffff" stroke="#4f46e5" stroke-width="1.2"/>
+  <text x="236" y="76" text-anchor="middle" fill="#4338ca" font-size="12" font-weight="600" font-family="system-ui">Splitter</text>
+  <text x="236" y="96" text-anchor="middle" fill="#ffffff" font-size="11" font-family="system-ui">Chunks</text>
 
-  <line x1="299" y1="81" x2="332" y2="81" stroke="#818cf8" stroke-width="1.5" marker-end="url(#ae)"/>
+  <line x1="299" y1="81" x2="332" y2="81" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#ae)"/>
 
-  <rect x="335" y="46" width="142" height="70" rx="6" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.2"/>
-  <text x="406" y="76" text-anchor="middle" fill="#818cf8" font-size="12" font-weight="600" font-family="system-ui">Embed Model</text>
-  <text x="406" y="96" text-anchor="middle" fill="#4f4f57" font-size="11" font-family="system-ui">Text → Vectors</text>
+  <rect x="335" y="46" width="142" height="70" rx="6" fill="#ffffff" stroke="#4f46e5" stroke-width="1.2"/>
+  <text x="406" y="76" text-anchor="middle" fill="#4338ca" font-size="12" font-weight="600" font-family="system-ui">Embed Model</text>
+  <text x="406" y="96" text-anchor="middle" fill="#ffffff" font-size="11" font-family="system-ui">Text → Vectors</text>
 
-  <line x1="479" y1="81" x2="512" y2="81" stroke="#818cf8" stroke-width="1.5" marker-end="url(#ae)"/>
+  <line x1="479" y1="81" x2="512" y2="81" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#ae)"/>
 
   <!-- ═══ VECTOR DB (shared, spans both rows) ═══ -->
-  <rect x="516" y="36" width="144" height="288" rx="8" fill="#16161a" stroke="#4ecca3" stroke-width="1.8"/>
-  <text x="588" y="66" text-anchor="middle" fill="#4ecca3" font-size="12" font-weight="700" font-family="system-ui">VECTOR DB</text>
-  <text x="588" y="86" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">[…]  doc1</text>
-  <text x="588" y="104" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">[…]  doc2</text>
-  <text x="588" y="122" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">[…]  doc3</text>
+  <rect x="516" y="36" width="144" height="288" rx="8" fill="#ffffff" stroke="#059669" stroke-width="1.8"/>
+  <text x="588" y="66" text-anchor="middle" fill="#047857" font-size="12" font-weight="700" font-family="system-ui">VECTOR DB</text>
+  <text x="588" y="86" text-anchor="middle" fill="#64748b" font-size="11" font-family="system-ui">[…]  doc1</text>
+  <text x="588" y="104" text-anchor="middle" fill="#64748b" font-size="11" font-family="system-ui">[…]  doc2</text>
+  <text x="588" y="122" text-anchor="middle" fill="#64748b" font-size="11" font-family="system-ui">[…]  doc3</text>
 
   <!-- Retrieved results out of VDB right side -->
-  <text x="674" y="178" text-anchor="start" fill="#4ecca3" font-size="11" font-family="system-ui">Retrieved</text>
-  <line x1="662" y1="190" x2="700" y2="190" stroke="#818cf8" stroke-width="1.5" marker-end="url(#ae)"/>
+  <text x="674" y="178" text-anchor="start" fill="#047857" font-size="11" font-family="system-ui">Retrieved</text>
+  <line x1="662" y1="190" x2="700" y2="190" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#ae)"/>
 
   <!-- ═══ ONLINE ROW (center y=265) ═══ -->
-  <rect x="15" y="230" width="122" height="70" rx="6" fill="#16161a" stroke="#ffd166" stroke-width="1.5"/>
-  <text x="76" y="260" text-anchor="middle" fill="#ffd166" font-size="12" font-weight="600" font-family="system-ui">User Query</text>
-  <text x="76" y="280" text-anchor="middle" fill="#4f4f57" font-size="11" font-family="system-ui">"What is RAG?"</text>
+  <rect x="15" y="230" width="122" height="70" rx="6" fill="#ffffff" stroke="#d97706" stroke-width="1.5"/>
+  <text x="76" y="260" text-anchor="middle" fill="#b45309" font-size="12" font-weight="600" font-family="system-ui">User Query</text>
+  <text x="76" y="280" text-anchor="middle" fill="#ffffff" font-size="11" font-family="system-ui">"What is RAG?"</text>
 
-  <line x1="139" y1="265" x2="172" y2="265" stroke="#818cf8" stroke-width="1.5" marker-end="url(#ae)"/>
+  <line x1="139" y1="265" x2="172" y2="265" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#ae)"/>
 
-  <rect x="175" y="230" width="142" height="70" rx="6" fill="#1a1a2e" stroke="#6366f1" stroke-width="1.2"/>
-  <text x="246" y="260" text-anchor="middle" fill="#6366f1" font-size="12" font-weight="600" font-family="system-ui">Embed Model</text>
-  <text x="246" y="280" text-anchor="middle" fill="#4f4f57" font-size="11" font-family="system-ui">Query → Vector</text>
+  <rect x="175" y="230" width="142" height="70" rx="6" fill="#ffffff" stroke="#4f46e5" stroke-width="1.2"/>
+  <text x="246" y="260" text-anchor="middle" fill="#4338ca" font-size="12" font-weight="600" font-family="system-ui">Embed Model</text>
+  <text x="246" y="280" text-anchor="middle" fill="#ffffff" font-size="11" font-family="system-ui">Query → Vector</text>
 
   <!-- Long arrow to VDB with label -->
-  <text x="376" y="256" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">Similarity Search</text>
-  <line x1="319" y1="265" x2="514" y2="265" stroke="#818cf8" stroke-width="1.5" marker-end="url(#ae)"/>
+  <text x="376" y="256" text-anchor="middle" fill="#64748b" font-size="11" font-family="system-ui">Similarity Search</text>
+  <line x1="319" y1="265" x2="514" y2="265" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#ae)"/>
 
   <!-- ═══ AUGMENTED CONTEXT ═══ -->
-  <rect x="704" y="148" width="172" height="120" rx="6" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.2"/>
-  <text x="790" y="176" text-anchor="middle" fill="#818cf8" font-size="12" font-weight="600" font-family="system-ui">Augmented</text>
-  <text x="790" y="194" text-anchor="middle" fill="#818cf8" font-size="12" font-weight="600" font-family="system-ui">Context</text>
-  <text x="790" y="215" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">Query + D1 + D2</text>
-  <text x="790" y="234" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">+ D3 + metadata</text>
+  <rect x="704" y="148" width="172" height="120" rx="6" fill="#ffffff" stroke="#4f46e5" stroke-width="1.2"/>
+  <text x="790" y="176" text-anchor="middle" fill="#4338ca" font-size="12" font-weight="600" font-family="system-ui">Augmented</text>
+  <text x="790" y="194" text-anchor="middle" fill="#4338ca" font-size="12" font-weight="600" font-family="system-ui">Context</text>
+  <text x="790" y="215" text-anchor="middle" fill="#64748b" font-size="11" font-family="system-ui">Query + D1 + D2</text>
+  <text x="790" y="234" text-anchor="middle" fill="#64748b" font-size="11" font-family="system-ui">+ D3 + metadata</text>
 
-  <line x1="878" y1="208" x2="914" y2="208" stroke="#818cf8" stroke-width="1.5" marker-end="url(#ae)"/>
+  <line x1="878" y1="208" x2="914" y2="208" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#ae)"/>
 
   <!-- ═══ LLM ═══ -->
-  <rect x="918" y="172" width="118" height="72" rx="6" fill="#1a1a2e" stroke="#a78bfa" stroke-width="1.5"/>
-  <text x="977" y="202" text-anchor="middle" fill="#a78bfa" font-size="14" font-weight="700" font-family="system-ui">LLM</text>
-  <text x="977" y="225" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">Answer ✓</text>
+  <rect x="918" y="172" width="118" height="72" rx="6" fill="#ffffff" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="977" y="202" text-anchor="middle" fill="#6d28d9" font-size="14" font-weight="700" font-family="system-ui">LLM</text>
+  <text x="977" y="225" text-anchor="middle" fill="#64748b" font-size="11" font-family="system-ui">Answer ✓</text>
 </svg>
 
 <h2>Why This Architecture Works</h2>

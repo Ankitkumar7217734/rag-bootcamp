@@ -37,63 +37,65 @@
 <svg class="diagram-svg" viewBox="0 0 940 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A query goes into a query-enhancement box powered by an LLM and prompt chain, producing an enhanced query sent to a FAISS or hybrid retriever which exchanges with the vector store, passes top-k documents to a re-ranker, then to the LLM which produces the output">
   <defs>
     <marker id="c8a-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#4338ca"/>
     </marker>
     <marker id="c8a-arr-g" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#4ecca3"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#047857"/>
     </marker>
   </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
 
   <!-- Query -->
-  <rect x="30" y="40" width="140" height="50" rx="9" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2"/>
-  <text x="100" y="70" text-anchor="middle" fill="#a78bfa" font-size="14" font-weight="600" font-family="system-ui">Query</text>
+  <rect x="30" y="40" width="140" height="50" rx="9" fill="#ffffff" stroke="#7c3aed" stroke-width="2"/>
+  <text x="100" y="70" text-anchor="middle" fill="#6d28d9" font-size="14" font-weight="600" font-family="system-ui">Query</text>
 
   <!-- down then into enhancement -->
-  <line x1="100" y1="90" x2="100" y2="150" stroke="#a78bfa" stroke-width="2"/>
-  <line x1="100" y1="150" x2="246" y2="150" stroke="#a78bfa" stroke-width="2" marker-end="url(#c8a-arr)"/>
+  <line x1="100" y1="90" x2="100" y2="150" stroke="#7c3aed" stroke-width="2"/>
+  <line x1="100" y1="150" x2="246" y2="150" stroke="#7c3aed" stroke-width="2" marker-end="url(#c8a-arr)"/>
 
   <!-- Enhancement box -->
-  <rect x="248" y="124" width="170" height="54" rx="9" fill="#1a1a2e" stroke="#ef6461" stroke-width="2"/>
-  <text x="333" y="147" text-anchor="middle" fill="#ef6461" font-size="13.5" font-weight="700" font-family="system-ui">Query Enhancement</text>
-  <text x="333" y="166" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">rewrite + broaden</text>
+  <rect x="248" y="124" width="170" height="54" rx="9" fill="#ffffff" stroke="#dc2626" stroke-width="2"/>
+  <text x="333" y="147" text-anchor="middle" fill="#dc2626" font-size="13.5" font-weight="700" font-family="system-ui">Query Enhancement</text>
+  <text x="333" y="166" text-anchor="middle" fill="#64748b" font-size="11" font-family="system-ui">rewrite + broaden</text>
 
   <!-- LLM+prompt below feeding up -->
-  <rect x="223" y="232" width="220" height="46" rx="9" fill="#16161a" stroke="#fbbf24" stroke-width="1.6"/>
-  <text x="333" y="260" text-anchor="middle" fill="#fbbf24" font-size="12.5" font-family="monospace">LLM + Prompt ⇒ chain</text>
-  <line x1="333" y1="232" x2="333" y2="180" stroke="#fbbf24" stroke-width="1.8" marker-end="url(#c8a-arr)"/>
-  <text x="333" y="208" text-anchor="middle" fill="#4ecca3" font-size="11" font-family="system-ui">enhancing the query</text>
+  <rect x="223" y="232" width="220" height="46" rx="9" fill="#ffffff" stroke="#d97706" stroke-width="1.6"/>
+  <text x="333" y="260" text-anchor="middle" fill="#b45309" font-size="12.5" font-family="monospace">LLM + Prompt ⇒ chain</text>
+  <line x1="333" y1="232" x2="333" y2="180" stroke="#d97706" stroke-width="1.8" marker-end="url(#c8a-arr)"/>
+  <text x="333" y="208" text-anchor="middle" fill="#047857" font-size="11" font-family="system-ui">enhancing the query</text>
 
   <!-- enhanced query to retriever -->
-  <line x1="418" y1="150" x2="494" y2="150" stroke="#818cf8" stroke-width="2" marker-end="url(#c8a-arr)"/>
-  <text x="456" y="139" text-anchor="middle" fill="#fbbf24" font-size="10.5" font-family="system-ui">enhanced query</text>
+  <line x1="418" y1="150" x2="494" y2="150" stroke="#4f46e5" stroke-width="2" marker-end="url(#c8a-arr)"/>
+  <text x="456" y="139" text-anchor="middle" fill="#b45309" font-size="10.5" font-family="system-ui">enhanced query</text>
 
   <!-- Retriever -->
-  <rect x="496" y="124" width="170" height="54" rx="9" fill="#16161a" stroke="#a78bfa" stroke-width="1.8"/>
-  <text x="581" y="147" text-anchor="middle" fill="#a78bfa" font-size="13.5" font-weight="700" font-family="system-ui">Retriever</text>
-  <text x="581" y="166" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">FAISS / hybrid</text>
+  <rect x="496" y="124" width="170" height="54" rx="9" fill="#ffffff" stroke="#7c3aed" stroke-width="1.8"/>
+  <text x="581" y="147" text-anchor="middle" fill="#6d28d9" font-size="13.5" font-weight="700" font-family="system-ui">Retriever</text>
+  <text x="581" y="166" text-anchor="middle" fill="#64748b" font-size="11" font-family="system-ui">FAISS / hybrid</text>
 
   <!-- Vector store above retriever, two-way -->
-  <rect x="496" y="34" width="170" height="48" rx="9" fill="#16161a" stroke="#4ecca3" stroke-width="2"/>
-  <text x="581" y="63" text-anchor="middle" fill="#4ecca3" font-size="13" font-weight="700" font-family="system-ui">Vector Store</text>
-  <line x1="570" y1="124" x2="570" y2="84" stroke="#4ecca3" stroke-width="1.8" marker-end="url(#c8a-arr-g)"/>
-  <line x1="592" y1="82" x2="592" y2="122" stroke="#4ecca3" stroke-width="1.8" stroke-dasharray="4 3" marker-end="url(#c8a-arr-g)"/>
+  <rect x="496" y="34" width="170" height="48" rx="9" fill="#ffffff" stroke="#059669" stroke-width="2"/>
+  <text x="581" y="63" text-anchor="middle" fill="#047857" font-size="13" font-weight="700" font-family="system-ui">Vector Store</text>
+  <line x1="570" y1="124" x2="570" y2="84" stroke="#059669" stroke-width="1.8" marker-end="url(#c8a-arr-g)"/>
+  <line x1="592" y1="82" x2="592" y2="122" stroke="#059669" stroke-width="1.8" stroke-dasharray="4 3" marker-end="url(#c8a-arr-g)"/>
 
   <!-- retriever to reranker -->
-  <line x1="666" y1="151" x2="732" y2="151" stroke="#818cf8" stroke-width="2" marker-end="url(#c8a-arr)"/>
-  <text x="699" y="140" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">top-k docs</text>
+  <line x1="666" y1="151" x2="732" y2="151" stroke="#4f46e5" stroke-width="2" marker-end="url(#c8a-arr)"/>
+  <text x="699" y="140" text-anchor="middle" fill="#64748b" font-size="10" font-family="system-ui">top-k docs</text>
 
   <!-- Reranker -->
-  <rect x="734" y="124" width="170" height="54" rx="9" fill="#16161a" stroke="#fbbf24" stroke-width="1.8"/>
-  <text x="819" y="147" text-anchor="middle" fill="#fbbf24" font-size="13.5" font-weight="700" font-family="system-ui">Re-Ranker</text>
-  <text x="819" y="166" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">reorder by relevance</text>
+  <rect x="734" y="124" width="170" height="54" rx="9" fill="#ffffff" stroke="#d97706" stroke-width="1.8"/>
+  <text x="819" y="147" text-anchor="middle" fill="#b45309" font-size="13.5" font-weight="700" font-family="system-ui">Re-Ranker</text>
+  <text x="819" y="166" text-anchor="middle" fill="#64748b" font-size="11" font-family="system-ui">reorder by relevance</text>
 
   <!-- reranker down to LLM -->
-  <line x1="819" y1="178" x2="819" y2="232" stroke="#818cf8" stroke-width="2" marker-end="url(#c8a-arr)"/>
-  <text x="819" y="208" text-anchor="middle" fill="#a78bfa" font-size="10.5" font-family="system-ui">context</text>
+  <line x1="819" y1="178" x2="819" y2="232" stroke="#4f46e5" stroke-width="2" marker-end="url(#c8a-arr)"/>
+  <text x="819" y="208" text-anchor="middle" fill="#6d28d9" font-size="10.5" font-family="system-ui">context</text>
 
   <!-- LLM -->
-  <rect x="744" y="234" width="150" height="48" rx="9" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
-  <text x="819" y="263" text-anchor="middle" fill="#818cf8" font-size="14" font-weight="600" font-family="system-ui">LLM → O/P</text>
+  <rect x="744" y="234" width="150" height="48" rx="9" fill="#ffffff" stroke="#4f46e5" stroke-width="2"/>
+  <text x="819" y="263" text-anchor="middle" fill="#4338ca" font-size="14" font-weight="600" font-family="system-ui">LLM → O/P</text>
 </svg>
 
 <hr class="divider">

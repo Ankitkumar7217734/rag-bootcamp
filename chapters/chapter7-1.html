@@ -40,42 +40,44 @@
 <svg class="diagram-svg" viewBox="0 0 940 410" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A query is sent to both a sparse BM25 retriever and a dense FAISS retriever; their scores are blended by a weight alpha into a hybrid score, producing ranked results">
   <defs>
     <marker id="c7a-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#4338ca"/>
     </marker>
   </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
 
   <!-- Query -->
-  <rect x="395" y="20" width="150" height="46" rx="8" fill="#1a1a2e" stroke="#ef6461" stroke-width="2"/>
-  <text x="470" y="48" text-anchor="middle" fill="#ef6461" font-size="15" font-weight="600" font-family="system-ui">Query</text>
+  <rect x="395" y="20" width="150" height="46" rx="8" fill="#ffffff" stroke="#dc2626" stroke-width="2"/>
+  <text x="470" y="48" text-anchor="middle" fill="#dc2626" font-size="15" font-weight="600" font-family="system-ui">Query</text>
 
   <!-- split lines -->
-  <line x1="470" y1="66" x2="250" y2="118" stroke="#818cf8" stroke-width="2" marker-end="url(#c7a-arr)"/>
-  <line x1="470" y1="66" x2="690" y2="118" stroke="#818cf8" stroke-width="2" marker-end="url(#c7a-arr)"/>
+  <line x1="470" y1="66" x2="250" y2="118" stroke="#4f46e5" stroke-width="2" marker-end="url(#c7a-arr)"/>
+  <line x1="470" y1="66" x2="690" y2="118" stroke="#4f46e5" stroke-width="2" marker-end="url(#c7a-arr)"/>
 
   <!-- Sparse box -->
-  <rect x="70" y="122" width="350" height="92" rx="10" fill="#16161a" stroke="#fbbf24" stroke-width="1.8"/>
-  <text x="245" y="150" text-anchor="middle" fill="#fbbf24" font-size="15" font-weight="700" font-family="system-ui">Sparse Retrieval</text>
-  <text x="245" y="174" text-anchor="middle" fill="#b4b4be" font-size="13" font-family="system-ui">BM25 · TF-IDF — exact keywords</text>
-  <text x="245" y="196" text-anchor="middle" fill="#76767f" font-size="12" font-family="monospace">sparse matrix → score_sparse</text>
+  <rect x="70" y="122" width="350" height="92" rx="10" fill="#ffffff" stroke="#d97706" stroke-width="1.8"/>
+  <text x="245" y="150" text-anchor="middle" fill="#b45309" font-size="15" font-weight="700" font-family="system-ui">Sparse Retrieval</text>
+  <text x="245" y="174" text-anchor="middle" fill="#374151" font-size="13" font-family="system-ui">BM25 · TF-IDF — exact keywords</text>
+  <text x="245" y="196" text-anchor="middle" fill="#64748b" font-size="12" font-family="monospace">sparse matrix → score_sparse</text>
 
   <!-- Dense box -->
-  <rect x="520" y="122" width="350" height="92" rx="10" fill="#16161a" stroke="#4ecca3" stroke-width="1.8"/>
-  <text x="695" y="150" text-anchor="middle" fill="#4ecca3" font-size="15" font-weight="700" font-family="system-ui">Dense Retrieval</text>
-  <text x="695" y="174" text-anchor="middle" fill="#b4b4be" font-size="13" font-family="system-ui">Embeddings · FAISS — meaning</text>
-  <text x="695" y="196" text-anchor="middle" fill="#76767f" font-size="12" font-family="monospace">cosine sim → score_dense</text>
+  <rect x="520" y="122" width="350" height="92" rx="10" fill="#ffffff" stroke="#059669" stroke-width="1.8"/>
+  <text x="695" y="150" text-anchor="middle" fill="#047857" font-size="15" font-weight="700" font-family="system-ui">Dense Retrieval</text>
+  <text x="695" y="174" text-anchor="middle" fill="#374151" font-size="13" font-family="system-ui">Embeddings · FAISS — meaning</text>
+  <text x="695" y="196" text-anchor="middle" fill="#64748b" font-size="12" font-family="monospace">cosine sim → score_dense</text>
 
   <!-- to hybrid -->
-  <line x1="245" y1="214" x2="400" y2="276" stroke="#818cf8" stroke-width="2" marker-end="url(#c7a-arr)"/>
-  <line x1="695" y1="214" x2="540" y2="276" stroke="#818cf8" stroke-width="2" marker-end="url(#c7a-arr)"/>
+  <line x1="245" y1="214" x2="400" y2="276" stroke="#4f46e5" stroke-width="2" marker-end="url(#c7a-arr)"/>
+  <line x1="695" y1="214" x2="540" y2="276" stroke="#4f46e5" stroke-width="2" marker-end="url(#c7a-arr)"/>
 
   <!-- Hybrid score -->
-  <rect x="300" y="280" width="340" height="72" rx="10" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2"/>
-  <text x="470" y="308" text-anchor="middle" fill="#a78bfa" font-size="15" font-weight="700" font-family="system-ui">Hybrid Score</text>
-  <text x="470" y="334" text-anchor="middle" fill="#b4b4be" font-size="13" font-family="monospace">a·score_dense + (1−a)·score_sparse</text>
+  <rect x="300" y="280" width="340" height="72" rx="10" fill="#ffffff" stroke="#7c3aed" stroke-width="2"/>
+  <text x="470" y="308" text-anchor="middle" fill="#6d28d9" font-size="15" font-weight="700" font-family="system-ui">Hybrid Score</text>
+  <text x="470" y="334" text-anchor="middle" fill="#374151" font-size="13" font-family="monospace">a·score_dense + (1−a)·score_sparse</text>
 
   <!-- to results -->
-  <line x1="470" y1="352" x2="470" y2="378" stroke="#818cf8" stroke-width="2" marker-end="url(#c7a-arr)"/>
-  <text x="470" y="400" text-anchor="middle" fill="#76767f" font-size="13" font-family="system-ui">Ranked results → context for the LLM</text>
+  <line x1="470" y1="352" x2="470" y2="378" stroke="#4f46e5" stroke-width="2" marker-end="url(#c7a-arr)"/>
+  <text x="470" y="400" text-anchor="middle" fill="#64748b" font-size="13" font-family="system-ui">Ranked results → context for the LLM</text>
 </svg>
 
 <pre>Score_hybrid = α · Score_dense + (1 − α) · Score_sparse

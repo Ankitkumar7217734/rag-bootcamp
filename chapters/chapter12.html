@@ -17,50 +17,52 @@
 <svg class="diagram-svg" viewBox="0 0 940 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The ReAct agent graph. START flows into the LLM brain node. A conditional edge (tools_condition) either ends the run if the model answered directly, or routes to the tools node if the model emitted a tool call. The tools node loops its output back into the LLM brain, forming a cycle.">
   <defs>
     <marker id="c12-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#4338ca"/>
     </marker>
     <marker id="c12-arr-g" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#4ecca3"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#047857"/>
     </marker>
     <marker id="c12-arr-y" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#fbbf24"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#b45309"/>
     </marker>
   </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
 
   <!-- START -->
-  <rect x="40" y="150" width="120" height="44" rx="22" fill="#16161a" stroke="#818cf8" stroke-width="2"/>
-  <text x="100" y="177" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="700" font-family="monospace">START</text>
-  <text x="100" y="214" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">natural-language input</text>
+  <rect x="40" y="150" width="120" height="44" rx="22" fill="#ffffff" stroke="#4f46e5" stroke-width="2"/>
+  <text x="100" y="177" text-anchor="middle" fill="#4338ca" font-size="13" font-weight="700" font-family="monospace">START</text>
+  <text x="100" y="214" text-anchor="middle" fill="#64748b" font-size="10.5" font-family="system-ui">natural-language input</text>
 
-  <line x1="160" y1="172" x2="318" y2="172" stroke="#818cf8" stroke-width="2" marker-end="url(#c12-arr)"/>
+  <line x1="160" y1="172" x2="318" y2="172" stroke="#4f46e5" stroke-width="2" marker-end="url(#c12-arr)"/>
 
   <!-- LLM brain -->
-  <rect x="320" y="132" width="220" height="80" rx="10" fill="#1a1a2e" stroke="#ef6461" stroke-width="2.5"/>
-  <text x="430" y="166" text-anchor="middle" fill="#ececf1" font-size="15" font-weight="700" font-family="system-ui">LLM</text>
-  <text x="430" y="188" text-anchor="middle" fill="#ef6461" font-size="12" font-weight="700" font-family="monospace">[ BRAIN ]</text>
-  <text x="430" y="124" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">tools bound via bind_tools()</text>
+  <rect x="320" y="132" width="220" height="80" rx="10" fill="#ffffff" stroke="#dc2626" stroke-width="2.5"/>
+  <text x="430" y="166" text-anchor="middle" fill="#1e293b" font-size="15" font-weight="700" font-family="system-ui">LLM</text>
+  <text x="430" y="188" text-anchor="middle" fill="#dc2626" font-size="12" font-weight="700" font-family="monospace">[ BRAIN ]</text>
+  <text x="430" y="124" text-anchor="middle" fill="#64748b" font-size="10.5" font-family="system-ui">tools bound via bind_tools()</text>
 
   <!-- conditional edge label -->
-  <text x="610" y="120" text-anchor="middle" fill="#fbbf24" font-size="11" font-style="italic" font-family="system-ui">tools_condition</text>
+  <text x="610" y="120" text-anchor="middle" fill="#b45309" font-size="11" font-style="italic" font-family="system-ui">tools_condition</text>
 
   <!-- to END (answered directly) -->
-  <line x1="540" y1="152" x2="700" y2="92" stroke="#4ecca3" stroke-width="2" marker-end="url(#c12-arr-g)"/>
-  <text x="615" y="78" text-anchor="middle" fill="#4ecca3" font-size="10.5" font-family="system-ui">no tool call → answer</text>
-  <rect x="700" y="62" width="120" height="44" rx="22" fill="#16161a" stroke="#4ecca3" stroke-width="2"/>
-  <text x="760" y="89" text-anchor="middle" fill="#4ecca3" font-size="13" font-weight="700" font-family="monospace">END</text>
+  <line x1="540" y1="152" x2="700" y2="92" stroke="#059669" stroke-width="2" marker-end="url(#c12-arr-g)"/>
+  <text x="615" y="78" text-anchor="middle" fill="#047857" font-size="10.5" font-family="system-ui">no tool call → answer</text>
+  <rect x="700" y="62" width="120" height="44" rx="22" fill="#ffffff" stroke="#059669" stroke-width="2"/>
+  <text x="760" y="89" text-anchor="middle" fill="#047857" font-size="13" font-weight="700" font-family="monospace">END</text>
 
   <!-- to tools (tool call) -->
-  <line x1="540" y1="192" x2="700" y2="248" stroke="#fbbf24" stroke-width="2" marker-end="url(#c12-arr-y)"/>
-  <text x="618" y="240" text-anchor="middle" fill="#fbbf24" font-size="10.5" font-family="system-ui">tool call → run it</text>
+  <line x1="540" y1="192" x2="700" y2="248" stroke="#d97706" stroke-width="2" marker-end="url(#c12-arr-y)"/>
+  <text x="618" y="240" text-anchor="middle" fill="#b45309" font-size="10.5" font-family="system-ui">tool call → run it</text>
 
   <!-- tools node -->
-  <circle cx="760" cy="280" r="40" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2.5"/>
-  <text x="760" y="278" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="700" font-family="system-ui">tools</text>
-  <text x="760" y="296" text-anchor="middle" fill="#76767f" font-size="9" font-family="monospace">add() · arxiv …</text>
+  <circle cx="760" cy="280" r="40" fill="#ffffff" stroke="#7c3aed" stroke-width="2.5"/>
+  <text x="760" y="278" text-anchor="middle" fill="#6d28d9" font-size="13" font-weight="700" font-family="system-ui">tools</text>
+  <text x="760" y="296" text-anchor="middle" fill="#64748b" font-size="9" font-family="monospace">add() · arxiv …</text>
 
   <!-- loop back to LLM (observe) -->
-  <path d="M 720 300 Q 430 380 430 214" fill="none" stroke="#a78bfa" stroke-width="2" marker-end="url(#c12-arr)" stroke-dasharray="6,4"/>
-  <text x="470" y="345" text-anchor="middle" fill="#a78bfa" font-size="10.5" font-style="italic" font-family="system-ui">observe — feed tool output back in</text>
+  <path d="M 720 300 Q 430 380 430 214" fill="none" stroke="#7c3aed" stroke-width="2" marker-end="url(#c12-arr)" stroke-dasharray="6,4"/>
+  <text x="470" y="345" text-anchor="middle" fill="#6d28d9" font-size="10.5" font-style="italic" font-family="system-ui">observe — feed tool output back in</text>
 </svg>
 
 <p>Notice the <strong>cycle</strong>: <code>tools</code> flows back into the LLM, not into <code>END</code>. That single back-edge is the difference between a one-shot chain and an agent that can chain <em>several</em> tool calls together to solve a multi-step request.</p>
@@ -105,39 +107,41 @@
 <svg class="diagram-svg" viewBox="0 0 940 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The ReAct cycle: Act leads to Observe, Observe leads to Reason, and Reason loops back to Act, with an exit arrow from Reason to a final answer.">
   <defs>
     <marker id="c12-cyc" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#4338ca"/>
     </marker>
     <marker id="c12-cyc-g" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#4ecca3"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#047857"/>
     </marker>
   </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
 
   <!-- Act -->
-  <rect x="90" y="92" width="180" height="60" rx="10" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2.5"/>
-  <text x="180" y="118" text-anchor="middle" fill="#4ecca3" font-size="14" font-weight="700" font-family="system-ui">1 · Act</text>
-  <text x="180" y="138" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">model calls a tool</text>
+  <rect x="90" y="92" width="180" height="60" rx="10" fill="#ffffff" stroke="#059669" stroke-width="2.5"/>
+  <text x="180" y="118" text-anchor="middle" fill="#047857" font-size="14" font-weight="700" font-family="system-ui">1 · Act</text>
+  <text x="180" y="138" text-anchor="middle" fill="#64748b" font-size="10" font-family="system-ui">model calls a tool</text>
 
-  <line x1="270" y1="122" x2="368" y2="122" stroke="#818cf8" stroke-width="2" marker-end="url(#c12-cyc)"/>
+  <line x1="270" y1="122" x2="368" y2="122" stroke="#4f46e5" stroke-width="2" marker-end="url(#c12-cyc)"/>
 
   <!-- Observe -->
-  <rect x="370" y="92" width="180" height="60" rx="10" fill="#1a1a2e" stroke="#fbbf24" stroke-width="2.5"/>
-  <text x="460" y="118" text-anchor="middle" fill="#fbbf24" font-size="14" font-weight="700" font-family="system-ui">2 · Observe</text>
-  <text x="460" y="138" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">output back to model</text>
+  <rect x="370" y="92" width="180" height="60" rx="10" fill="#ffffff" stroke="#d97706" stroke-width="2.5"/>
+  <text x="460" y="118" text-anchor="middle" fill="#b45309" font-size="14" font-weight="700" font-family="system-ui">2 · Observe</text>
+  <text x="460" y="138" text-anchor="middle" fill="#64748b" font-size="10" font-family="system-ui">output back to model</text>
 
-  <line x1="550" y1="122" x2="648" y2="122" stroke="#818cf8" stroke-width="2" marker-end="url(#c12-cyc)"/>
+  <line x1="550" y1="122" x2="648" y2="122" stroke="#4f46e5" stroke-width="2" marker-end="url(#c12-cyc)"/>
 
   <!-- Reason -->
-  <rect x="650" y="92" width="180" height="60" rx="10" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2.5"/>
-  <text x="740" y="118" text-anchor="middle" fill="#a78bfa" font-size="14" font-weight="700" font-family="system-ui">3 · Reason</text>
-  <text x="740" y="138" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">decide next step</text>
+  <rect x="650" y="92" width="180" height="60" rx="10" fill="#ffffff" stroke="#7c3aed" stroke-width="2.5"/>
+  <text x="740" y="118" text-anchor="middle" fill="#6d28d9" font-size="14" font-weight="700" font-family="system-ui">3 · Reason</text>
+  <text x="740" y="138" text-anchor="middle" fill="#64748b" font-size="10" font-family="system-ui">decide next step</text>
 
   <!-- loop back Reason -> Act -->
-  <path d="M 740 92 Q 740 30 460 30 Q 180 30 180 92" fill="none" stroke="#818cf8" stroke-width="2" marker-end="url(#c12-cyc)" stroke-dasharray="6,4"/>
-  <text x="460" y="22" text-anchor="middle" fill="#818cf8" font-size="10.5" font-style="italic" font-family="system-ui">call another tool</text>
+  <path d="M 740 92 Q 740 30 460 30 Q 180 30 180 92" fill="none" stroke="#4f46e5" stroke-width="2" marker-end="url(#c12-cyc)" stroke-dasharray="6,4"/>
+  <text x="460" y="22" text-anchor="middle" fill="#4338ca" font-size="10.5" font-style="italic" font-family="system-ui">call another tool</text>
 
   <!-- exit -->
-  <line x1="740" y1="152" x2="740" y2="206" stroke="#4ecca3" stroke-width="2" marker-end="url(#c12-cyc-g)"/>
-  <text x="740" y="224" text-anchor="middle" fill="#4ecca3" font-size="10.5" font-family="system-ui">done → final answer</text>
+  <line x1="740" y1="152" x2="740" y2="206" stroke="#059669" stroke-width="2" marker-end="url(#c12-cyc-g)"/>
+  <text x="740" y="224" text-anchor="middle" fill="#047857" font-size="10.5" font-family="system-ui">done → final answer</text>
 </svg>
 
 <p>That's the entire intuition. Everything below is just code that realises this loop in LangGraph.</p>
@@ -398,61 +402,63 @@ graph_memory.invoke({"messages": [HumanMessage(content="then multiply that numbe
 <svg class="diagram-svg" viewBox="0 0 940 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="LangGraph persistence concepts. Row 1, Graph: an initial state flows through Node 1 then Node 2 to a final state, representing the control flow of nodes and edges. Row 2, Super-steps: each sequential node is its own super-step. Row 3, Checkpoints: the state and metadata are packaged at every super-step. Row 4, Thread: a collection of checkpoints grouped together.">
   <defs>
     <marker id="c12-flow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#76767f"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#64748b"/>
     </marker>
   </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
 
   <!-- column guides (node x positions): node1 ~ 360, node2 ~ 560 -->
 
   <!-- Row labels -->
-  <text x="20" y="60"  fill="#818cf8" font-size="13" font-weight="700" font-family="system-ui">Graph</text>
-  <text x="20" y="150" fill="#4ecca3" font-size="13" font-weight="700" font-family="system-ui">Super-steps</text>
-  <text x="20" y="232" fill="#fbbf24" font-size="13" font-weight="700" font-family="system-ui">Checkpoints</text>
-  <text x="20" y="318" fill="#a78bfa" font-size="13" font-weight="700" font-family="system-ui">Thread</text>
+  <text x="20" y="60"  fill="#4338ca" font-size="13" font-weight="700" font-family="system-ui">Graph</text>
+  <text x="20" y="150" fill="#047857" font-size="13" font-weight="700" font-family="system-ui">Super-steps</text>
+  <text x="20" y="232" fill="#b45309" font-size="13" font-weight="700" font-family="system-ui">Checkpoints</text>
+  <text x="20" y="318" fill="#6d28d9" font-size="13" font-weight="700" font-family="system-ui">Thread</text>
 
   <!-- node column headers -->
-  <text x="360" y="22" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="monospace">Node 1</text>
-  <text x="560" y="22" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="monospace">Node 2</text>
+  <text x="360" y="22" text-anchor="middle" fill="#64748b" font-size="10.5" font-family="monospace">Node 1</text>
+  <text x="560" y="22" text-anchor="middle" fill="#64748b" font-size="10.5" font-family="monospace">Node 2</text>
 
   <!-- ROW 1: Graph -->
-  <text x="170" y="60" text-anchor="middle" fill="#76767f" font-size="10" font-family="monospace">{state: "I"}</text>
-  <line x1="232" y1="56" x2="322" y2="56" stroke="#76767f" stroke-width="1.6" marker-end="url(#c12-flow)"/>
-  <circle cx="360" cy="56" r="18" fill="#1a1a2e" stroke="#ef6461" stroke-width="2"/>
-  <line x1="382" y1="56" x2="522" y2="56" stroke="#76767f" stroke-width="1.6" marker-end="url(#c12-flow)"/>
-  <circle cx="560" cy="56" r="18" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
-  <line x1="582" y1="56" x2="640" y2="56" stroke="#76767f" stroke-width="1.6" marker-end="url(#c12-flow)"/>
-  <text x="740" y="60" text-anchor="middle" fill="#76767f" font-size="10" font-family="monospace">{state: "I heart langgraph"}</text>
-  <text x="895" y="48" text-anchor="end" fill="#b4b4be" font-size="10.5" font-family="system-ui">Control flow of</text>
-  <text x="895" y="64" text-anchor="end" fill="#b4b4be" font-size="10.5" font-family="system-ui">nodes &amp; edges</text>
+  <text x="170" y="60" text-anchor="middle" fill="#64748b" font-size="10" font-family="monospace">{state: "I"}</text>
+  <line x1="232" y1="56" x2="322" y2="56" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#c12-flow)"/>
+  <circle cx="360" cy="56" r="18" fill="#ffffff" stroke="#dc2626" stroke-width="2"/>
+  <line x1="382" y1="56" x2="522" y2="56" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#c12-flow)"/>
+  <circle cx="560" cy="56" r="18" fill="#ffffff" stroke="#4f46e5" stroke-width="2"/>
+  <line x1="582" y1="56" x2="640" y2="56" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#c12-flow)"/>
+  <text x="740" y="60" text-anchor="middle" fill="#64748b" font-size="10" font-family="monospace">{state: "I heart langgraph"}</text>
+  <text x="895" y="48" text-anchor="end" fill="#374151" font-size="10.5" font-family="system-ui">Control flow of</text>
+  <text x="895" y="64" text-anchor="end" fill="#374151" font-size="10.5" font-family="system-ui">nodes &amp; edges</text>
 
   <!-- ROW 2: Super-steps -->
-  <circle cx="360" cy="140" r="18" fill="#1a1a2e" stroke="#ef6461" stroke-width="2"/>
-  <circle cx="560" cy="140" r="18" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
-  <text x="895" y="130" text-anchor="end" fill="#b4b4be" font-size="10.5" font-family="system-ui">Each sequential node is its own</text>
-  <text x="895" y="146" text-anchor="end" fill="#b4b4be" font-size="10.5" font-family="system-ui">super-step; parallel nodes</text>
-  <text x="895" y="162" text-anchor="end" fill="#b4b4be" font-size="10.5" font-family="system-ui">share one super-step</text>
+  <circle cx="360" cy="140" r="18" fill="#ffffff" stroke="#dc2626" stroke-width="2"/>
+  <circle cx="560" cy="140" r="18" fill="#ffffff" stroke="#4f46e5" stroke-width="2"/>
+  <text x="895" y="130" text-anchor="end" fill="#374151" font-size="10.5" font-family="system-ui">Each sequential node is its own</text>
+  <text x="895" y="146" text-anchor="end" fill="#374151" font-size="10.5" font-family="system-ui">super-step; parallel nodes</text>
+  <text x="895" y="162" text-anchor="end" fill="#374151" font-size="10.5" font-family="system-ui">share one super-step</text>
 
   <!-- ROW 3: Checkpoints -->
-  <rect x="300" y="200" width="120" height="64" rx="9" fill="#1a1a2e" stroke="#fbbf24" stroke-width="2"/>
-  <text x="312" y="220" fill="#b4b4be" font-size="9" font-family="monospace">state: "I heart"</text>
-  <text x="312" y="234" fill="#b4b4be" font-size="9" font-family="monospace">next: node 2</text>
-  <text x="312" y="248" fill="#76767f" font-size="9" font-family="monospace">id: ...</text>
-  <text x="312" y="260" fill="#76767f" font-size="9" font-family="monospace">etc ...</text>
+  <rect x="300" y="200" width="120" height="64" rx="9" fill="#ffffff" stroke="#d97706" stroke-width="2"/>
+  <text x="312" y="220" fill="#374151" font-size="9" font-family="monospace">state: "I heart"</text>
+  <text x="312" y="234" fill="#374151" font-size="9" font-family="monospace">next: node 2</text>
+  <text x="312" y="248" fill="#64748b" font-size="9" font-family="monospace">id: ...</text>
+  <text x="312" y="260" fill="#64748b" font-size="9" font-family="monospace">etc ...</text>
 
-  <rect x="500" y="200" width="130" height="64" rx="9" fill="#1a1a2e" stroke="#fbbf24" stroke-width="2"/>
-  <text x="512" y="220" fill="#b4b4be" font-size="9" font-family="monospace">state: "I heart langgraph"</text>
-  <text x="512" y="234" fill="#b4b4be" font-size="9" font-family="monospace">next: end</text>
-  <text x="512" y="248" fill="#76767f" font-size="9" font-family="monospace">id: ...</text>
-  <text x="512" y="260" fill="#76767f" font-size="9" font-family="monospace">etc ...</text>
+  <rect x="500" y="200" width="130" height="64" rx="9" fill="#ffffff" stroke="#d97706" stroke-width="2"/>
+  <text x="512" y="220" fill="#374151" font-size="9" font-family="monospace">state: "I heart langgraph"</text>
+  <text x="512" y="234" fill="#374151" font-size="9" font-family="monospace">next: end</text>
+  <text x="512" y="248" fill="#64748b" font-size="9" font-family="monospace">id: ...</text>
+  <text x="512" y="260" fill="#64748b" font-size="9" font-family="monospace">etc ...</text>
 
-  <text x="895" y="226" text-anchor="end" fill="#b4b4be" font-size="10.5" font-family="system-ui">State &amp; metadata packaged</text>
-  <text x="895" y="242" text-anchor="end" fill="#b4b4be" font-size="10.5" font-family="system-ui">at every super-step</text>
+  <text x="895" y="226" text-anchor="end" fill="#374151" font-size="10.5" font-family="system-ui">State &amp; metadata packaged</text>
+  <text x="895" y="242" text-anchor="end" fill="#374151" font-size="10.5" font-family="system-ui">at every super-step</text>
 
   <!-- ROW 4: Thread -->
-  <rect x="285" y="290" width="360" height="50" rx="10" fill="none" stroke="#a78bfa" stroke-width="1.8" stroke-dasharray="6,4"/>
-  <rect x="320" y="304" width="60" height="22" rx="5" fill="#1a1a2e" stroke="#ef6461" stroke-width="1.8"/>
-  <rect x="430" y="304" width="60" height="22" rx="5" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.8"/>
-  <text x="895" y="320" text-anchor="end" fill="#b4b4be" font-size="10.5" font-family="system-ui">A collection of checkpoints</text>
+  <rect x="285" y="290" width="360" height="50" rx="10" fill="none" stroke="#7c3aed" stroke-width="1.8" stroke-dasharray="6,4"/>
+  <rect x="320" y="304" width="60" height="22" rx="5" fill="#ffffff" stroke="#dc2626" stroke-width="1.8"/>
+  <rect x="430" y="304" width="60" height="22" rx="5" fill="#ffffff" stroke="#4f46e5" stroke-width="1.8"/>
+  <text x="895" y="320" text-anchor="end" fill="#374151" font-size="10.5" font-family="system-ui">A collection of checkpoints</text>
 </svg>
 
 <table>

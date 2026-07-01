@@ -22,33 +22,35 @@
 <svg class="diagram-svg" viewBox="0 0 940 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Three state schema options feeding the same graph. TypedDict, Dataclass, and Pydantic BaseModel each sit on the left as alternative state definitions; an arrow shows all three plug into the identical PlayGame graph on the right. TypedDict gives type hints only, Dataclass adds dot access and defaults, and Pydantic adds runtime validation.">
   <defs>
     <marker id="c11a-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#4338ca"/>
     </marker>
   </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
 
   <!-- three schema cards -->
-  <rect x="30" y="24" width="240" height="48" rx="9" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
-  <text x="50" y="44" fill="#818cf8" font-size="13" font-weight="700" font-family="monospace">TypedDict</text>
-  <text x="50" y="62" fill="#76767f" font-size="10.5" font-family="system-ui">type hints only · state["name"]</text>
+  <rect x="30" y="24" width="240" height="48" rx="9" fill="#ffffff" stroke="#4f46e5" stroke-width="2"/>
+  <text x="50" y="44" fill="#4338ca" font-size="13" font-weight="700" font-family="monospace">TypedDict</text>
+  <text x="50" y="62" fill="#64748b" font-size="10.5" font-family="system-ui">type hints only · state["name"]</text>
 
-  <rect x="30" y="100" width="240" height="48" rx="9" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2"/>
-  <text x="50" y="120" fill="#4ecca3" font-size="13" font-weight="700" font-family="monospace">@dataclass</text>
-  <text x="50" y="138" fill="#76767f" font-size="10.5" font-family="system-ui">dot access + defaults · state.name</text>
+  <rect x="30" y="100" width="240" height="48" rx="9" fill="#ffffff" stroke="#059669" stroke-width="2"/>
+  <text x="50" y="120" fill="#047857" font-size="13" font-weight="700" font-family="monospace">@dataclass</text>
+  <text x="50" y="138" fill="#64748b" font-size="10.5" font-family="system-ui">dot access + defaults · state.name</text>
 
-  <rect x="30" y="176" width="240" height="48" rx="9" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2"/>
-  <text x="50" y="196" fill="#a78bfa" font-size="13" font-weight="700" font-family="monospace">BaseModel</text>
-  <text x="50" y="214" fill="#76767f" font-size="10.5" font-family="system-ui">runtime validation · state.name</text>
+  <rect x="30" y="176" width="240" height="48" rx="9" fill="#ffffff" stroke="#7c3aed" stroke-width="2"/>
+  <text x="50" y="196" fill="#6d28d9" font-size="13" font-weight="700" font-family="monospace">BaseModel</text>
+  <text x="50" y="214" fill="#64748b" font-size="10.5" font-family="system-ui">runtime validation · state.name</text>
 
   <!-- arrows converging -->
-  <line x1="270" y1="48" x2="470" y2="118" stroke="#818cf8" stroke-width="1.8" marker-end="url(#c11a-arr)"/>
-  <line x1="270" y1="124" x2="470" y2="124" stroke="#818cf8" stroke-width="1.8" marker-end="url(#c11a-arr)"/>
-  <line x1="270" y1="200" x2="470" y2="130" stroke="#818cf8" stroke-width="1.8" marker-end="url(#c11a-arr)"/>
+  <line x1="270" y1="48" x2="470" y2="118" stroke="#4f46e5" stroke-width="1.8" marker-end="url(#c11a-arr)"/>
+  <line x1="270" y1="124" x2="470" y2="124" stroke="#4f46e5" stroke-width="1.8" marker-end="url(#c11a-arr)"/>
+  <line x1="270" y1="200" x2="470" y2="130" stroke="#4f46e5" stroke-width="1.8" marker-end="url(#c11a-arr)"/>
 
   <!-- shared graph -->
-  <rect x="480" y="86" width="420" height="76" rx="10" fill="#16161a" stroke="#36363e" stroke-width="1.5" stroke-dasharray="5,4"/>
-  <text x="690" y="112" text-anchor="middle" fill="#b4b4be" font-size="12.5" font-weight="600" font-family="system-ui">The same PlayGame graph</text>
-  <text x="690" y="132" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">PlayGame → (cricket | badminton) → END</text>
-  <text x="690" y="150" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">only the state contract changes</text>
+  <rect x="480" y="86" width="420" height="76" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="5,4"/>
+  <text x="690" y="112" text-anchor="middle" fill="#374151" font-size="12.5" font-weight="600" font-family="system-ui">The same PlayGame graph</text>
+  <text x="690" y="132" text-anchor="middle" fill="#64748b" font-size="11" font-family="system-ui">PlayGame → (cricket | badminton) → END</text>
+  <text x="690" y="150" text-anchor="middle" fill="#64748b" font-size="10.5" font-family="system-ui">only the state contract changes</text>
 </svg>
 
 <p>To make the comparison fair, all three examples below build the <strong>exact same graph</strong>: a <code>PlayGame</code> node that flows, via a conditional edge, into either a <code>cricket</code> or a <code>badminton</code> node. Only the <em>state definition</em> changes.</p>

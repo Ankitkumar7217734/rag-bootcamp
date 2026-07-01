@@ -185,47 +185,49 @@ tools = [retriever_tool, retriever_tool_langchain]</pre>
 <svg class="diagram-svg" viewBox="0 0 940 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The agent routing between two retriever tools. A question flows into the agent, which is bound to two tools. For a LangGraph question, the agent picks the retriever_vector_db_blog tool backed by the LangGraph store (solid arrow). For a LangChain question, it would pick the retriever_vector_langchain_blog tool backed by the LangChain store (dashed alternative arrow). The chosen store returns documents that flow on to the grade and generate steps.">
   <defs>
     <marker id="c13c-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#4338ca"/>
     </marker>
     <marker id="c13c-arr-g" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#4ecca3"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#047857"/>
     </marker>
     <marker id="c13c-arr-m" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#76767f"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#64748b"/>
     </marker>
   </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
 
   <!-- question -->
-  <rect x="368" y="18" width="204" height="40" rx="9" fill="#16161a" stroke="#818cf8" stroke-width="2"/>
-  <text x="470" y="43" text-anchor="middle" fill="#ececf1" font-size="12" font-family="system-ui">"What is LangGraph?"</text>
-  <line x1="470" y1="58" x2="470" y2="104" stroke="#818cf8" stroke-width="2" marker-end="url(#c13c-arr)"/>
+  <rect x="368" y="18" width="204" height="40" rx="9" fill="#ffffff" stroke="#4f46e5" stroke-width="2"/>
+  <text x="470" y="43" text-anchor="middle" fill="#1e293b" font-size="12" font-family="system-ui">"What is LangGraph?"</text>
+  <line x1="470" y1="58" x2="470" y2="104" stroke="#4f46e5" stroke-width="2" marker-end="url(#c13c-arr)"/>
 
   <!-- agent -->
-  <rect x="396" y="106" width="148" height="58" rx="10" fill="#1a1a2e" stroke="#ef6461" stroke-width="2.5"/>
-  <text x="470" y="131" text-anchor="middle" fill="#ececf1" font-size="14" font-weight="700" font-family="system-ui">agent</text>
-  <text x="470" y="149" text-anchor="middle" fill="#76767f" font-size="9" font-family="monospace">bind_tools([A, B])</text>
+  <rect x="396" y="106" width="148" height="58" rx="10" fill="#ffffff" stroke="#dc2626" stroke-width="2.5"/>
+  <text x="470" y="131" text-anchor="middle" fill="#1e293b" font-size="14" font-weight="700" font-family="system-ui">agent</text>
+  <text x="470" y="149" text-anchor="middle" fill="#64748b" font-size="9" font-family="monospace">bind_tools([A, B])</text>
 
   <!-- to store A (chosen) -->
-  <path d="M 420 164 L 250 200" fill="none" stroke="#4ecca3" stroke-width="2.5" marker-end="url(#c13c-arr-g)"/>
-  <text x="300" y="180" text-anchor="middle" fill="#4ecca3" font-size="9.5" font-family="system-ui">LangGraph topic ✓</text>
+  <path d="M 420 164 L 250 200" fill="none" stroke="#059669" stroke-width="2.5" marker-end="url(#c13c-arr-g)"/>
+  <text x="300" y="180" text-anchor="middle" fill="#047857" font-size="9.5" font-family="system-ui">LangGraph topic ✓</text>
 
   <!-- to store B (alternative) -->
-  <path d="M 520 164 L 690 200" fill="none" stroke="#76767f" stroke-width="1.6" stroke-dasharray="6,4" marker-end="url(#c13c-arr-m)"/>
-  <text x="640" y="180" text-anchor="middle" fill="#76767f" font-size="9.5" font-family="system-ui">LangChain topic</text>
+  <path d="M 520 164 L 690 200" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-dasharray="6,4" marker-end="url(#c13c-arr-m)"/>
+  <text x="640" y="180" text-anchor="middle" fill="#64748b" font-size="9.5" font-family="system-ui">LangChain topic</text>
 
   <!-- store A -->
-  <rect x="96" y="206" width="190" height="58" rx="10" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2.5"/>
-  <text x="191" y="229" text-anchor="middle" fill="#a78bfa" font-size="12" font-weight="700" font-family="system-ui">DB 1 · LangGraph blog</text>
-  <text x="191" y="247" text-anchor="middle" fill="#76767f" font-size="9" font-family="monospace">retriever_vector_db_blog</text>
+  <rect x="96" y="206" width="190" height="58" rx="10" fill="#ffffff" stroke="#7c3aed" stroke-width="2.5"/>
+  <text x="191" y="229" text-anchor="middle" fill="#6d28d9" font-size="12" font-weight="700" font-family="system-ui">DB 1 · LangGraph blog</text>
+  <text x="191" y="247" text-anchor="middle" fill="#64748b" font-size="9" font-family="monospace">retriever_vector_db_blog</text>
 
   <!-- store B -->
-  <rect x="654" y="206" width="200" height="58" rx="10" fill="#16161a" stroke="#76767f" stroke-width="2"/>
-  <text x="754" y="229" text-anchor="middle" fill="#b4b4be" font-size="12" font-weight="700" font-family="system-ui">DB 2 · LangChain blog</text>
-  <text x="754" y="247" text-anchor="middle" fill="#76767f" font-size="9" font-family="monospace">retriever_vector_langchain_blog</text>
+  <rect x="654" y="206" width="200" height="58" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2"/>
+  <text x="754" y="229" text-anchor="middle" fill="#374151" font-size="12" font-weight="700" font-family="system-ui">DB 2 · LangChain blog</text>
+  <text x="754" y="247" text-anchor="middle" fill="#64748b" font-size="9" font-family="monospace">retriever_vector_langchain_blog</text>
 
   <!-- store A onward -->
-  <line x1="286" y1="252" x2="384" y2="284" stroke="#4ecca3" stroke-width="2" marker-end="url(#c13c-arr-g)"/>
-  <text x="470" y="288" text-anchor="middle" fill="#76767f" font-size="9.5" font-style="italic" font-family="system-ui">retrieved docs → grade_documents → generate</text>
+  <line x1="286" y1="252" x2="384" y2="284" stroke="#059669" stroke-width="2" marker-end="url(#c13c-arr-g)"/>
+  <text x="470" y="288" text-anchor="middle" fill="#64748b" font-size="9.5" font-style="italic" font-family="system-ui">retrieved docs → grade_documents → generate</text>
 </svg>
 
 <hr class="divider">

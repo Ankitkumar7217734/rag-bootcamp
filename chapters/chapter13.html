@@ -23,41 +23,43 @@
 <svg class="diagram-svg" viewBox="0 0 940 370" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The simplest Agentic RAG graph. __start__ flows down into the retriever node, which flows down into the responder node, which flows down into __end__. A purely linear two-node pipeline with no conditional edges.">
   <defs>
     <marker id="c13s-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#4338ca"/>
     </marker>
   </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
 
   <!-- __start__ -->
-  <circle cx="470" cy="48" r="32" fill="#16161a" stroke="#818cf8" stroke-width="2"/>
-  <text x="470" y="44" text-anchor="middle" fill="#818cf8" font-size="10" font-weight="700" font-family="monospace">__start__</text>
-  <text x="470" y="58" text-anchor="middle" fill="#76767f" font-size="9" font-family="system-ui">entry point</text>
+  <circle cx="470" cy="48" r="32" fill="#ffffff" stroke="#4f46e5" stroke-width="2"/>
+  <text x="470" y="44" text-anchor="middle" fill="#4338ca" font-size="10" font-weight="700" font-family="monospace">__start__</text>
+  <text x="470" y="58" text-anchor="middle" fill="#64748b" font-size="9" font-family="system-ui">entry point</text>
 
-  <line x1="470" y1="80" x2="470" y2="112" stroke="#818cf8" stroke-width="2" marker-end="url(#c13s-arr)"/>
+  <line x1="470" y1="80" x2="470" y2="112" stroke="#4f46e5" stroke-width="2" marker-end="url(#c13s-arr)"/>
 
   <!-- retriever -->
-  <rect x="330" y="114" width="280" height="72" rx="12" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2.5"/>
-  <text x="470" y="148" text-anchor="middle" fill="#a78bfa" font-size="16" font-weight="700" font-family="system-ui">retriever</text>
-  <text x="470" y="168" text-anchor="middle" fill="#76767f" font-size="10" font-family="monospace">retrieve_docs(state)</text>
-  <text x="320" y="136" text-anchor="end" fill="#b4b4be" font-size="9.5" font-family="system-ui">fetches matching</text>
-  <text x="320" y="150" text-anchor="end" fill="#b4b4be" font-size="9.5" font-family="system-ui">docs from the</text>
-  <text x="320" y="164" text-anchor="end" fill="#b4b4be" font-size="9.5" font-family="system-ui">vector store</text>
+  <rect x="330" y="114" width="280" height="72" rx="12" fill="#ffffff" stroke="#7c3aed" stroke-width="2.5"/>
+  <text x="470" y="148" text-anchor="middle" fill="#6d28d9" font-size="16" font-weight="700" font-family="system-ui">retriever</text>
+  <text x="470" y="168" text-anchor="middle" fill="#64748b" font-size="10" font-family="monospace">retrieve_docs(state)</text>
+  <text x="320" y="136" text-anchor="end" fill="#374151" font-size="9.5" font-family="system-ui">fetches matching</text>
+  <text x="320" y="150" text-anchor="end" fill="#374151" font-size="9.5" font-family="system-ui">docs from the</text>
+  <text x="320" y="164" text-anchor="end" fill="#374151" font-size="9.5" font-family="system-ui">vector store</text>
 
-  <line x1="470" y1="186" x2="470" y2="218" stroke="#818cf8" stroke-width="2" marker-end="url(#c13s-arr)"/>
+  <line x1="470" y1="186" x2="470" y2="218" stroke="#4f46e5" stroke-width="2" marker-end="url(#c13s-arr)"/>
 
   <!-- responder -->
-  <rect x="330" y="220" width="280" height="72" rx="12" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2.5"/>
-  <text x="470" y="254" text-anchor="middle" fill="#4ecca3" font-size="16" font-weight="700" font-family="system-ui">responder</text>
-  <text x="470" y="274" text-anchor="middle" fill="#76767f" font-size="10" font-family="monospace">generate_answer(state)</text>
-  <text x="622" y="236" text-anchor="start" fill="#b4b4be" font-size="9.5" font-family="system-ui">formats context,</text>
-  <text x="622" y="250" text-anchor="start" fill="#b4b4be" font-size="9.5" font-family="system-ui">calls the LLM,</text>
-  <text x="622" y="264" text-anchor="start" fill="#b4b4be" font-size="9.5" font-family="system-ui">writes the answer</text>
+  <rect x="330" y="220" width="280" height="72" rx="12" fill="#ffffff" stroke="#059669" stroke-width="2.5"/>
+  <text x="470" y="254" text-anchor="middle" fill="#047857" font-size="16" font-weight="700" font-family="system-ui">responder</text>
+  <text x="470" y="274" text-anchor="middle" fill="#64748b" font-size="10" font-family="monospace">generate_answer(state)</text>
+  <text x="622" y="236" text-anchor="start" fill="#374151" font-size="9.5" font-family="system-ui">formats context,</text>
+  <text x="622" y="250" text-anchor="start" fill="#374151" font-size="9.5" font-family="system-ui">calls the LLM,</text>
+  <text x="622" y="264" text-anchor="start" fill="#374151" font-size="9.5" font-family="system-ui">writes the answer</text>
 
-  <line x1="470" y1="292" x2="470" y2="306" stroke="#818cf8" stroke-width="2" marker-end="url(#c13s-arr)"/>
+  <line x1="470" y1="292" x2="470" y2="306" stroke="#4f46e5" stroke-width="2" marker-end="url(#c13s-arr)"/>
 
   <!-- __end__ -->
-  <circle cx="470" cy="330" r="28" fill="#16161a" stroke="#4ecca3" stroke-width="2.5"/>
-  <text x="470" y="326" text-anchor="middle" fill="#4ecca3" font-size="10" font-weight="700" font-family="monospace">__end__</text>
-  <text x="470" y="340" text-anchor="middle" fill="#76767f" font-size="8.5" font-family="system-ui">answer ready</text>
+  <circle cx="470" cy="330" r="28" fill="#ffffff" stroke="#059669" stroke-width="2.5"/>
+  <text x="470" y="326" text-anchor="middle" fill="#047857" font-size="10" font-weight="700" font-family="monospace">__end__</text>
+  <text x="470" y="340" text-anchor="middle" fill="#64748b" font-size="8.5" font-family="system-ui">answer ready</text>
 </svg>
 
 <p>The code that produces this graph uses a <strong>Pydantic <code>BaseModel</code></strong> as the state (rather than the message-based <code>TypedDict</code> you'll see in the full version) — convenient because dot-access to <code>state.question</code> is cleaner than dict keys:</p>
@@ -125,83 +127,85 @@ print(final_state['answer'])</pre>
 <svg class="diagram-svg" viewBox="0 0 940 650" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The Agentic RAG graph, vertical layout. START flows down into agent. tools_condition diamond below agent routes down to retrieve on a tool call, or via a right-side dashed curve directly to END when no tool is needed. retrieve flows down to grade_documents diamond, which routes left to generate on relevant docs, or right to rewrite on irrelevant docs. generate flows down to END. rewrite loops back up via the right side to agent.">
   <defs>
     <marker id="c13a-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#4338ca"/>
     </marker>
     <marker id="c13a-arr-g" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#4ecca3"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#047857"/>
     </marker>
     <marker id="c13a-arr-r" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#ef6461"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#dc2626"/>
     </marker>
     <marker id="c13a-arr-y" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#fbbf24"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#b45309"/>
     </marker>
   </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
 
   <!-- START -->
-  <ellipse cx="470" cy="44" rx="60" ry="26" fill="#16161a" stroke="#818cf8" stroke-width="2"/>
-  <text x="470" y="48" text-anchor="middle" fill="#818cf8" font-size="12" font-weight="700" font-family="monospace">START</text>
+  <ellipse cx="470" cy="44" rx="60" ry="26" fill="#ffffff" stroke="#4f46e5" stroke-width="2"/>
+  <text x="470" y="48" text-anchor="middle" fill="#4338ca" font-size="12" font-weight="700" font-family="monospace">START</text>
 
-  <line x1="470" y1="70" x2="470" y2="106" stroke="#818cf8" stroke-width="2" marker-end="url(#c13a-arr)"/>
+  <line x1="470" y1="70" x2="470" y2="106" stroke="#4f46e5" stroke-width="2" marker-end="url(#c13a-arr)"/>
 
   <!-- agent -->
-  <rect x="352" y="108" width="236" height="58" rx="12" fill="#1a1a2e" stroke="#ef6461" stroke-width="2.5"/>
-  <text x="470" y="134" text-anchor="middle" fill="#ececf1" font-size="15" font-weight="700" font-family="system-ui">agent</text>
-  <text x="470" y="153" text-anchor="middle" fill="#76767f" font-size="9.5" font-family="monospace">LLM · bind_tools(tools)</text>
+  <rect x="352" y="108" width="236" height="58" rx="12" fill="#ffffff" stroke="#dc2626" stroke-width="2.5"/>
+  <text x="470" y="134" text-anchor="middle" fill="#1e293b" font-size="15" font-weight="700" font-family="system-ui">agent</text>
+  <text x="470" y="153" text-anchor="middle" fill="#64748b" font-size="9.5" font-family="monospace">LLM · bind_tools(tools)</text>
 
-  <line x1="470" y1="166" x2="470" y2="188" stroke="#818cf8" stroke-width="2" marker-end="url(#c13a-arr)"/>
+  <line x1="470" y1="166" x2="470" y2="188" stroke="#4f46e5" stroke-width="2" marker-end="url(#c13a-arr)"/>
 
   <!-- diamond 1: tools_condition -->
-  <polygon points="470,190 518,234 470,278 422,234" fill="#1a1a2e" stroke="#fbbf24" stroke-width="2"/>
-  <text x="470" y="230" text-anchor="middle" fill="#fbbf24" font-size="9" font-weight="700" font-family="monospace">tools_condition</text>
+  <polygon points="470,190 518,234 470,278 422,234" fill="#ffffff" stroke="#d97706" stroke-width="2"/>
+  <text x="470" y="230" text-anchor="middle" fill="#b45309" font-size="9" font-weight="700" font-family="monospace">tools_condition</text>
 
   <!-- diamond1 bottom -> retrieve (tool call path — straight down) -->
-  <line x1="470" y1="278" x2="470" y2="304" stroke="#818cf8" stroke-width="2" marker-end="url(#c13a-arr)"/>
-  <text x="490" y="295" fill="#76767f" font-size="9" font-style="italic" font-family="system-ui">tool call</text>
+  <line x1="470" y1="278" x2="470" y2="304" stroke="#4f46e5" stroke-width="2" marker-end="url(#c13a-arr)"/>
+  <text x="490" y="295" fill="#64748b" font-size="9" font-style="italic" font-family="system-ui">tool call</text>
 
   <!-- retrieve -->
-  <rect x="352" y="306" width="236" height="58" rx="12" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2.5"/>
-  <text x="470" y="332" text-anchor="middle" fill="#a78bfa" font-size="15" font-weight="700" font-family="system-ui">retrieve</text>
-  <text x="470" y="350" text-anchor="middle" fill="#76767f" font-size="9.5" font-family="monospace">ToolNode(retriever)</text>
+  <rect x="352" y="306" width="236" height="58" rx="12" fill="#ffffff" stroke="#7c3aed" stroke-width="2.5"/>
+  <text x="470" y="332" text-anchor="middle" fill="#6d28d9" font-size="15" font-weight="700" font-family="system-ui">retrieve</text>
+  <text x="470" y="350" text-anchor="middle" fill="#64748b" font-size="9.5" font-family="monospace">ToolNode(retriever)</text>
 
-  <line x1="470" y1="364" x2="470" y2="386" stroke="#818cf8" stroke-width="2" marker-end="url(#c13a-arr)"/>
+  <line x1="470" y1="364" x2="470" y2="386" stroke="#4f46e5" stroke-width="2" marker-end="url(#c13a-arr)"/>
 
   <!-- diamond 2: grade_documents -->
-  <polygon points="470,388 518,432 470,476 422,432" fill="#1a1a2e" stroke="#fbbf24" stroke-width="2"/>
-  <text x="470" y="428" text-anchor="middle" fill="#fbbf24" font-size="9" font-weight="700" font-family="monospace">grade_documents</text>
+  <polygon points="470,388 518,432 470,476 422,432" fill="#ffffff" stroke="#d97706" stroke-width="2"/>
+  <text x="470" y="428" text-anchor="middle" fill="#b45309" font-size="9" font-weight="700" font-family="monospace">grade_documents</text>
 
   <!-- diamond2 left -> generate (relevant) -->
-  <line x1="422" y1="432" x2="274" y2="492" stroke="#4ecca3" stroke-width="2" marker-end="url(#c13a-arr-g)"/>
-  <text x="320" y="466" text-anchor="middle" fill="#4ecca3" font-size="9.5" font-family="system-ui">✓ relevant</text>
+  <line x1="422" y1="432" x2="274" y2="492" stroke="#059669" stroke-width="2" marker-end="url(#c13a-arr-g)"/>
+  <text x="320" y="466" text-anchor="middle" fill="#047857" font-size="9.5" font-family="system-ui">✓ relevant</text>
 
   <!-- diamond2 right -> rewrite (not relevant) -->
-  <line x1="518" y1="432" x2="668" y2="492" stroke="#ef6461" stroke-width="2" marker-end="url(#c13a-arr-r)"/>
-  <text x="623" y="466" text-anchor="middle" fill="#ef6461" font-size="9.5" font-family="system-ui">✗ not relevant</text>
+  <line x1="518" y1="432" x2="668" y2="492" stroke="#dc2626" stroke-width="2" marker-end="url(#c13a-arr-r)"/>
+  <text x="623" y="466" text-anchor="middle" fill="#dc2626" font-size="9.5" font-family="system-ui">✗ not relevant</text>
 
   <!-- generate -->
-  <rect x="160" y="494" width="228" height="58" rx="12" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2.5"/>
-  <text x="274" y="520" text-anchor="middle" fill="#4ecca3" font-size="15" font-weight="700" font-family="system-ui">generate</text>
-  <text x="274" y="539" text-anchor="middle" fill="#76767f" font-size="9.5" font-family="system-ui">answer from the docs</text>
+  <rect x="160" y="494" width="228" height="58" rx="12" fill="#ffffff" stroke="#059669" stroke-width="2.5"/>
+  <text x="274" y="520" text-anchor="middle" fill="#047857" font-size="15" font-weight="700" font-family="system-ui">generate</text>
+  <text x="274" y="539" text-anchor="middle" fill="#64748b" font-size="9.5" font-family="system-ui">answer from the docs</text>
 
   <!-- rewrite -->
-  <rect x="552" y="494" width="228" height="58" rx="12" fill="#1a1a2e" stroke="#fbbf24" stroke-width="2.5"/>
-  <text x="666" y="520" text-anchor="middle" fill="#fbbf24" font-size="15" font-weight="700" font-family="system-ui">rewrite</text>
-  <text x="666" y="539" text-anchor="middle" fill="#76767f" font-size="9.5" font-family="system-ui">improve the query</text>
+  <rect x="552" y="494" width="228" height="58" rx="12" fill="#ffffff" stroke="#d97706" stroke-width="2.5"/>
+  <text x="666" y="520" text-anchor="middle" fill="#b45309" font-size="15" font-weight="700" font-family="system-ui">rewrite</text>
+  <text x="666" y="539" text-anchor="middle" fill="#64748b" font-size="9.5" font-family="system-ui">improve the query</text>
 
   <!-- generate -> END -->
-  <line x1="274" y1="552" x2="274" y2="580" stroke="#4ecca3" stroke-width="2" marker-end="url(#c13a-arr-g)"/>
+  <line x1="274" y1="552" x2="274" y2="580" stroke="#059669" stroke-width="2" marker-end="url(#c13a-arr-g)"/>
 
   <!-- END -->
-  <ellipse cx="274" cy="606" rx="66" ry="28" fill="#16161a" stroke="#4ecca3" stroke-width="2"/>
-  <text x="274" y="610" text-anchor="middle" fill="#4ecca3" font-size="12" font-weight="700" font-family="monospace">END · Answer</text>
+  <ellipse cx="274" cy="606" rx="66" ry="28" fill="#ffffff" stroke="#059669" stroke-width="2"/>
+  <text x="274" y="610" text-anchor="middle" fill="#047857" font-size="12" font-weight="700" font-family="monospace">END · Answer</text>
 
   <!-- rewrite -> agent (right-side loop, amber) -->
-  <path d="M 780,523 C 890,523 890,137 588,137" fill="none" stroke="#fbbf24" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#c13a-arr-y)"/>
-  <text x="893" y="334" text-anchor="middle" fill="#fbbf24" font-size="9" font-style="italic" font-family="system-ui" transform="rotate(-90,893,334)">rewrite &amp; retry agent</text>
+  <path d="M 780,523 C 890,523 890,137 588,137" fill="none" stroke="#d97706" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#c13a-arr-y)"/>
+  <text x="893" y="334" text-anchor="middle" fill="#b45309" font-size="9" font-style="italic" font-family="system-ui" transform="rotate(-90,893,334)">rewrite &amp; retry agent</text>
 
   <!-- diamond1 right -> END direct (no tool call, dashed left-side curve) -->
-  <path d="M 422,234 C 60,234 60,606 208,606" fill="none" stroke="#818cf8" stroke-width="1.8" stroke-dasharray="5,4" marker-end="url(#c13a-arr)"/>
-  <text x="56" y="420" text-anchor="middle" fill="#76767f" font-size="9" font-style="italic" font-family="system-ui" transform="rotate(-90,56,420)">no tool call → END</text>
+  <path d="M 422,234 C 60,234 60,606 208,606" fill="none" stroke="#4f46e5" stroke-width="1.8" stroke-dasharray="5,4" marker-end="url(#c13a-arr)"/>
+  <text x="56" y="420" text-anchor="middle" fill="#64748b" font-size="9" font-style="italic" font-family="system-ui" transform="rotate(-90,56,420)">no tool call → END</text>
 </svg>
 
 <p>The whole chapter is just code that builds this picture. Two nodes do work the moment they run (<code>retrieve</code>, <code>generate</code>); the two diamonds are <strong>conditional edges</strong> — small functions that decide where the flow goes next. The dashed amber edge is the loop that lets the system <strong>recover from a bad retrieval</strong> instead of answering from it.</p>
@@ -215,94 +219,96 @@ print(final_state['answer'])</pre>
 <svg class="diagram-svg" viewBox="0 0 940 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Traditional RAG versus Agentic RAG, two vertical columns. Left column: Traditional RAG flows Query down to Retrieve (one fixed store) down to LLM down to Answer. Right column: Agentic RAG flows Query down to Agent which decides whether and where to retrieve, down to a grade diamond, which routes left to Generate and then Answer on relevant docs, or right to Rewrite which loops back up to Agent on irrelevant docs.">
   <defs>
     <marker id="c13b-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#4338ca"/>
     </marker>
     <marker id="c13b-arr-g" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#4ecca3"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#047857"/>
     </marker>
     <marker id="c13b-arr-r" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#ef6461"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#dc2626"/>
     </marker>
     <marker id="c13b-arr-y" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#fbbf24"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#b45309"/>
     </marker>
   </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
 
   <!-- column headers -->
-  <text x="235" y="28" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="700" font-family="system-ui">Traditional RAG</text>
-  <text x="705" y="28" text-anchor="middle" fill="#4ecca3" font-size="13" font-weight="700" font-family="system-ui">Agentic RAG</text>
+  <text x="235" y="28" text-anchor="middle" fill="#4338ca" font-size="13" font-weight="700" font-family="system-ui">Traditional RAG</text>
+  <text x="705" y="28" text-anchor="middle" fill="#047857" font-size="13" font-weight="700" font-family="system-ui">Agentic RAG</text>
 
   <!-- vertical divider -->
-  <line x1="470" y1="38" x2="470" y2="498" stroke="#26262c" stroke-width="1.4"/>
+  <line x1="470" y1="38" x2="470" y2="498" stroke="#d1d5db" stroke-width="1.4"/>
 
   <!-- ===== LEFT: Traditional RAG (centered at x=235) ===== -->
 
-  <rect x="135" y="46" width="200" height="44" rx="9" fill="#16161a" stroke="#818cf8" stroke-width="2"/>
-  <text x="235" y="73" text-anchor="middle" fill="#ececf1" font-size="12" font-family="system-ui">Query</text>
+  <rect x="135" y="46" width="200" height="44" rx="9" fill="#ffffff" stroke="#4f46e5" stroke-width="2"/>
+  <text x="235" y="73" text-anchor="middle" fill="#1e293b" font-size="12" font-family="system-ui">Query</text>
 
-  <line x1="235" y1="90" x2="235" y2="120" stroke="#818cf8" stroke-width="2" marker-end="url(#c13b-arr)"/>
+  <line x1="235" y1="90" x2="235" y2="120" stroke="#4f46e5" stroke-width="2" marker-end="url(#c13b-arr)"/>
 
-  <rect x="115" y="122" width="240" height="48" rx="9" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2"/>
-  <text x="235" y="144" text-anchor="middle" fill="#a78bfa" font-size="12" font-weight="700" font-family="system-ui">Retrieve</text>
-  <text x="235" y="160" text-anchor="middle" fill="#76767f" font-size="9.5" font-family="system-ui">one fixed store, always</text>
+  <rect x="115" y="122" width="240" height="48" rx="9" fill="#ffffff" stroke="#7c3aed" stroke-width="2"/>
+  <text x="235" y="144" text-anchor="middle" fill="#6d28d9" font-size="12" font-weight="700" font-family="system-ui">Retrieve</text>
+  <text x="235" y="160" text-anchor="middle" fill="#64748b" font-size="9.5" font-family="system-ui">one fixed store, always</text>
 
-  <line x1="235" y1="170" x2="235" y2="200" stroke="#818cf8" stroke-width="2" marker-end="url(#c13b-arr)"/>
+  <line x1="235" y1="170" x2="235" y2="200" stroke="#4f46e5" stroke-width="2" marker-end="url(#c13b-arr)"/>
 
-  <rect x="135" y="202" width="200" height="44" rx="9" fill="#1a1a2e" stroke="#ef6461" stroke-width="2"/>
-  <text x="235" y="229" text-anchor="middle" fill="#ececf1" font-size="12" font-weight="700" font-family="system-ui">LLM</text>
+  <rect x="135" y="202" width="200" height="44" rx="9" fill="#ffffff" stroke="#dc2626" stroke-width="2"/>
+  <text x="235" y="229" text-anchor="middle" fill="#1e293b" font-size="12" font-weight="700" font-family="system-ui">LLM</text>
 
-  <line x1="235" y1="246" x2="235" y2="276" stroke="#818cf8" stroke-width="2" marker-end="url(#c13b-arr)"/>
+  <line x1="235" y1="246" x2="235" y2="276" stroke="#4f46e5" stroke-width="2" marker-end="url(#c13b-arr)"/>
 
-  <rect x="135" y="278" width="200" height="44" rx="22" fill="#16161a" stroke="#4ecca3" stroke-width="2"/>
-  <text x="235" y="305" text-anchor="middle" fill="#4ecca3" font-size="12" font-weight="700" font-family="monospace">Answer</text>
+  <rect x="135" y="278" width="200" height="44" rx="22" fill="#ffffff" stroke="#059669" stroke-width="2"/>
+  <text x="235" y="305" text-anchor="middle" fill="#047857" font-size="12" font-weight="700" font-family="monospace">Answer</text>
 
-  <text x="235" y="370" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">Straight line. Always retrieves,</text>
-  <text x="235" y="386" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">always from the same store,</text>
-  <text x="235" y="402" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">never checks if chunks were good.</text>
+  <text x="235" y="370" text-anchor="middle" fill="#64748b" font-size="10" font-family="system-ui">Straight line. Always retrieves,</text>
+  <text x="235" y="386" text-anchor="middle" fill="#64748b" font-size="10" font-family="system-ui">always from the same store,</text>
+  <text x="235" y="402" text-anchor="middle" fill="#64748b" font-size="10" font-family="system-ui">never checks if chunks were good.</text>
 
   <!-- ===== RIGHT: Agentic RAG (centered at x=705) ===== -->
 
-  <rect x="605" y="46" width="200" height="44" rx="9" fill="#16161a" stroke="#818cf8" stroke-width="2"/>
-  <text x="705" y="73" text-anchor="middle" fill="#ececf1" font-size="12" font-family="system-ui">Query</text>
+  <rect x="605" y="46" width="200" height="44" rx="9" fill="#ffffff" stroke="#4f46e5" stroke-width="2"/>
+  <text x="705" y="73" text-anchor="middle" fill="#1e293b" font-size="12" font-family="system-ui">Query</text>
 
-  <line x1="705" y1="90" x2="705" y2="120" stroke="#818cf8" stroke-width="2" marker-end="url(#c13b-arr)"/>
+  <line x1="705" y1="90" x2="705" y2="120" stroke="#4f46e5" stroke-width="2" marker-end="url(#c13b-arr)"/>
 
-  <rect x="597" y="122" width="216" height="52" rx="10" fill="#1a1a2e" stroke="#ef6461" stroke-width="2.5"/>
-  <text x="705" y="146" text-anchor="middle" fill="#ececf1" font-size="13" font-weight="700" font-family="system-ui">Agent</text>
-  <text x="705" y="163" text-anchor="middle" fill="#76767f" font-size="9.5" font-family="system-ui">decides if / where to retrieve</text>
+  <rect x="597" y="122" width="216" height="52" rx="10" fill="#ffffff" stroke="#dc2626" stroke-width="2.5"/>
+  <text x="705" y="146" text-anchor="middle" fill="#1e293b" font-size="13" font-weight="700" font-family="system-ui">Agent</text>
+  <text x="705" y="163" text-anchor="middle" fill="#64748b" font-size="9.5" font-family="system-ui">decides if / where to retrieve</text>
 
-  <line x1="705" y1="174" x2="705" y2="204" stroke="#818cf8" stroke-width="2" marker-end="url(#c13b-arr)"/>
+  <line x1="705" y1="174" x2="705" y2="204" stroke="#4f46e5" stroke-width="2" marker-end="url(#c13b-arr)"/>
 
   <!-- grade diamond (center x=705, center y=242) -->
-  <polygon points="705,206 749,242 705,278 661,242" fill="#1a1a2e" stroke="#fbbf24" stroke-width="2"/>
-  <text x="705" y="238" text-anchor="middle" fill="#fbbf24" font-size="8.5" font-weight="700" font-family="monospace">grade docs?</text>
+  <polygon points="705,206 749,242 705,278 661,242" fill="#ffffff" stroke="#d97706" stroke-width="2"/>
+  <text x="705" y="238" text-anchor="middle" fill="#b45309" font-size="8.5" font-weight="700" font-family="monospace">grade docs?</text>
 
   <!-- grade -> generate (down-left) -->
-  <line x1="661" y1="242" x2="606" y2="308" stroke="#4ecca3" stroke-width="2" marker-end="url(#c13b-arr-g)"/>
-  <text x="614" y="282" text-anchor="end" fill="#4ecca3" font-size="9.5" font-family="system-ui">✓ relevant</text>
+  <line x1="661" y1="242" x2="606" y2="308" stroke="#059669" stroke-width="2" marker-end="url(#c13b-arr-g)"/>
+  <text x="614" y="282" text-anchor="end" fill="#047857" font-size="9.5" font-family="system-ui">✓ relevant</text>
 
   <!-- generate -->
-  <rect x="498" y="310" width="200" height="48" rx="9" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2"/>
-  <text x="598" y="332" text-anchor="middle" fill="#4ecca3" font-size="12" font-weight="700" font-family="system-ui">Generate</text>
-  <text x="598" y="348" text-anchor="middle" fill="#76767f" font-size="9" font-family="system-ui">grounded answer</text>
+  <rect x="498" y="310" width="200" height="48" rx="9" fill="#ffffff" stroke="#059669" stroke-width="2"/>
+  <text x="598" y="332" text-anchor="middle" fill="#047857" font-size="12" font-weight="700" font-family="system-ui">Generate</text>
+  <text x="598" y="348" text-anchor="middle" fill="#64748b" font-size="9" font-family="system-ui">grounded answer</text>
 
-  <line x1="598" y1="358" x2="598" y2="386" stroke="#4ecca3" stroke-width="2" marker-end="url(#c13b-arr-g)"/>
+  <line x1="598" y1="358" x2="598" y2="386" stroke="#059669" stroke-width="2" marker-end="url(#c13b-arr-g)"/>
 
-  <rect x="518" y="388" width="160" height="40" rx="20" fill="#16161a" stroke="#4ecca3" stroke-width="2"/>
-  <text x="598" y="413" text-anchor="middle" fill="#4ecca3" font-size="12" font-weight="700" font-family="monospace">Answer</text>
+  <rect x="518" y="388" width="160" height="40" rx="20" fill="#ffffff" stroke="#059669" stroke-width="2"/>
+  <text x="598" y="413" text-anchor="middle" fill="#047857" font-size="12" font-weight="700" font-family="monospace">Answer</text>
 
   <!-- grade -> rewrite (down-right) -->
-  <line x1="749" y1="242" x2="806" y2="308" stroke="#ef6461" stroke-width="2" marker-end="url(#c13b-arr-r)"/>
-  <text x="800" y="282" text-anchor="start" fill="#ef6461" font-size="9.5" font-family="system-ui">✗ not relevant</text>
+  <line x1="749" y1="242" x2="806" y2="308" stroke="#dc2626" stroke-width="2" marker-end="url(#c13b-arr-r)"/>
+  <text x="800" y="282" text-anchor="start" fill="#dc2626" font-size="9.5" font-family="system-ui">✗ not relevant</text>
 
   <!-- rewrite -->
-  <rect x="758" y="310" width="162" height="48" rx="9" fill="#1a1a2e" stroke="#fbbf24" stroke-width="2.5"/>
-  <text x="839" y="332" text-anchor="middle" fill="#fbbf24" font-size="12" font-weight="700" font-family="system-ui">Rewrite</text>
-  <text x="839" y="348" text-anchor="middle" fill="#76767f" font-size="9" font-family="system-ui">improve query</text>
+  <rect x="758" y="310" width="162" height="48" rx="9" fill="#ffffff" stroke="#d97706" stroke-width="2.5"/>
+  <text x="839" y="332" text-anchor="middle" fill="#b45309" font-size="12" font-weight="700" font-family="system-ui">Rewrite</text>
+  <text x="839" y="348" text-anchor="middle" fill="#64748b" font-size="9" font-family="system-ui">improve query</text>
 
   <!-- rewrite -> agent (loop back up) -->
-  <path d="M 920,334 C 934,334 934,148 813,148" fill="none" stroke="#fbbf24" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#c13b-arr-y)"/>
-  <text x="936" y="246" text-anchor="middle" fill="#fbbf24" font-size="9" font-style="italic" font-family="system-ui" transform="rotate(-90,936,246)">rewrite &amp; retry</text>
+  <path d="M 920,334 C 934,334 934,148 813,148" fill="none" stroke="#d97706" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#c13b-arr-y)"/>
+  <text x="936" y="246" text-anchor="middle" fill="#b45309" font-size="9" font-style="italic" font-family="system-ui" transform="rotate(-90,936,246)">rewrite &amp; retry</text>
 </svg>
 
 <table>

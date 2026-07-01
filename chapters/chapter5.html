@@ -11,42 +11,44 @@
 <svg class="diagram-svg" viewBox="0 0 940 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Embeddings flow into a vector store, which is backed by swappable databases and feeds a retriever and LLM">
   <defs>
     <marker id="c5-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#4338ca"/>
     </marker>
   </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
 
   <!-- Embeddings -->
-  <text x="95" y="58" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="700" font-family="system-ui" letter-spacing="1">EMBEDDINGS</text>
-  <rect x="20" y="74" width="150" height="64" rx="8" fill="#16161a" stroke="#36363e" stroke-width="1.5"/>
-  <text x="95" y="100" text-anchor="middle" fill="#b4b4be" font-size="13" font-family="monospace">[0.2, 0.5, 0.7]</text>
-  <text x="95" y="122" text-anchor="middle" fill="#76767f" font-size="12" font-family="monospace">[0.1, 0.9, 0.3]</text>
+  <text x="95" y="58" text-anchor="middle" fill="#4338ca" font-size="13" font-weight="700" font-family="system-ui" letter-spacing="1">EMBEDDINGS</text>
+  <rect x="20" y="74" width="150" height="64" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="95" y="100" text-anchor="middle" fill="#374151" font-size="13" font-family="monospace">[0.2, 0.5, 0.7]</text>
+  <text x="95" y="122" text-anchor="middle" fill="#64748b" font-size="12" font-family="monospace">[0.1, 0.9, 0.3]</text>
 
-  <line x1="172" y1="106" x2="210" y2="106" stroke="#818cf8" stroke-width="2" marker-end="url(#c5-arr)"/>
+  <line x1="172" y1="106" x2="210" y2="106" stroke="#4f46e5" stroke-width="2" marker-end="url(#c5-arr)"/>
 
   <!-- VectorStore hub -->
-  <rect x="214" y="72" width="300" height="68" rx="10" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
-  <text x="364" y="102" text-anchor="middle" fill="#818cf8" font-size="16" font-weight="600" font-family="system-ui">Vector Store</text>
-  <text x="364" y="124" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">store · index · similarity search</text>
+  <rect x="214" y="72" width="300" height="68" rx="10" fill="#ffffff" stroke="#4f46e5" stroke-width="2"/>
+  <text x="364" y="102" text-anchor="middle" fill="#4338ca" font-size="16" font-weight="600" font-family="system-ui">Vector Store</text>
+  <text x="364" y="124" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">store · index · similarity search</text>
 
-  <line x1="516" y1="106" x2="554" y2="106" stroke="#818cf8" stroke-width="2" marker-end="url(#c5-arr)"/>
+  <line x1="516" y1="106" x2="554" y2="106" stroke="#4f46e5" stroke-width="2" marker-end="url(#c5-arr)"/>
 
   <!-- Retriever -->
-  <rect x="558" y="74" width="150" height="64" rx="10" fill="#16161a" stroke="#4ecca3" stroke-width="1.8"/>
-  <text x="633" y="100" text-anchor="middle" fill="#4ecca3" font-size="14" font-weight="600" font-family="system-ui">Retriever</text>
-  <text x="633" y="122" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">top-k matches</text>
+  <rect x="558" y="74" width="150" height="64" rx="10" fill="#ffffff" stroke="#059669" stroke-width="1.8"/>
+  <text x="633" y="100" text-anchor="middle" fill="#047857" font-size="14" font-weight="600" font-family="system-ui">Retriever</text>
+  <text x="633" y="122" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">top-k matches</text>
 
-  <line x1="710" y1="106" x2="748" y2="106" stroke="#818cf8" stroke-width="2" marker-end="url(#c5-arr)"/>
+  <line x1="710" y1="106" x2="748" y2="106" stroke="#4f46e5" stroke-width="2" marker-end="url(#c5-arr)"/>
 
   <!-- LLM -->
-  <rect x="752" y="74" width="166" height="64" rx="10" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2"/>
-  <text x="835" y="100" text-anchor="middle" fill="#a78bfa" font-size="15" font-weight="600" font-family="system-ui">LLM</text>
-  <text x="835" y="122" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">grounded answer ✓</text>
+  <rect x="752" y="74" width="166" height="64" rx="10" fill="#ffffff" stroke="#7c3aed" stroke-width="2"/>
+  <text x="835" y="100" text-anchor="middle" fill="#6d28d9" font-size="15" font-weight="600" font-family="system-ui">LLM</text>
+  <text x="835" y="122" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">grounded answer ✓</text>
 
   <!-- Swappable backends below the hub -->
-  <line x1="364" y1="140" x2="364" y2="196" stroke="#6366f1" stroke-width="2" marker-end="url(#c5-arr)"/>
-  <text x="364" y="222" text-anchor="middle" fill="#a78bfa" font-size="12" font-weight="700" font-family="system-ui" letter-spacing="1">SWAPPABLE BACKENDS</text>
-  <rect x="120" y="234" width="488" height="46" rx="10" fill="#16161a" stroke="#3a3550" stroke-width="1.5" stroke-dasharray="5 4"/>
-  <text x="364" y="262" text-anchor="middle" fill="#b4b4be" font-size="13" font-family="system-ui">Chroma · FAISS · Pinecone · Astra DB · InMemory</text>
+  <line x1="364" y1="140" x2="364" y2="196" stroke="#4f46e5" stroke-width="2" marker-end="url(#c5-arr)"/>
+  <text x="364" y="222" text-anchor="middle" fill="#6d28d9" font-size="12" font-weight="700" font-family="system-ui" letter-spacing="1">SWAPPABLE BACKENDS</text>
+  <rect x="120" y="234" width="488" height="46" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text x="364" y="262" text-anchor="middle" fill="#374151" font-size="13" font-family="system-ui">Chroma · FAISS · Pinecone · Astra DB · InMemory</text>
 </svg>
 
 <div class="example-block">

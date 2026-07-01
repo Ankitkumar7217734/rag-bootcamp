@@ -18,71 +18,73 @@
 <svg class="diagram-svg" viewBox="0 0 940 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Multimodal RAG pipeline: a PDF document is split into text and images, both get embedded by CLIP into a unified FAISS vector store, then a user query retrieves the top-k multimodal chunks which are sent to GPT-4V with a vision prompt to produce a grounded answer">
   <defs>
     <marker id="c9-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#4338ca"/>
     </marker>
     <marker id="c9-arr-g" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#4ecca3"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#047857"/>
     </marker>
   </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
 
   <!-- PDF Document -->
-  <rect x="20" y="115" width="130" height="56" rx="9" fill="#1a1a2e" stroke="#ef6461" stroke-width="2"/>
-  <text x="85" y="140" text-anchor="middle" fill="#ef6461" font-size="13.5" font-weight="700" font-family="system-ui">PDF Document</text>
-  <text x="85" y="158" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">text + images</text>
+  <rect x="20" y="115" width="130" height="56" rx="9" fill="#ffffff" stroke="#dc2626" stroke-width="2"/>
+  <text x="85" y="140" text-anchor="middle" fill="#dc2626" font-size="13.5" font-weight="700" font-family="system-ui">PDF Document</text>
+  <text x="85" y="158" text-anchor="middle" fill="#64748b" font-size="10.5" font-family="system-ui">text + images</text>
 
   <!-- Split into two paths -->
-  <line x1="150" y1="125" x2="200" y2="80" stroke="#4ecca3" stroke-width="2" marker-end="url(#c9-arr-g)"/>
-  <line x1="150" y1="158" x2="200" y2="195" stroke="#a78bfa" stroke-width="2" marker-end="url(#c9-arr)"/>
+  <line x1="150" y1="125" x2="200" y2="80" stroke="#059669" stroke-width="2" marker-end="url(#c9-arr-g)"/>
+  <line x1="150" y1="158" x2="200" y2="195" stroke="#7c3aed" stroke-width="2" marker-end="url(#c9-arr)"/>
 
   <!-- Text extraction -->
-  <rect x="202" y="52" width="150" height="56" rx="9" fill="#16161a" stroke="#4ecca3" stroke-width="2"/>
-  <text x="277" y="76" text-anchor="middle" fill="#4ecca3" font-size="13" font-weight="700" font-family="system-ui">Text Extraction</text>
-  <text x="277" y="94" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">PyMuPDF / fitz</text>
+  <rect x="202" y="52" width="150" height="56" rx="9" fill="#ffffff" stroke="#059669" stroke-width="2"/>
+  <text x="277" y="76" text-anchor="middle" fill="#047857" font-size="13" font-weight="700" font-family="system-ui">Text Extraction</text>
+  <text x="277" y="94" text-anchor="middle" fill="#64748b" font-size="10.5" font-family="system-ui">PyMuPDF / fitz</text>
 
   <!-- Image extraction -->
-  <rect x="202" y="167" width="150" height="56" rx="9" fill="#16161a" stroke="#a78bfa" stroke-width="2"/>
-  <text x="277" y="191" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="700" font-family="system-ui">Image Extraction</text>
-  <text x="277" y="209" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">PIL + base64 encode</text>
+  <rect x="202" y="167" width="150" height="56" rx="9" fill="#ffffff" stroke="#7c3aed" stroke-width="2"/>
+  <text x="277" y="191" text-anchor="middle" fill="#6d28d9" font-size="13" font-weight="700" font-family="system-ui">Image Extraction</text>
+  <text x="277" y="209" text-anchor="middle" fill="#64748b" font-size="10.5" font-family="system-ui">PIL + base64 encode</text>
 
   <!-- CLIP Text Embedding (same level as Text Extraction) -->
-  <rect x="372" y="52" width="160" height="56" rx="9" fill="#1a1a2e" stroke="#4ecca3" stroke-width="1.6"/>
-  <text x="452" y="76" text-anchor="middle" fill="#4ecca3" font-size="12" font-weight="700" font-family="system-ui">CLIP Text Embedding</text>
-  <text x="452" y="93" text-anchor="middle" fill="#76767f" font-size="10" font-family="monospace">embed_text()</text>
-  <line x1="352" y1="80" x2="372" y2="80" stroke="#4ecca3" stroke-width="2" marker-end="url(#c9-arr-g)"/>
+  <rect x="372" y="52" width="160" height="56" rx="9" fill="#ffffff" stroke="#059669" stroke-width="1.6"/>
+  <text x="452" y="76" text-anchor="middle" fill="#047857" font-size="12" font-weight="700" font-family="system-ui">CLIP Text Embedding</text>
+  <text x="452" y="93" text-anchor="middle" fill="#64748b" font-size="10" font-family="monospace">embed_text()</text>
+  <line x1="352" y1="80" x2="372" y2="80" stroke="#059669" stroke-width="2" marker-end="url(#c9-arr-g)"/>
 
   <!-- CLIP Image Embedding (same level as Image Extraction) -->
-  <rect x="372" y="167" width="160" height="56" rx="9" fill="#1a1a2e" stroke="#a78bfa" stroke-width="1.6"/>
-  <text x="452" y="191" text-anchor="middle" fill="#a78bfa" font-size="12" font-weight="700" font-family="system-ui">CLIP Image Embedding</text>
-  <text x="452" y="208" text-anchor="middle" fill="#76767f" font-size="10" font-family="monospace">embed_image()</text>
-  <line x1="352" y1="195" x2="372" y2="195" stroke="#a78bfa" stroke-width="2" marker-end="url(#c9-arr)"/>
+  <rect x="372" y="167" width="160" height="56" rx="9" fill="#ffffff" stroke="#7c3aed" stroke-width="1.6"/>
+  <text x="452" y="191" text-anchor="middle" fill="#6d28d9" font-size="12" font-weight="700" font-family="system-ui">CLIP Image Embedding</text>
+  <text x="452" y="208" text-anchor="middle" fill="#64748b" font-size="10" font-family="monospace">embed_image()</text>
+  <line x1="352" y1="195" x2="372" y2="195" stroke="#7c3aed" stroke-width="2" marker-end="url(#c9-arr)"/>
 
   <!-- Unified Vector Store -->
-  <rect x="565" y="88" width="150" height="96" rx="9" fill="#1a1a2e" stroke="#818cf8" stroke-width="2.5"/>
-  <text x="640" y="120" text-anchor="middle" fill="#818cf8" font-size="12.5" font-weight="700" font-family="system-ui">Unified FAISS</text>
-  <text x="640" y="141" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">Vector Store</text>
-  <text x="640" y="158" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">(512-dim CLIP)</text>
-  <text x="640" y="175" text-anchor="middle" fill="#fbbf24" font-size="10" font-family="system-ui">text + image vectors</text>
+  <rect x="565" y="88" width="150" height="96" rx="9" fill="#ffffff" stroke="#4f46e5" stroke-width="2.5"/>
+  <text x="640" y="120" text-anchor="middle" fill="#4338ca" font-size="12.5" font-weight="700" font-family="system-ui">Unified FAISS</text>
+  <text x="640" y="141" text-anchor="middle" fill="#64748b" font-size="10" font-family="system-ui">Vector Store</text>
+  <text x="640" y="158" text-anchor="middle" fill="#64748b" font-size="10" font-family="system-ui">(512-dim CLIP)</text>
+  <text x="640" y="175" text-anchor="middle" fill="#b45309" font-size="10" font-family="system-ui">text + image vectors</text>
 
   <!-- Arrows from CLIP into unified store -->
-  <line x1="532" y1="80" x2="565" y2="110" stroke="#4ecca3" stroke-width="2" marker-end="url(#c9-arr-g)"/>
-  <line x1="532" y1="195" x2="565" y2="155" stroke="#a78bfa" stroke-width="2" marker-end="url(#c9-arr)"/>
+  <line x1="532" y1="80" x2="565" y2="110" stroke="#059669" stroke-width="2" marker-end="url(#c9-arr-g)"/>
+  <line x1="532" y1="195" x2="565" y2="155" stroke="#7c3aed" stroke-width="2" marker-end="url(#c9-arr)"/>
 
   <!-- Query on the right -->
-  <rect x="555" y="220" width="170" height="40" rx="8" fill="#16161a" stroke="#fbbf24" stroke-width="1.6"/>
-  <text x="640" y="245" text-anchor="middle" fill="#fbbf24" font-size="12" font-weight="600" font-family="system-ui">User Query</text>
-  <line x1="640" y1="220" x2="640" y2="186" stroke="#fbbf24" stroke-width="1.8" stroke-dasharray="5,3"/>
+  <rect x="555" y="220" width="170" height="40" rx="8" fill="#ffffff" stroke="#d97706" stroke-width="1.6"/>
+  <text x="640" y="245" text-anchor="middle" fill="#b45309" font-size="12" font-weight="600" font-family="system-ui">User Query</text>
+  <line x1="640" y1="220" x2="640" y2="186" stroke="#d97706" stroke-width="1.8" stroke-dasharray="5,3"/>
 
-  <line x1="715" y1="136" x2="760" y2="136" stroke="#818cf8" stroke-width="2" marker-end="url(#c9-arr)"/>
-  <text x="738" y="125" text-anchor="middle" fill="#76767f" font-size="10" font-family="system-ui">top-k</text>
+  <line x1="715" y1="136" x2="760" y2="136" stroke="#4f46e5" stroke-width="2" marker-end="url(#c9-arr)"/>
+  <text x="738" y="125" text-anchor="middle" fill="#64748b" font-size="10" font-family="system-ui">top-k</text>
 
   <!-- GPT-4V -->
-  <rect x="762" y="95" width="155" height="82" rx="9" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
-  <text x="840" y="124" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="700" font-family="system-ui">GPT-4V</text>
-  <text x="840" y="144" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">multimodal LLM</text>
-  <text x="840" y="162" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">text + base64 images</text>
+  <rect x="762" y="95" width="155" height="82" rx="9" fill="#ffffff" stroke="#4f46e5" stroke-width="2"/>
+  <text x="840" y="124" text-anchor="middle" fill="#4338ca" font-size="13" font-weight="700" font-family="system-ui">GPT-4V</text>
+  <text x="840" y="144" text-anchor="middle" fill="#64748b" font-size="10.5" font-family="system-ui">multimodal LLM</text>
+  <text x="840" y="162" text-anchor="middle" fill="#64748b" font-size="10.5" font-family="system-ui">text + base64 images</text>
 
-  <line x1="840" y1="177" x2="840" y2="275" stroke="#818cf8" stroke-width="2" marker-end="url(#c9-arr)"/>
-  <text x="840" y="297" text-anchor="middle" fill="#76767f" font-size="13" font-family="system-ui">Grounded Answer ✓</text>
+  <line x1="840" y1="177" x2="840" y2="275" stroke="#4f46e5" stroke-width="2" marker-end="url(#c9-arr)"/>
+  <text x="840" y="297" text-anchor="middle" fill="#64748b" font-size="13" font-family="system-ui">Grounded Answer ✓</text>
 </svg>
 
 <hr class="divider">
@@ -121,55 +123,57 @@
 <svg class="diagram-svg" viewBox="0 0 940 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="CLIP architecture: a text encoder and an image encoder each produce a 512-dimensional vector. Matching pairs (image+correct caption) are pushed together; non-matching pairs are pushed apart.">
   <defs>
     <marker id="c9b-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#4338ca"/>
     </marker>
   </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
 
   <!-- Text side -->
-  <rect x="30" y="40" width="200" height="52" rx="9" fill="#1a1a2e" stroke="#4ecca3" stroke-width="2"/>
-  <text x="130" y="62" text-anchor="middle" fill="#4ecca3" font-size="13" font-weight="700" font-family="system-ui">Text Encoder</text>
-  <text x="130" y="80" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="monospace">Transformer (12 layers)</text>
+  <rect x="30" y="40" width="200" height="52" rx="9" fill="#ffffff" stroke="#059669" stroke-width="2"/>
+  <text x="130" y="62" text-anchor="middle" fill="#047857" font-size="13" font-weight="700" font-family="system-ui">Text Encoder</text>
+  <text x="130" y="80" text-anchor="middle" fill="#64748b" font-size="10.5" font-family="monospace">Transformer (12 layers)</text>
 
-  <line x1="230" y1="66" x2="310" y2="66" stroke="#818cf8" stroke-width="2" marker-end="url(#c9b-arr)"/>
+  <line x1="230" y1="66" x2="310" y2="66" stroke="#4f46e5" stroke-width="2" marker-end="url(#c9b-arr)"/>
 
   <!-- Text embedding -->
-  <rect x="312" y="38" width="140" height="56" rx="9" fill="#16161a" stroke="#4ecca3" stroke-width="1.6"/>
-  <text x="382" y="62" text-anchor="middle" fill="#4ecca3" font-size="12" font-weight="700" font-family="system-ui">Text Vector</text>
-  <text x="382" y="80" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="monospace">512-dim · L2 norm</text>
+  <rect x="312" y="38" width="140" height="56" rx="9" fill="#ffffff" stroke="#059669" stroke-width="1.6"/>
+  <text x="382" y="62" text-anchor="middle" fill="#047857" font-size="12" font-weight="700" font-family="system-ui">Text Vector</text>
+  <text x="382" y="80" text-anchor="middle" fill="#64748b" font-size="10.5" font-family="monospace">512-dim · L2 norm</text>
 
   <!-- Image side -->
-  <rect x="30" y="140" width="200" height="52" rx="9" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2"/>
-  <text x="130" y="162" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="700" font-family="system-ui">Vision Encoder</text>
-  <text x="130" y="180" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="monospace">ViT-B/32 (12 layers)</text>
+  <rect x="30" y="140" width="200" height="52" rx="9" fill="#ffffff" stroke="#7c3aed" stroke-width="2"/>
+  <text x="130" y="162" text-anchor="middle" fill="#6d28d9" font-size="13" font-weight="700" font-family="system-ui">Vision Encoder</text>
+  <text x="130" y="180" text-anchor="middle" fill="#64748b" font-size="10.5" font-family="monospace">ViT-B/32 (12 layers)</text>
 
-  <line x1="230" y1="166" x2="310" y2="166" stroke="#818cf8" stroke-width="2" marker-end="url(#c9b-arr)"/>
+  <line x1="230" y1="166" x2="310" y2="166" stroke="#4f46e5" stroke-width="2" marker-end="url(#c9b-arr)"/>
 
   <!-- Image embedding -->
-  <rect x="312" y="138" width="140" height="56" rx="9" fill="#16161a" stroke="#a78bfa" stroke-width="1.6"/>
-  <text x="382" y="162" text-anchor="middle" fill="#a78bfa" font-size="12" font-weight="700" font-family="system-ui">Image Vector</text>
-  <text x="382" y="180" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="monospace">512-dim · L2 norm</text>
+  <rect x="312" y="138" width="140" height="56" rx="9" fill="#ffffff" stroke="#7c3aed" stroke-width="1.6"/>
+  <text x="382" y="162" text-anchor="middle" fill="#6d28d9" font-size="12" font-weight="700" font-family="system-ui">Image Vector</text>
+  <text x="382" y="180" text-anchor="middle" fill="#64748b" font-size="10.5" font-family="monospace">512-dim · L2 norm</text>
 
   <!-- Shared space box -->
-  <rect x="510" y="55" width="190" height="120" rx="9" fill="#1a1a2e" stroke="#818cf8" stroke-width="2.5" stroke-dasharray="6,3"/>
-  <text x="605" y="88" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="700" font-family="system-ui">Shared Vector Space</text>
-  <text x="605" y="107" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="monospace">R⁵¹²</text>
-  <text x="605" y="130" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">text ↔ image retrieval</text>
-  <text x="605" y="150" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">cosine similarity</text>
+  <rect x="510" y="55" width="190" height="120" rx="9" fill="#ffffff" stroke="#4f46e5" stroke-width="2.5" stroke-dasharray="6,3"/>
+  <text x="605" y="88" text-anchor="middle" fill="#4338ca" font-size="13" font-weight="700" font-family="system-ui">Shared Vector Space</text>
+  <text x="605" y="107" text-anchor="middle" fill="#64748b" font-size="10.5" font-family="monospace">R⁵¹²</text>
+  <text x="605" y="130" text-anchor="middle" fill="#64748b" font-size="10.5" font-family="system-ui">text ↔ image retrieval</text>
+  <text x="605" y="150" text-anchor="middle" fill="#64748b" font-size="10.5" font-family="system-ui">cosine similarity</text>
 
   <!-- Arrows into shared space -->
-  <line x1="452" y1="66" x2="510" y2="100" stroke="#4ecca3" stroke-width="2" marker-end="url(#c9b-arr)"/>
-  <line x1="452" y1="166" x2="510" y2="140" stroke="#a78bfa" stroke-width="2" marker-end="url(#c9b-arr)"/>
+  <line x1="452" y1="66" x2="510" y2="100" stroke="#059669" stroke-width="2" marker-end="url(#c9b-arr)"/>
+  <line x1="452" y1="166" x2="510" y2="140" stroke="#7c3aed" stroke-width="2" marker-end="url(#c9b-arr)"/>
 
   <!-- Contrastive pairs labels -->
-  <rect x="735" y="55" width="180" height="52" rx="8" fill="#16161a" stroke="#4ecca3" stroke-width="1.4"/>
-  <text x="825" y="78" text-anchor="middle" fill="#4ecca3" font-size="12" font-weight="600" font-family="system-ui">Matching Pair ✓</text>
-  <text x="825" y="96" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">cosine → 1.0 (together)</text>
-  <line x1="700" y1="81" x2="735" y2="81" stroke="#4ecca3" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <rect x="735" y="55" width="180" height="52" rx="8" fill="#ffffff" stroke="#059669" stroke-width="1.4"/>
+  <text x="825" y="78" text-anchor="middle" fill="#047857" font-size="12" font-weight="600" font-family="system-ui">Matching Pair ✓</text>
+  <text x="825" y="96" text-anchor="middle" fill="#64748b" font-size="10.5" font-family="system-ui">cosine → 1.0 (together)</text>
+  <line x1="700" y1="81" x2="735" y2="81" stroke="#059669" stroke-width="1.5" stroke-dasharray="4,3"/>
 
-  <rect x="735" y="123" width="180" height="52" rx="8" fill="#16161a" stroke="#ef6461" stroke-width="1.4"/>
-  <text x="825" y="146" text-anchor="middle" fill="#ef6461" font-size="12" font-weight="600" font-family="system-ui">Non-Matching Pair ✗</text>
-  <text x="825" y="164" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">cosine → 0.0 (apart)</text>
-  <line x1="700" y1="149" x2="735" y2="149" stroke="#ef6461" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <rect x="735" y="123" width="180" height="52" rx="8" fill="#ffffff" stroke="#dc2626" stroke-width="1.4"/>
+  <text x="825" y="146" text-anchor="middle" fill="#dc2626" font-size="12" font-weight="600" font-family="system-ui">Non-Matching Pair ✗</text>
+  <text x="825" y="164" text-anchor="middle" fill="#64748b" font-size="10.5" font-family="system-ui">cosine → 0.0 (apart)</text>
+  <line x1="700" y1="149" x2="735" y2="149" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="4,3"/>
 </svg>
 
 <h3>Initialising CLIP</h3>

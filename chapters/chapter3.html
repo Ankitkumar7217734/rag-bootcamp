@@ -11,48 +11,50 @@
 <svg class="diagram-svg" viewBox="0 0 940 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Data ingestion and parsing flow">
   <defs>
     <marker id="c3-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#4338ca"/>
     </marker>
   </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
 
   <!-- Raw sources -->
-  <text x="95" y="28" text-anchor="middle" fill="#818cf8" font-size="13" font-weight="700" font-family="system-ui" letter-spacing="1">RAW SOURCES</text>
-  <rect x="20" y="44" width="150" height="34" rx="6" fill="#16161a" stroke="#36363e" stroke-width="1.5"/>
-  <text x="95" y="66" text-anchor="middle" fill="#b4b4be" font-size="13" font-family="system-ui">.txt&nbsp;&nbsp;.pdf&nbsp;&nbsp;.docx</text>
-  <rect x="20" y="86" width="150" height="34" rx="6" fill="#16161a" stroke="#36363e" stroke-width="1.5"/>
-  <text x="95" y="108" text-anchor="middle" fill="#b4b4be" font-size="13" font-family="system-ui">.csv&nbsp;&nbsp;.xlsx&nbsp;&nbsp;.json</text>
-  <rect x="20" y="128" width="150" height="34" rx="6" fill="#16161a" stroke="#36363e" stroke-width="1.5"/>
-  <text x="95" y="150" text-anchor="middle" fill="#b4b4be" font-size="13" font-family="system-ui">SQL database</text>
+  <text x="95" y="28" text-anchor="middle" fill="#4338ca" font-size="13" font-weight="700" font-family="system-ui" letter-spacing="1">RAW SOURCES</text>
+  <rect x="20" y="44" width="150" height="34" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="95" y="66" text-anchor="middle" fill="#374151" font-size="13" font-family="system-ui">.txt&nbsp;&nbsp;.pdf&nbsp;&nbsp;.docx</text>
+  <rect x="20" y="86" width="150" height="34" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="95" y="108" text-anchor="middle" fill="#374151" font-size="13" font-family="system-ui">.csv&nbsp;&nbsp;.xlsx&nbsp;&nbsp;.json</text>
+  <rect x="20" y="128" width="150" height="34" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="95" y="150" text-anchor="middle" fill="#374151" font-size="13" font-family="system-ui">SQL database</text>
 
-  <line x1="172" y1="103" x2="214" y2="103" stroke="#818cf8" stroke-width="2" marker-end="url(#c3-arr)"/>
+  <line x1="172" y1="103" x2="214" y2="103" stroke="#4f46e5" stroke-width="2" marker-end="url(#c3-arr)"/>
 
   <!-- Loader / Parser -->
-  <rect x="218" y="62" width="170" height="82" rx="10" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
-  <text x="303" y="98" text-anchor="middle" fill="#818cf8" font-size="15" font-weight="600" font-family="system-ui">Loader / Parser</text>
-  <text x="303" y="120" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">TextLoader · PyMuPDF…</text>
+  <rect x="218" y="62" width="170" height="82" rx="10" fill="#ffffff" stroke="#4f46e5" stroke-width="2"/>
+  <text x="303" y="98" text-anchor="middle" fill="#4338ca" font-size="15" font-weight="600" font-family="system-ui">Loader / Parser</text>
+  <text x="303" y="120" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">TextLoader · PyMuPDF…</text>
 
-  <line x1="390" y1="103" x2="432" y2="103" stroke="#818cf8" stroke-width="2" marker-end="url(#c3-arr)"/>
+  <line x1="390" y1="103" x2="432" y2="103" stroke="#4f46e5" stroke-width="2" marker-end="url(#c3-arr)"/>
 
   <!-- Document objects -->
-  <rect x="436" y="62" width="170" height="82" rx="10" fill="#1a1a2e" stroke="#6366f1" stroke-width="2"/>
-  <text x="521" y="92" text-anchor="middle" fill="#6366f1" font-size="15" font-weight="600" font-family="system-ui">Document(s)</text>
-  <text x="521" y="114" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">page_content</text>
-  <text x="521" y="131" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">+ metadata</text>
+  <rect x="436" y="62" width="170" height="82" rx="10" fill="#ffffff" stroke="#4f46e5" stroke-width="2"/>
+  <text x="521" y="92" text-anchor="middle" fill="#4338ca" font-size="15" font-weight="600" font-family="system-ui">Document(s)</text>
+  <text x="521" y="114" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">page_content</text>
+  <text x="521" y="131" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">+ metadata</text>
 
-  <line x1="608" y1="103" x2="650" y2="103" stroke="#818cf8" stroke-width="2" marker-end="url(#c3-arr)"/>
+  <line x1="608" y1="103" x2="650" y2="103" stroke="#4f46e5" stroke-width="2" marker-end="url(#c3-arr)"/>
 
   <!-- Splitter -->
-  <rect x="654" y="62" width="170" height="82" rx="10" fill="#1a1a2e" stroke="#a78bfa" stroke-width="2"/>
-  <text x="739" y="98" text-anchor="middle" fill="#a78bfa" font-size="15" font-weight="600" font-family="system-ui">Text Splitter</text>
-  <text x="739" y="120" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">chunk + overlap</text>
+  <rect x="654" y="62" width="170" height="82" rx="10" fill="#ffffff" stroke="#7c3aed" stroke-width="2"/>
+  <text x="739" y="98" text-anchor="middle" fill="#6d28d9" font-size="15" font-weight="600" font-family="system-ui">Text Splitter</text>
+  <text x="739" y="120" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">chunk + overlap</text>
 
   <!-- Down arrow to chunks -->
-  <line x1="739" y1="146" x2="739" y2="196" stroke="#818cf8" stroke-width="2" marker-end="url(#c3-arr)"/>
+  <line x1="739" y1="146" x2="739" y2="196" stroke="#4f46e5" stroke-width="2" marker-end="url(#c3-arr)"/>
 
   <!-- Chunks ready -->
-  <rect x="610" y="200" width="258" height="62" rx="10" fill="#16161a" stroke="#4ecca3" stroke-width="1.8"/>
-  <text x="739" y="228" text-anchor="middle" fill="#4ecca3" font-size="14" font-weight="600" font-family="system-ui">Clean Chunks</text>
-  <text x="739" y="248" text-anchor="middle" fill="#76767f" font-size="12" font-family="system-ui">ready to embed &amp; index ✓</text>
+  <rect x="610" y="200" width="258" height="62" rx="10" fill="#ffffff" stroke="#059669" stroke-width="1.8"/>
+  <text x="739" y="228" text-anchor="middle" fill="#047857" font-size="14" font-weight="600" font-family="system-ui">Clean Chunks</text>
+  <text x="739" y="248" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">ready to embed &amp; index ✓</text>
 </svg>
 
 <div class="example-block">

@@ -29,48 +29,50 @@
 <svg class="diagram-svg" viewBox="0 0 940 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A query is sent to an LLM that generates a hypothetical answer, which is embedded and used by the retriever to fetch the real top-k documents, which the final LLM uses to produce the output">
   <defs>
     <marker id="c8c-arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L9,4 z" fill="#818cf8"/>
+      <path d="M0,0 L0,8 L9,4 z" fill="#4338ca"/>
     </marker>
   </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
 
   <!-- outer RAG frame -->
-  <rect x="14" y="30" width="912" height="200" rx="12" fill="none" stroke="#4ecca3" stroke-width="1.5" stroke-dasharray="6 5"/>
-  <text x="48" y="52" fill="#4ecca3" font-size="13" font-weight="700" font-family="system-ui" letter-spacing="1">RAG + HyDE</text>
+  <rect x="14" y="30" width="912" height="200" rx="12" fill="none" stroke="#059669" stroke-width="1.5" stroke-dasharray="6 5"/>
+  <text x="48" y="52" fill="#047857" font-size="13" font-weight="700" font-family="system-ui" letter-spacing="1">RAG + HyDE</text>
 
   <!-- Query -->
-  <rect x="40" y="92" width="130" height="50" rx="9" fill="#1a1a2e" stroke="#ef6461" stroke-width="2"/>
-  <text x="105" y="122" text-anchor="middle" fill="#ef6461" font-size="14" font-weight="600" font-family="system-ui">Query</text>
+  <rect x="40" y="92" width="130" height="50" rx="9" fill="#ffffff" stroke="#dc2626" stroke-width="2"/>
+  <text x="105" y="122" text-anchor="middle" fill="#dc2626" font-size="14" font-weight="600" font-family="system-ui">Query</text>
 
-  <line x1="170" y1="117" x2="226" y2="117" stroke="#818cf8" stroke-width="2" marker-end="url(#c8c-arr)"/>
+  <line x1="170" y1="117" x2="226" y2="117" stroke="#4f46e5" stroke-width="2" marker-end="url(#c8c-arr)"/>
 
   <!-- HyDE / LLM generates hypothetical answer -->
-  <rect x="228" y="84" width="200" height="66" rx="9" fill="#1a1a2e" stroke="#818cf8" stroke-width="2"/>
-  <text x="328" y="108" text-anchor="middle" fill="#818cf8" font-size="14" font-weight="700" font-family="system-ui">HyDE — LLM</text>
-  <text x="328" y="127" text-anchor="middle" fill="#b4b4be" font-size="11.5" font-family="system-ui">generate hypothetical</text>
-  <text x="328" y="142" text-anchor="middle" fill="#b4b4be" font-size="11.5" font-family="system-ui">answer (document)</text>
+  <rect x="228" y="84" width="200" height="66" rx="9" fill="#ffffff" stroke="#4f46e5" stroke-width="2"/>
+  <text x="328" y="108" text-anchor="middle" fill="#4338ca" font-size="14" font-weight="700" font-family="system-ui">HyDE — LLM</text>
+  <text x="328" y="127" text-anchor="middle" fill="#374151" font-size="11.5" font-family="system-ui">generate hypothetical</text>
+  <text x="328" y="142" text-anchor="middle" fill="#374151" font-size="11.5" font-family="system-ui">answer (document)</text>
 
   <!-- embed label -->
-  <line x1="428" y1="117" x2="494" y2="117" stroke="#818cf8" stroke-width="2" marker-end="url(#c8c-arr)"/>
-  <text x="461" y="106" text-anchor="middle" fill="#fbbf24" font-size="10.5" font-family="system-ui">⇒ embed</text>
+  <line x1="428" y1="117" x2="494" y2="117" stroke="#4f46e5" stroke-width="2" marker-end="url(#c8c-arr)"/>
+  <text x="461" y="106" text-anchor="middle" fill="#b45309" font-size="10.5" font-family="system-ui">⇒ embed</text>
 
   <!-- Retriever -->
-  <rect x="496" y="84" width="170" height="66" rx="9" fill="#16161a" stroke="#a78bfa" stroke-width="1.8"/>
-  <text x="581" y="114" text-anchor="middle" fill="#a78bfa" font-size="13.5" font-weight="700" font-family="system-ui">Retriever</text>
-  <text x="581" y="133" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">search vector store</text>
+  <rect x="496" y="84" width="170" height="66" rx="9" fill="#ffffff" stroke="#7c3aed" stroke-width="1.8"/>
+  <text x="581" y="114" text-anchor="middle" fill="#6d28d9" font-size="13.5" font-weight="700" font-family="system-ui">Retriever</text>
+  <text x="581" y="133" text-anchor="middle" fill="#64748b" font-size="11" font-family="system-ui">search vector store</text>
 
-  <line x1="666" y1="117" x2="732" y2="117" stroke="#818cf8" stroke-width="2" marker-end="url(#c8c-arr)"/>
-  <text x="699" y="106" text-anchor="middle" fill="#76767f" font-size="10.5" font-family="system-ui">top-k</text>
+  <line x1="666" y1="117" x2="732" y2="117" stroke="#4f46e5" stroke-width="2" marker-end="url(#c8c-arr)"/>
+  <text x="699" y="106" text-anchor="middle" fill="#64748b" font-size="10.5" font-family="system-ui">top-k</text>
 
   <!-- final LLM -->
-  <rect x="734" y="84" width="150" height="66" rx="9" fill="#1a1a2e" stroke="#ef6461" stroke-width="2"/>
-  <text x="809" y="114" text-anchor="middle" fill="#ef6461" font-size="14" font-weight="700" font-family="system-ui">LLM</text>
-  <text x="809" y="133" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">real docs → answer</text>
+  <rect x="734" y="84" width="150" height="66" rx="9" fill="#ffffff" stroke="#dc2626" stroke-width="2"/>
+  <text x="809" y="114" text-anchor="middle" fill="#dc2626" font-size="14" font-weight="700" font-family="system-ui">LLM</text>
+  <text x="809" y="133" text-anchor="middle" fill="#64748b" font-size="11" font-family="system-ui">real docs → answer</text>
 
-  <line x1="809" y1="150" x2="809" y2="196" stroke="#818cf8" stroke-width="2" marker-end="url(#c8c-arr)"/>
-  <text x="809" y="216" text-anchor="middle" fill="#76767f" font-size="13" font-family="system-ui">Output ✓</text>
+  <line x1="809" y1="150" x2="809" y2="196" stroke="#4f46e5" stroke-width="2" marker-end="url(#c8c-arr)"/>
+  <text x="809" y="216" text-anchor="middle" fill="#64748b" font-size="13" font-family="system-ui">Output ✓</text>
 
   <!-- note under HyDE -->
-  <text x="328" y="178" text-anchor="middle" fill="#76767f" font-size="11" font-family="system-ui">hypothetical answer ⇒ embedding</text>
+  <text x="328" y="178" text-anchor="middle" fill="#64748b" font-size="11" font-family="system-ui">hypothetical answer ⇒ embedding</text>
 </svg>
 
 <hr class="divider">
