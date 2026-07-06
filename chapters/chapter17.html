@@ -1,0 +1,694 @@
+<h1>Chapter 17: Corrective RAG (CRAG) &mdash; Grading Retrieval &amp; Self-Correcting</h1>
+<p style="color:#888; margin-bottom: 2rem;"><em>Don't trust retrieval blindly. Grade every document, and when the store comes up short, rewrite the question and go to the web before you answer.</em></p>
+
+<div class="example-block">
+  <div class="label">A More Detailed Explanation</div>
+
+  <p style="color:#f2662e; font-weight:700; margin-bottom:0.25rem;">Addressing Limitations of Basic RAG</p>
+  <p style="margin-top:0;">
+    Traditional RAG systems rely heavily on the accuracy of retrieved documents. If the retrieved
+    information is flawed or incomplete, the generated response can also be inaccurate.
+  </p>
+
+  <p style="color:#f2662e; font-weight:700; margin-bottom:0.25rem;">CRAG's Core Components</p>
+  <p style="margin-top:0;"><strong><span style="color:#fbbf24;">1. Retrieval Evaluator:</span></strong> This component assesses the quality and relevance of retrieved documents.</p>
+  <p><strong><span style="color:#fbbf24;">2. Generative Model:</span></strong> This model generates the initial response based on the retrieved information.</p>
+  <p><strong><span style="color:#fbbf24;">3. Refinement and Correction:</span></strong> CRAG employs strategies like knowledge refinement or web search to address issues identified by the retrieval evaluator.</p>
+
+  <p style="color:#f2662e; font-weight:700; margin-bottom:0.25rem;">Benefits of CRAG</p>
+  <p style="margin-top:0;"><strong><span style="color:#4ecca3;">1. Improved Accuracy:</span></strong> By evaluating and correcting retrieved information, CRAG helps ensure the accuracy of generated responses.</p>
+  <p><strong><span style="color:#4ecca3;">2. Enhanced Relevance:</span></strong> CRAG can identify and filter out irrelevant information, making the generated response more relevant.</p>
+  <p><strong><span style="color:#4ecca3;">3. Increased Robustness:</span></strong> CRAG can handle cases where the initial retrieval process is not perfect, leading to a more robust RAG system.</p>
+</div>
+
+<h2>Overview</h2>
+<p>
+  Every RAG system you've built so far shares one silent assumption: <strong>the documents the
+  retriever hands back are good enough to answer from</strong>. Chapter 13 poked a hole in that by
+  grading documents and looping back to rewrite. <strong>Corrective RAG (CRAG)</strong> turns that
+  instinct into a full, self-contained workflow.
+</p>
+<p>
+  CRAG is an advanced RAG technique that improves the accuracy and relevance of generated answers
+  by adding <strong>self-reflection</strong> and <strong>self-grading</strong> of retrieved
+  documents. It evaluates the quality of what the retriever returned and applies a
+  <strong>corrective action</strong> when the retrieval is weak &mdash; refining the query and
+  falling back to <strong>web search</strong> &mdash; rather than generating an answer from
+  irrelevant context.
+</p>
+<p>
+  This chapter builds the complete CRAG graph from <code>2-CorrectiveRAG.ipynb</code>: a retrieval
+  grader with structured output, a RAG generator, a question re-writer tuned for web search, a
+  Tavily search tool, and a LangGraph <code>StateGraph</code> that wires them into a
+  retrieve &rarr; grade &rarr; (generate | rewrite &rarr; search &rarr; generate) loop.
+</p>
+
+<svg class="diagram-svg diagram-svg--light" viewBox="0 0 940 402" xmlns="http://www.w3.org/2000/svg"
+  role="img" aria-label="Corrective RAG conceptual flow: Question goes to a Retrieve node, then a Grade node; a decision asks whether any document is irrelevant. No leads straight to the generate node and the Answer; Yes leads down to a Re-write query node, then a Web Search node, then up into the same generate node and the Answer.">
+  <defs>
+    <marker id="c17-blk" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#1f2937"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
+  <!-- Question -->
+  <text x="70" y="189" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="15">Question</text>
+  <line x1="112" y1="183" x2="196" y2="183" stroke="#1f2937" stroke-width="1.8" marker-end="url(#c17-blk)"/>
+
+  <!-- Retrieve node (white circle, label above) -->
+  <text x="219" y="139" text-anchor="middle" fill="#1f2937" font-family="monospace" font-size="13">Retrieve</text>
+  <text x="219" y="156" text-anchor="middle" fill="#1f2937" font-family="monospace" font-size="13">(Node)</text>
+  <circle cx="219" cy="183" r="18" fill="#ffffff" stroke="#1f2937" stroke-width="2"/>
+  <line x1="239" y1="183" x2="315" y2="183" stroke="#1f2937" stroke-width="1.8" marker-end="url(#c17-blk)"/>
+
+  <!-- Grade node (purple circle, label above) + pencil -->
+  <text x="335" y="139" text-anchor="middle" fill="#1f2937" font-family="monospace" font-size="13">Grade</text>
+  <text x="335" y="156" text-anchor="middle" fill="#1f2937" font-family="monospace" font-size="13">(Node)</text>
+  <circle cx="335" cy="183" r="18" fill="#cdbff8" stroke="#1f2937" stroke-width="2"/>
+  <!-- pencil, tilted above the Grade node -->
+  <g transform="translate(370,92) rotate(150)">
+    <rect x="-3" y="-4" width="5" height="8" rx="1" fill="#f4a6a6"/>
+    <rect x="2" y="-4" width="3" height="8" fill="#c8ced7"/>
+    <rect x="5" y="-4" width="20" height="8" fill="#fbbf24" stroke="#d99a1c" stroke-width="0.7"/>
+    <polygon points="25,-4 25,4 33,0" fill="#f2d7a3" stroke="#c49a52" stroke-width="0.6"/>
+    <polygon points="30,-1.6 30,1.6 33,0" fill="#1f2937"/>
+  </g>
+  <line x1="355" y1="183" x2="428" y2="183" stroke="#1f2937" stroke-width="1.8" marker-end="url(#c17-blk)"/>
+
+  <!-- Decision diamond -->
+  <rect x="436" y="168" width="30" height="30" fill="#ffffff" stroke="#1f2937" stroke-width="2" transform="rotate(45 451 183)"/>
+  <text x="548" y="179" text-anchor="start" fill="#1f2937" font-family="monospace" font-size="12">Any doc</text>
+  <text x="548" y="196" text-anchor="start" fill="#1f2937" font-family="monospace" font-size="12">irrelevant</text>
+
+  <!-- No branch: up then across into the generate circle -->
+  <path d="M 467 173 L 545 118 L 737 118" fill="none" stroke="#1f2937" stroke-width="1.8" marker-end="url(#c17-blk)"/>
+  <text x="520" y="106" text-anchor="middle" fill="#1f2937" font-family="monospace" font-size="13">No</text>
+
+  <!-- Yes branch: down into the re-write node -->
+  <path d="M 464 195 L 547 251" fill="none" stroke="#1f2937" stroke-width="1.8" marker-end="url(#c17-blk)"/>
+  <text x="512" y="232" text-anchor="middle" fill="#1f2937" font-family="monospace" font-size="13">Yes</text>
+
+  <!-- Re-write query node (purple circle, label below) -->
+  <circle cx="565" cy="267" r="18" fill="#cdbff8" stroke="#1f2937" stroke-width="2"/>
+  <text x="565" y="303" text-anchor="middle" fill="#1f2937" font-family="monospace" font-size="13">Re-write query</text>
+  <text x="565" y="320" text-anchor="middle" fill="#1f2937" font-family="monospace" font-size="13">(Node)</text>
+  <line x1="583" y1="267" x2="731" y2="267" stroke="#1f2937" stroke-width="1.8" marker-end="url(#c17-blk)"/>
+
+  <!-- Web Search node (white circle, label below) -->
+  <circle cx="751" cy="267" r="18" fill="#ffffff" stroke="#1f2937" stroke-width="2"/>
+  <text x="751" y="303" text-anchor="middle" fill="#1f2937" font-family="monospace" font-size="13">Web Search</text>
+  <text x="751" y="320" text-anchor="middle" fill="#1f2937" font-family="monospace" font-size="13">(Node)</text>
+  <!-- up into the generate circle -->
+  <line x1="754" y1="249" x2="754" y2="133" stroke="#1f2937" stroke-width="1.8" marker-end="url(#c17-blk)"/>
+
+  <!-- generate node (purple circle, unlabeled) -> Answer -->
+  <circle cx="757" cy="112" r="18" fill="#cdbff8" stroke="#1f2937" stroke-width="2"/>
+  <line x1="775" y1="112" x2="836" y2="112" stroke="#1f2937" stroke-width="1.8" marker-end="url(#c17-blk)"/>
+  <text x="868" y="118" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="15">Answer</text>
+</svg>
+
+<div class="example-block">
+  <div class="label">The Core Idea</div>
+  <p>
+    Basic RAG answers from whatever the retriever returns. <strong>CRAG adds a grader between
+    retrieval and generation.</strong> If <em>every</em> document is relevant, it generates the
+    answer directly. If <em>any</em> document is irrelevant, it triggers a corrective action:
+    re-write the question into a web-search-friendly form, run a Tavily search, append those
+    results to the context, and only <em>then</em> generate. The system reflects on its own
+    retrieval quality and fixes it before answering.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Step 1 &mdash; Build the Index</h2>
+<p>
+  We index three of Lilian Weng's blog posts (agents, prompt engineering, adversarial attacks) into
+  a FAISS store. Documents are loaded with <code>WebBaseLoader</code>, split with a tiktoken-aware
+  <code>RecursiveCharacterTextSplitter</code> (500-token chunks, no overlap), embedded with OpenAI
+  embeddings, and exposed as a retriever.
+</p>
+
+<pre>### Build Index
+
+from langchain_classic.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import WebBaseLoader
+from langchain_community.vectorstores import FAISS
+from langchain_openai import OpenAIEmbeddings
+
+# Set embeddings
+embd = OpenAIEmbeddings()
+
+# Docs to index
+urls = [
+    "https://lilianweng.github.io/posts/2023-06-23-agent/",
+    "https://lilianweng.github.io/posts/2023-03-15-prompt-engineering/",
+    "https://lilianweng.github.io/posts/2023-10-25-adv-attack-llm/",
+]
+
+# Load
+docs = [WebBaseLoader(url).load() for url in urls]
+docs_list = [item for sublist in docs for item in sublist]
+
+# Split
+text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+    chunk_size=500, chunk_overlap=0
+)
+doc_splits = text_splitter.split_documents(docs_list)
+
+# Add to vectorstore
+vectorstore = FAISS.from_documents(
+    documents=doc_splits,
+    embedding=OpenAIEmbeddings()
+)
+
+retriever = vectorstore.as_retriever()</pre>
+
+<p>
+  This is the same knowledge base pattern from earlier chapters &mdash; the interesting part isn't
+  the store, it's what we do <em>after</em> retrieval.
+</p>
+
+<hr class="divider">
+
+<h2>Step 2 &mdash; The Retrieval Grader</h2>
+<p>
+  This is the heart of CRAG. We ask an LLM to return a <strong>binary relevance score</strong> for
+  a single (question, document) pair. Using <code>with_structured_output</code> against a Pydantic
+  model forces the answer into a clean <code>'yes'</code>/<code>'no'</code> field &mdash; no parsing
+  free-form text.
+</p>
+
+<pre>### Retrieval Grader
+
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
+from pydantic import BaseModel, Field
+
+
+# Data model
+class GradeDocuments(BaseModel):
+    """Binary score for relevance check on retrieved documents."""
+
+    binary_score: str = Field(
+        description="Documents are relevant to the question, 'yes' or 'no'"
+    )
+
+# LLM with function call
+llm = ChatOpenAI(model="gpt-3.5-turbo-0125", temperature=0)
+structured_llm_grader = llm.with_structured_output(GradeDocuments)
+
+# Prompt
+system = """You are a grader assessing relevance of a retrieved document to a user question. \n
+    If the document contains keyword(s) or semantic meaning related to the question, grade it as relevant. \n
+    Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question."""
+grade_prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system", system),
+        ("human", "Retrieved document: \n\n {document} \n\n User question: {question}"),
+    ]
+)
+
+# chain the prompt with the LLM
+retrieval_grader = grade_prompt | structured_llm_grader
+question = "agent memory"
+docs = retriever.invoke(question)
+doc_txt = docs[1].page_content
+print(retrieval_grader.invoke({"question": question, "document": doc_txt}))</pre>
+
+<pre>binary_score='no'</pre>
+
+<div class="example-block">
+  <div class="label">Why binary, not a score?</div>
+  <p>
+    A binary <code>yes</code>/<code>no</code> is deliberately coarse. CRAG doesn't need a precise
+    relevance ranking &mdash; it needs a <em>trigger</em>. One irrelevant document is enough to flip
+    the whole flow into corrective mode, so a crisp binary decision per document is exactly the
+    right signal. (Note the grader is evaluated on <code>docs[1]</code> here, and that particular
+    chunk grades as <code>'no'</code>.)
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Step 3 &mdash; The Generator</h2>
+<p>
+  A standard concise RAG chain: stuff the retrieved documents into a prompt and ask for a
+  three-sentence answer. This is the inline equivalent of the classic
+  <code>hub.pull("rlm/rag-prompt")</code>.
+</p>
+
+<pre>### Generate
+
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+
+# Prompt (inline equivalent of the old hub.pull("rlm/rag-prompt"))
+prompt = ChatPromptTemplate.from_messages(
+    [
+        (
+            "human",
+            "You are an assistant for question-answering tasks. Use the following pieces "
+            "of retrieved context to answer the question. If you don't know the answer, "
+            "just say that you don't know. Use three sentences maximum and keep the answer "
+            "concise.\n"
+            "Question: {question} \n"
+            "Context: {context} \n"
+            "Answer:",
+        ),
+    ]
+)
+
+# LLM
+llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0)
+
+
+# Post-processing
+def format_docs(docs):
+    return "\n\n".join(doc.page_content for doc in docs)
+
+
+# Chain
+rag_chain = prompt | llm | StrOutputParser()
+
+# Run
+generation = rag_chain.invoke({"context": docs, "question": question})
+print(generation)</pre>
+
+<pre>Agent memory in a LLM-powered autonomous agent system consists of short-term memory for in-context
+learning and long-term memory for retaining and recalling information over extended periods. The
+long-term memory allows the agent to leverage an external vector store for fast retrieval of
+information. Memory plays a crucial role in enabling agents to learn from past experiences and
+improve their future actions.</pre>
+
+<hr class="divider">
+
+<h2>Step 4 &mdash; The Question Re-Writer</h2>
+<p>
+  When retrieval fails, the corrective action starts by <strong>improving the question</strong>.
+  The re-writer reasons about the underlying semantic intent and rewrites the query into a form
+  that's optimized for <em>web search</em> &mdash; often expanding a terse phrase like
+  &ldquo;agent memory&rdquo; into a full natural-language question.
+</p>
+
+<pre>### Question Re-writer
+
+# LLM
+llm = ChatOpenAI(model="gpt-3.5-turbo-0125", temperature=0)
+
+# Prompt
+system = """You a question re-writer that converts an input question to a better version that is optimized \n
+     for web search. Look at the input and try to reason about the underlying semantic intent / meaning."""
+re_write_prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system", system),
+        (
+            "human",
+            "Here is the initial question: \n\n {question} \n Formulate an improved question.",
+        ),
+    ]
+)
+
+question_rewriter = re_write_prompt | llm | StrOutputParser()
+question_rewriter.invoke({"question": question})</pre>
+
+<pre>'What is the role of memory in artificial intelligence agents?'</pre>
+
+<hr class="divider">
+
+<h2>Step 5 &mdash; The Web Search Tool</h2>
+<p>
+  The fallback knowledge source is Tavily, a search API built for LLMs. It returns the top results,
+  which the web-search node will fold into the document list.
+</p>
+
+<pre>### Search
+
+from langchain_community.tools.tavily_search import TavilySearchResults
+
+web_search_tool = TavilySearchResults(k=3)</pre>
+
+<hr class="divider">
+
+<h2>Step 6 &mdash; Graph State</h2>
+<p>
+  The whole workflow shares one <code>TypedDict</code> state. Each node reads some keys and returns
+  updated ones. The <code>web_search</code> flag is the switch the grader flips and the conditional
+  edge reads.
+</p>
+
+<pre>from typing import List
+from typing_extensions import TypedDict
+
+
+class GraphState(TypedDict):
+    """
+    Represents the state of our graph.
+
+    Attributes:
+        question: question
+        generation: LLM generation
+        web_search: whether to add search
+        documents: list of documents
+    """
+
+    question: str
+    generation: str
+    web_search: str
+    documents: List[str]</pre>
+
+<hr class="divider">
+
+<h2>Step 7 &mdash; The Graph Nodes</h2>
+<p>
+  The workflow is five node functions plus one decision function. Every node follows the same
+  contract: it receives the current <code>state</code> dict, does <strong>one job</strong>, and
+  returns only the keys it changed. We'll build them one at a time instead of all at once &mdash;
+  each is small once you see it in isolation. They share a single import, LangGraph's
+  <code>Document</code>, used when we wrap web results back into the document list:
+</p>
+
+<pre>from langchain_classic.schema import Document</pre>
+
+<h3>retrieve &amp; generate &mdash; the two endpoints</h3>
+<p>
+  These are the bookends of the graph. <code>retrieve</code> is the ordinary RAG lookup: take the
+  question, hit the FAISS retriever, drop the documents into state. <code>generate</code> is the
+  final step: feed the (possibly corrected) documents and question to the <code>rag_chain</code>
+  from Step 3 and store the answer under <code>generation</code>. Neither makes a decision &mdash;
+  they just move data through.
+</p>
+
+<pre>def retrieve(state):
+    """Retrieve documents."""
+    print("---RETRIEVE---")
+    question = state["question"]
+    documents = retriever.invoke(question)
+    return {"documents": documents, "question": question}
+
+
+def generate(state):
+    """Generate answer."""
+    print("---GENERATE---")
+    question = state["question"]
+    documents = state["documents"]
+    generation = rag_chain.invoke({"context": documents, "question": question})
+    return {"documents": documents, "question": question, "generation": generation}</pre>
+
+<h3>grade_documents &mdash; the quality gate</h3>
+<p>
+  This is the node that makes CRAG &ldquo;corrective.&rdquo; It loops over every retrieved document
+  and runs the <code>retrieval_grader</code> from Step 2 on each one. Relevant documents are kept in
+  <code>filtered_docs</code>; irrelevant ones are dropped. The important line is in the
+  <code>else</code> branch: the first document that grades <code>no</code> flips
+  <code>web_search</code> from <code>"No"</code> to <code>"Yes"</code> &mdash; and that flag is the
+  entire trigger for the corrective path.
+</p>
+
+<pre>def grade_documents(state):
+    """Determine whether the retrieved documents are relevant to the question."""
+    print("---CHECK DOCUMENT RELEVANCE TO QUESTION---")
+    question = state["question"]
+    documents = state["documents"]
+
+    # Score each doc
+    filtered_docs = []
+    web_search = "No"
+    for d in documents:
+        score = retrieval_grader.invoke(
+            {"question": question, "document": d.page_content}
+        )
+        grade = score.binary_score
+        if grade == "yes":
+            print("---GRADE: DOCUMENT RELEVANT---")
+            filtered_docs.append(d)
+        else:
+            print("---GRADE: DOCUMENT NOT RELEVANT---")
+            web_search = "Yes"
+            continue
+    return {"documents": filtered_docs, "question": question, "web_search": web_search}</pre>
+
+<div class="example-block">
+  <div class="label">The one subtle rule</div>
+  <p>
+    <code>grade_documents</code> keeps only the <strong>relevant</strong> documents in
+    <code>filtered_docs</code>, and flips <code>web_search</code> to <code>"Yes"</code> if
+    <em>any</em> document failed. So even when the store had <em>some</em> good chunks, one bad
+    chunk still sends the flow through web search &mdash; CRAG treats partial relevance as a reason
+    to enrich the context, not skip it.
+  </p>
+</div>
+
+<h3>transform_query &amp; web_search &mdash; the corrective action</h3>
+<p>
+  These two only run when grading failed. <code>transform_query</code> rewrites the question into a
+  web-search-friendly form using the re-writer from Step 4. <code>web_search</code> then sends that
+  improved question to Tavily, joins the results into a single <code>Document</code>, and
+  <strong>appends</strong> it to the surviving documents &mdash; so <code>generate</code> later sees
+  the good local chunks <em>plus</em> fresh web context, not one or the other.
+</p>
+
+<pre>def transform_query(state):
+    """Transform the query to produce a better question."""
+    print("---TRANSFORM QUERY---")
+    question = state["question"]
+    documents = state["documents"]
+    better_question = question_rewriter.invoke({"question": question})
+    return {"documents": documents, "question": better_question}
+
+
+def web_search(state):
+    """Web search based on the re-phrased question."""
+    print("---WEB SEARCH---")
+    question = state["question"]
+    documents = state["documents"]
+    docs = web_search_tool.invoke({"query": question})
+    web_results = "\n".join([d["content"] for d in docs])
+    web_results = Document(page_content=web_results)
+    documents.append(web_results)
+    return {"documents": documents, "question": question}</pre>
+
+<h3>decide_to_generate &mdash; the conditional edge</h3>
+<p>
+  This one isn't a node &mdash; it's the <strong>router</strong>. After grading, it reads the
+  <code>web_search</code> flag and returns the <em>name</em> of the next node to run:
+  <code>"generate"</code> if every document was relevant, or <code>"transform_query"</code> if any
+  wasn't. That returned string is what the graph's conditional edge in Step 8 maps to an actual node.
+</p>
+
+<pre>### Edges
+
+
+def decide_to_generate(state):
+    """Decide whether to generate an answer, or re-generate a question."""
+    print("---ASSESS GRADED DOCUMENTS---")
+    state["question"]
+    web_search = state["web_search"]
+    state["documents"]
+
+    if web_search == "Yes":
+        # All documents have been filtered check_relevance
+        # We will re-generate a new query
+        print("---DECISION: ALL DOCUMENTS ARE NOT RELEVANT TO QUESTION, TRANSFORM QUERY---")
+        return "transform_query"
+    else:
+        # We have relevant documents, so generate answer
+        print("---DECISION: GENERATE---")
+        return "generate"</pre>
+
+<hr class="divider">
+
+<h2>Step 8 &mdash; Wiring the Graph</h2>
+<p>
+  Now assemble the <code>StateGraph</code>. The only conditional edge is out of
+  <code>grade_documents</code>; everything else is a straight line. Notice the two paths reconverge
+  at <code>generate</code>: the &ldquo;good retrieval&rdquo; path jumps straight there, while the
+  &ldquo;corrective&rdquo; path detours through <code>transform_query &rarr; web_search_node</code>
+  first.
+</p>
+
+<pre>from langgraph.graph import END, StateGraph, START
+
+workflow = StateGraph(GraphState)
+
+# Define the nodes
+workflow.add_node("retrieve", retrieve)                # retrieve
+workflow.add_node("grade_documents", grade_documents)  # grade documents
+workflow.add_node("generate", generate)                # generate
+workflow.add_node("transform_query", transform_query)  # transform_query
+workflow.add_node("web_search_node", web_search)       # web search
+
+# Build graph
+workflow.add_edge(START, "retrieve")
+workflow.add_edge("retrieve", "grade_documents")
+workflow.add_conditional_edges(
+    "grade_documents",
+    decide_to_generate,
+    {
+        "transform_query": "transform_query",
+        "generate": "generate",
+    },
+)
+workflow.add_edge("transform_query", "web_search_node")
+workflow.add_edge("web_search_node", "generate")
+workflow.add_edge("generate", END)
+
+# Compile
+app = workflow.compile()</pre>
+
+<p>
+  This is what <code>app.get_graph(xray=True).draw_mermaid_png()</code> renders &mdash; the compiled
+  CRAG graph. The dotted edges out of <code>grade_documents</code> are the conditional branch: one
+  dashes straight down to <code>generate</code> (relevant docs), the other detours through
+  <code>transform_query &rarr; web_search_node</code> (corrective path) before rejoining.
+</p>
+
+<svg class="diagram-svg diagram-svg--light" style="display:block; max-width:300px; margin:1.5rem auto;" viewBox="0 0 360 466" xmlns="http://www.w3.org/2000/svg"
+  role="img" aria-label="Compiled LangGraph for Corrective RAG: start to retrieve to grade_documents, which conditionally branches either straight to generate, or down through transform_query and web_search_node before generate, then end.">
+  <defs>
+    <marker id="c17g-arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4338ca"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
+  <!-- __start__ -->
+  <rect x="120" y="12" width="120" height="28" rx="14" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.3"/>
+  <text x="180" y="30" text-anchor="middle" fill="#5b21b6" font-family="monospace" font-size="12">__start__</text>
+  <line x1="180" y1="40" x2="180" y2="64" stroke="#4f46e5" stroke-width="1.4" marker-end="url(#c17g-arr)"/>
+
+  <!-- retrieve -->
+  <rect x="130" y="66" width="100" height="34" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.3"/>
+  <text x="180" y="87" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="12">retrieve</text>
+  <line x1="180" y1="100" x2="180" y2="122" stroke="#4f46e5" stroke-width="1.4" marker-end="url(#c17g-arr)"/>
+
+  <!-- grade_documents -->
+  <rect x="98" y="124" width="164" height="34" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.3"/>
+  <text x="180" y="145" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="12">grade_documents</text>
+
+  <!-- conditional branch 1: relevant docs -> generate (left dotted rail) -->
+  <path d="M 98 141 L 52 141 L 52 378 L 128 378" fill="none" stroke="#94a3b8" stroke-width="1.3" stroke-dasharray="2,4" marker-end="url(#c17g-arr)"/>
+  <text x="44" y="250" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="9" transform="rotate(-90 44 250)">relevant &rarr; generate</text>
+
+  <!-- conditional branch 2: any irrelevant -> transform_query (dotted) -->
+  <line x1="190" y1="158" x2="190" y2="190" stroke="#94a3b8" stroke-width="1.3" stroke-dasharray="2,4" marker-end="url(#c17g-arr)"/>
+  <text x="248" y="178" text-anchor="middle" fill="#b91c1c" font-family="system-ui" font-size="9">corrective</text>
+
+  <!-- transform_query -->
+  <rect x="98" y="192" width="164" height="34" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.3"/>
+  <text x="180" y="213" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="12">transform_query</text>
+  <line x1="180" y1="226" x2="180" y2="250" stroke="#4f46e5" stroke-width="1.4" marker-end="url(#c17g-arr)"/>
+
+  <!-- web_search_node -->
+  <rect x="98" y="252" width="164" height="34" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.3"/>
+  <text x="180" y="273" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="12">web_search_node</text>
+  <line x1="180" y1="286" x2="180" y2="359" stroke="#4f46e5" stroke-width="1.4" marker-end="url(#c17g-arr)"/>
+
+  <!-- generate -->
+  <rect x="130" y="361" width="100" height="34" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.3"/>
+  <text x="180" y="382" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="12">generate</text>
+  <line x1="180" y1="395" x2="180" y2="419" stroke="#4f46e5" stroke-width="1.4" marker-end="url(#c17g-arr)"/>
+
+  <!-- __end__ -->
+  <rect x="120" y="421" width="120" height="28" rx="14" fill="#ddd6fe" stroke="#7c3aed" stroke-width="1.3"/>
+  <text x="180" y="439" text-anchor="middle" fill="#5b21b6" font-family="monospace" font-size="12">__end__</text>
+</svg>
+
+<hr class="divider">
+
+<h2>Step 9 &mdash; Running It</h2>
+<p>
+  Invoke the graph with a real question. Watch the trace: three documents grade relevant, one grades
+  <em>not</em> relevant &mdash; which is enough to trigger the corrective path. The query is
+  transformed, Tavily runs, and only then does <code>generate</code> produce the final answer.
+</p>
+
+<pre>app.invoke({"question": "What are the types of agent memory?"})</pre>
+
+<pre>---RETRIEVE---
+---CHECK DOCUMENT RELEVANCE TO QUESTION---
+---GRADE: DOCUMENT RELEVANT---
+---GRADE: DOCUMENT RELEVANT---
+---GRADE: DOCUMENT NOT RELEVANT---
+---GRADE: DOCUMENT RELEVANT---
+---ASSESS GRADED DOCUMENTS---
+---DECISION: ALL DOCUMENTS ARE NOT RELEVANT TO QUESTION, TRANSFORM QUERY---
+---TRANSFORM QUERY---
+---WEB SEARCH---
+---GENERATE---</pre>
+
+<pre>{'question': 'What different types of memory do agents possess?',
+ 'generation': 'Agents possess short-term memory and long-term memory. Short-term memory is '
+               'utilized for in-context learning, while long-term memory allows agents to retain '
+               'and recall information over extended periods by leveraging external storage for '
+               'fast retrieval. These memory types play crucial roles in shaping agent behavior '
+               'and decision-making processes.',
+ 'web_search': 'Yes',
+ 'documents': [...]}</pre>
+
+<div class="example-block">
+  <div class="label">Read the trace</div>
+  <p>
+    Notice the final <code>question</code> in the output is the <em>re-written</em> one
+    (&ldquo;What different types of memory do agents possess?&rdquo;), and <code>web_search</code>
+    is <code>'Yes'</code>. Even though three of four documents were relevant, the single
+    <code>NOT RELEVANT</code> grade flipped the flag, so CRAG enriched the context with a web search
+    before answering. The decision-log message says &ldquo;ALL DOCUMENTS ARE NOT RELEVANT&rdquo;,
+    but that's just the branch label &mdash; the real rule is <em>any</em> irrelevant document.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>CRAG vs Agentic RAG</h2>
+<p>
+  Chapter 13's Agentic RAG also graded documents and could rewrite. So what's different? The key
+  distinction is <strong>where the correction goes</strong>.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Aspect</th><th>Agentic RAG (Ch. 13)</th><th>Corrective RAG (Ch. 17)</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Who decides to retrieve</td>
+      <td>The LLM agent, via tool calls</td>
+      <td>A fixed graph edge &mdash; retrieval always happens first</td>
+    </tr>
+    <tr>
+      <td>Grading</td>
+      <td>Relevance grade on retrieved docs</td>
+      <td>Per-document binary grade, filters the doc list</td>
+    </tr>
+    <tr>
+      <td>Correction on failure</td>
+      <td>Rewrite the question &amp; retrieve <strong>from the same store again</strong></td>
+      <td>Rewrite &amp; fall back to <strong>web search</strong> (new knowledge source)</td>
+    </tr>
+    <tr>
+      <td>Control flow</td>
+      <td>Agent loop (model-driven)</td>
+      <td>Deterministic graph (edge-driven)</td>
+    </tr>
+    <tr>
+      <td>Best when</td>
+      <td>Multiple stores, model should choose</td>
+      <td>One store that may not cover everything &mdash; web fills the gap</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+<div class="example-block">
+  <div class="label">Remember These Four</div>
+  <p><strong>1. Grade before you generate.</strong> CRAG inserts a retrieval evaluator between retrieval and generation &mdash; a binary <code>yes</code>/<code>no</code> relevance check per document &mdash; so the LLM never answers from context it hasn't vetted.</p>
+  <p><strong>2. Any irrelevant document triggers correction.</strong> The grader keeps the good chunks but flips <code>web_search = "Yes"</code> on the first bad one, routing the flow through the corrective branch.</p>
+  <p><strong>3. Correction = re-write + web search.</strong> The corrective action improves the question for web search, runs Tavily, and appends those results to the surviving documents &mdash; enriching context instead of answering from a thin retrieval.</p>
+  <p><strong>4. It's a deterministic graph, not an agent loop.</strong> One conditional edge out of <code>grade_documents</code> decides between <code>generate</code> and <code>transform_query &rarr; web_search_node &rarr; generate</code>. The two paths always reconverge at <code>generate</code>.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter16">&larr; Chapter 16: Multi-Agent RAG Systems</a>
+    <a href="#chapter18" class="next">Chapter 18: Adaptive RAG &rarr;</a>
+</nav>

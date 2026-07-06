@@ -1,0 +1,677 @@
+<h1>Chapter 19: RAG with Persistent Memory using LangGraph</h1>
+<p style="color:#888; margin-bottom: 2rem;"><em>Give your RAG agent a memory. A checkpointer plus a thread id turns a one-shot Q&amp;A into a real conversation that remembers what came before &mdash; so &ldquo;look up common ways of doing <em>it</em>&rdquo; just works.</em></p>
+
+<div class="example-block">
+  <div class="label">Persistent Memory in One Paragraph</div>
+  <p style="margin-top:0;">
+    Every RAG graph we've built so far <strong>forgets everything the moment it returns an
+    answer</strong>. Each <code>invoke</code> starts from a blank slate. <strong><span style="color:#818cf8;">Persistent
+    memory</span></strong> fixes that: you attach a <strong><span style="color:#4ecca3;">checkpointer</span></strong>
+    when you compile the graph, and pass a <strong><span style="color:#fbbf24;">thread&nbsp;id</span></strong>
+    on every call. LangGraph then <strong>saves the full message history after each step</strong> and
+    reloads it on the next call with the same thread id.
+  </p>
+  <p style="margin-bottom:0;">
+    The payoff is a genuine multi-turn assistant. Ask &ldquo;What is Task Decomposition?&rdquo;, then
+    follow up with &ldquo;Can you look up some common ways of doing <em>it</em>?&rdquo; &mdash; and the
+    agent knows &ldquo;it&rdquo; means task decomposition, because the earlier turn is still in state.
+    Same graph, one extra argument, and RAG becomes conversational.
+  </p>
+</div>
+
+<h2>Overview</h2>
+<p>
+  Chapters 13&ndash;18 gave an agent the power to <em>decide</em> &mdash; when to retrieve, how to
+  grade, when to re-write. But every one of those graphs was <strong>stateless between calls</strong>.
+  Run it twice and the second run has no idea the first ever happened. That's fine for a single
+  question; it falls apart the instant a user asks a natural follow-up.
+</p>
+<p>
+  This chapter adds the missing ingredient: <strong>short-term (conversational) memory</strong>. It's
+  built straight from <code>ragmemory.ipynb</code> and comes in two flavors that share the exact same
+  memory mechanism:
+</p>
+<ul>
+  <li>A <strong>custom three-node graph</strong> &mdash; <code>query_or_respond</code> &rarr;
+  <code>tools</code> &rarr; <code>generate</code> &mdash; compiled with a <code>MemorySaver</code>
+  checkpointer, so it can answer directly <em>or</em> retrieve, and remembers the whole thread.</li>
+  <li>The <strong>prebuilt ReAct agent</strong> (<code>create_react_agent</code>) with the same
+  checkpointer &mdash; less code, and it can loop tool calls until it's satisfied.</li>
+</ul>
+<p>
+  The two <strong>compiled LangGraph diagrams</strong> below are the ones this chapter reproduces
+  faithfully &mdash; the custom graph and the ReAct agent, exactly as
+  <code>graph.get_graph().draw_mermaid_png()</code> rendered them in the notebook.
+</p>
+
+<div class="example-block">
+  <div class="label">The Core Idea</div>
+  <p>
+    Memory in LangGraph is not a feature you code inside your nodes &mdash; it's <strong>infrastructure
+    you switch on at compile time</strong>. <code>compile(checkpointer=memory)</code> plus a
+    <code>thread_id</code> is the entire mechanism. The graph's <code>MessagesState</code> already
+    accumulates messages within one run; the checkpointer <em>persists</em> that accumulated state
+    <em>between</em> runs and keys it by thread, so different users (or different conversations) never
+    bleed into each other.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>How Persistent Memory Works</h2>
+<p>
+  Two pieces do all the work. A <strong>checkpointer</strong> is a place to save state &mdash;
+  <code>MemorySaver</code> keeps it in RAM (great for notebooks); production swaps in a SQLite or
+  Postgres saver so memory survives restarts. A <strong>thread id</strong> is the key under which one
+  conversation's checkpoints are stored. Same thread id &rarr; same running conversation; a new thread
+  id &rarr; a fresh, empty memory.
+</p>
+
+<svg class="diagram-svg diagram-svg--light" viewBox="0 0 940 250" xmlns="http://www.w3.org/2000/svg"
+  role="img" aria-label="How the checkpointer persists memory across turns. Turn 1: a user message enters the graph, the graph produces a reply, and the full message history is written to the checkpointer under thread abc123. Turn 2: the graph reloads that saved history from the checkpointer, appends the new user message, and can therefore resolve pronouns like it that refer to the earlier turn.">
+  <defs>
+    <marker id="c19m-a" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4b5563"/></marker>
+    <marker id="c19m-d" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#9ca3af"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
+  <!-- Turn 1 -->
+  <text x="150" y="34" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="13" font-weight="700">Turn 1 &mdash; "What is Task Decomposition?"</text>
+  <rect x="40" y="52" width="90" height="34" rx="6" fill="#ffffff" stroke="#4b5563" stroke-width="1.3"/>
+  <text x="85" y="73" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="11">User msg</text>
+  <line x1="130" y1="69" x2="168" y2="69" stroke="#4b5563" stroke-width="1.5" marker-end="url(#c19m-a)"/>
+  <rect x="170" y="50" width="100" height="38" rx="8" fill="#eef0ff" stroke="#6366f1" stroke-width="1.4"/>
+  <text x="220" y="73" text-anchor="middle" fill="#4338ca" font-family="monospace" font-size="12">graph</text>
+  <line x1="270" y1="69" x2="308" y2="69" stroke="#4b5563" stroke-width="1.5" marker-end="url(#c19m-a)"/>
+  <text x="342" y="74" text-anchor="middle" fill="#1f7a54" font-family="system-ui" font-size="12" font-style="italic">Reply</text>
+
+  <!-- save down to checkpointer -->
+  <path d="M220 88 L220 150" fill="none" stroke="#9ca3af" stroke-width="1.4" stroke-dasharray="4,3" marker-end="url(#c19m-d)"/>
+  <text x="300" y="120" text-anchor="middle" fill="#6b7280" font-family="system-ui" font-size="10">save full history</text>
+
+  <!-- Checkpointer store (cylinder) -->
+  <ellipse cx="220" cy="158" rx="70" ry="12" fill="#e0e7ff" stroke="#6366f1" stroke-width="1.4"/>
+  <rect x="150" y="158" width="140" height="46" fill="#e0e7ff" stroke="#6366f1" stroke-width="1.4"/>
+  <ellipse cx="220" cy="204" rx="70" ry="12" fill="#c7d2fe" stroke="#6366f1" stroke-width="1.4"/>
+  <text x="220" y="180" text-anchor="middle" fill="#3730a3" font-family="monospace" font-size="12" font-weight="700">MemorySaver</text>
+  <text x="220" y="196" text-anchor="middle" fill="#4338ca" font-family="monospace" font-size="10">thread_id = "abc123"</text>
+
+  <!-- divider -->
+  <line x1="470" y1="40" x2="470" y2="220" stroke="#d1d5db" stroke-width="1.2"/>
+
+  <!-- Turn 2 -->
+  <text x="710" y="34" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="13" font-weight="700">Turn 2 &mdash; "...common ways of doing it?"</text>
+
+  <!-- reload from store -->
+  <ellipse cx="600" cy="158" rx="66" ry="12" fill="#e0e7ff" stroke="#6366f1" stroke-width="1.4"/>
+  <rect x="534" y="158" width="132" height="46" fill="#e0e7ff" stroke="#6366f1" stroke-width="1.4"/>
+  <ellipse cx="600" cy="204" rx="66" ry="12" fill="#c7d2fe" stroke="#6366f1" stroke-width="1.4"/>
+  <text x="600" y="180" text-anchor="middle" fill="#3730a3" font-family="monospace" font-size="12" font-weight="700">MemorySaver</text>
+  <text x="600" y="196" text-anchor="middle" fill="#4338ca" font-family="monospace" font-size="10">thread_id = "abc123"</text>
+
+  <path d="M600 150 L600 92" fill="none" stroke="#9ca3af" stroke-width="1.4" stroke-dasharray="4,3" marker-end="url(#c19m-d)"/>
+  <text x="682" y="120" text-anchor="middle" fill="#6b7280" font-family="system-ui" font-size="10">reload history</text>
+
+  <rect x="700" y="50" width="110" height="38" rx="8" fill="#eef0ff" stroke="#6366f1" stroke-width="1.4"/>
+  <text x="755" y="73" text-anchor="middle" fill="#4338ca" font-family="monospace" font-size="12">graph</text>
+  <line x1="810" y1="69" x2="852" y2="69" stroke="#4b5563" stroke-width="1.5" marker-end="url(#c19m-a)"/>
+  <text x="892" y="66" text-anchor="middle" fill="#1f7a54" font-family="system-ui" font-size="12" font-style="italic">Reply</text>
+  <text x="892" y="82" text-anchor="middle" fill="#6b7280" font-family="system-ui" font-size="9">(knows "it")</text>
+
+  <rect x="516" y="50" width="74" height="34" rx="6" fill="#ffffff" stroke="#4b5563" stroke-width="1.3"/>
+  <text x="553" y="71" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10">New msg</text>
+  <line x1="590" y1="67" x2="698" y2="67" stroke="#4b5563" stroke-width="1.5" marker-end="url(#c19m-a)"/>
+</svg>
+
+<table>
+  <thead>
+    <tr><th></th><th>Stateless RAG (Ch. 13&ndash;18)</th><th>RAG with Persistent Memory (this chapter)</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Between calls</strong></td>
+      <td>Forgets everything; each <code>invoke</code> is fresh</td>
+      <td>Reloads the full thread from the checkpointer</td>
+    </tr>
+    <tr>
+      <td><strong>Follow-ups</strong></td>
+      <td>&ldquo;look up ways of doing <em>it</em>&rdquo; &rarr; &ldquo;it&rdquo; is unknown</td>
+      <td>Resolves &ldquo;it&rdquo; from earlier turns</td>
+    </tr>
+    <tr>
+      <td><strong>What you change</strong></td>
+      <td>&mdash;</td>
+      <td><code>compile(checkpointer=memory)</code> + a <code>thread_id</code> in <code>config</code></td>
+    </tr>
+    <tr>
+      <td><strong>Multiple users</strong></td>
+      <td>Can't tell them apart</td>
+      <td>One thread id per conversation keeps them isolated</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Step 1 &mdash; The Model &amp; Embeddings</h2>
+<p>
+  Start with a chat model and an embedding model. <code>init_chat_model</code> is the
+  provider-agnostic constructor &mdash; <code>"openai:gpt-5"</code> gives the newest OpenAI model, and
+  swapping providers is a one-string change. <code>OpenAIEmbeddings</code> (the
+  <code>text-embedding-ada-002</code> default) turns text into the vectors we'll search over.
+</p>
+
+<pre>import os
+from dotenv import load_dotenv
+load_dotenv()
+os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
+
+from langchain.chat_models import init_chat_model
+
+llm = init_chat_model("openai:gpt-5")</pre>
+
+<pre>from langchain_openai import OpenAIEmbeddings
+embeddings = OpenAIEmbeddings()</pre>
+
+<hr class="divider">
+
+<h2>Step 2 &mdash; Ingest &amp; Index the Blog</h2>
+<p>
+  The knowledge base is a single source we've used throughout the course &mdash; Lilian Weng's
+  <em>&ldquo;LLM Powered Autonomous Agents&rdquo;</em> post. <code>WebBaseLoader</code> with a
+  <code>SoupStrainer</code> keeps only the article body (title, header, content), skipping the site
+  chrome. Then a recursive splitter cuts it into overlapping 1000-character chunks.
+</p>
+
+<pre>import bs4
+from langchain_community.document_loaders import WebBaseLoader
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from typing_extensions import List, TypedDict
+
+# Load and chunk contents of the blog
+loader = WebBaseLoader(
+    web_paths=("https://lilianweng.github.io/posts/2023-06-23-agent/",),
+    bs_kwargs=dict(
+        parse_only=bs4.SoupStrainer(
+            class_=("post-content", "post-title", "post-header")
+        )
+    ),
+)
+docs = loader.load()
+
+# Chunking
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+all_splits = text_splitter.split_documents(docs)</pre>
+
+<p>
+  Embed the chunks and store them in a FAISS index. The <code>ntotal</code> print is a quick sanity
+  check that the vectors actually landed.
+</p>
+
+<pre>## Vector Store
+from langchain_community.vectorstores import FAISS
+
+vector_store = FAISS.from_documents(
+    documents=all_splits,
+    embedding=embeddings
+)
+print(f"Vector store created with {vector_store.index.ntotal} vectors")</pre>
+
+<pre>Vector store created with 63 vectors</pre>
+
+<hr class="divider">
+
+<h2>Step 3 &mdash; The <code>retrieve</code> Tool</h2>
+<p>
+  The whole point of an agentic RAG graph is that retrieval is a <strong>tool the model can choose to
+  call</strong>, not a step that always fires. Wrapping the FAISS search in <code>@tool</code> exposes
+  it to the LLM; the docstring is what the model reads to decide whether this tool is relevant.
+</p>
+<p>
+  Note it returns a <strong>tuple</strong>: a human-readable <code>serialized</code> string (which
+  becomes the <code>ToolMessage</code> content the LLM sees) and the raw <code>retrieved_docs</code>
+  (the artifact, available to downstream code). Top-<code>k</code> is 2 &mdash; two chunks per lookup.
+</p>
+
+<pre>from langchain_classic.agents import tool
+
+
+@tool()
+def retrieve(query: str):
+    """Retrieve the information related to the query"""
+    retrieved_docs = vector_store.similarity_search(query, k=2)
+    serialized = "\n\n".join(
+        (f"Source: {doc.metadata}\nContent: {doc.page_content}")
+        for doc in retrieved_docs
+    )
+    return serialized, retrieved_docs</pre>
+
+<hr class="divider">
+
+<h2>Step 4 &mdash; The Three Nodes</h2>
+<p>
+  The graph runs on <code>MessagesState</code> &mdash; LangGraph's built-in state whose single
+  <code>messages</code> field uses the <code>add_messages</code> reducer, so returning a message
+  <em>appends</em> it instead of overwriting the list. That accumulating list is exactly what the
+  checkpointer will persist. Three nodes act on it.
+</p>
+
+<pre>from langchain_core.messages import SystemMessage
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, MessagesState, StateGraph
+from langgraph.prebuilt import ToolNode, tools_condition</pre>
+
+<h3>Node 1 &mdash; <code>query_or_respond</code></h3>
+<p>
+  The decision node. It binds the <code>retrieve</code> tool to the LLM and invokes it on the current
+  message history. The model then does one of two things: answer directly (a plain
+  <code>AIMessage</code>, no tool call &mdash; e.g. for &ldquo;Hello&rdquo;), or emit a tool call
+  asking to retrieve. Either way, the response is appended to state.
+</p>
+
+<pre># Step 1: Generate an AIMessage that may include a tool-call to be sent.
+def query_or_respond(state: MessagesState):
+    """Generate tool call for retrieval or respond."""
+    llm_with_tools = llm.bind_tools([retrieve])
+    response = llm_with_tools.invoke(state["messages"])
+    # MessagesState appends messages to state instead of overwriting
+    return {"messages": [response]}</pre>
+
+<h3>Node 2 &mdash; <code>tools</code></h3>
+<p>
+  The executor. <code>ToolNode</code> is a prebuilt that reads the tool call off the last message, runs
+  the matching function, and writes a <code>ToolMessage</code> with the result back into state. No hand
+  wiring &mdash; hand it the list of tools and it dispatches.
+</p>
+
+<pre># Step 2: Execute the retrieval.
+tools = ToolNode([retrieve])</pre>
+
+<h3>Node 3 &mdash; <code>generate</code></h3>
+<p>
+  The answer writer, reached only after a retrieval. It has two jobs. First, it walks
+  <em>backwards</em> through the message list to collect the most recent block of
+  <code>ToolMessages</code> &mdash; the freshly retrieved context &mdash; and stops at the first
+  non-tool message.
+</p>
+
+<pre># Step 3: Generate a response using the retrieved content.
+def generate(state: MessagesState):
+    """Generate answer."""
+    # Get generated ToolMessages
+    recent_tool_messages = []
+    for message in reversed(state["messages"]):
+        if message.type == "tool":
+            recent_tool_messages.append(message)
+        else:
+            break
+    tool_messages = recent_tool_messages[::-1]</pre>
+
+<p>
+  Second, it folds those docs into a system prompt, filters the history down to the real conversation
+  (human/system turns and <em>final</em> AI answers &mdash; dropping the intermediate tool-call
+  messages), and asks the LLM for a concise, grounded answer. Returning that message appends it to
+  state, where the checkpointer will save it.
+</p>
+
+<pre>    # Format into prompt
+    docs_content = "\n\n".join(doc.content for doc in tool_messages)
+    system_message_content = (
+        "You are an assistant for question-answering tasks. "
+        "Use the following pieces of retrieved context to answer "
+        "the question. If you don't know the answer, say that you "
+        "don't know. Use three sentences maximum and keep the "
+        "answer concise."
+        "\n\n"
+        f"{docs_content}"
+    )
+    conversation_messages = [
+        message
+        for message in state["messages"]
+        if message.type in ("human", "system")
+        or (message.type == "ai" and not message.tool_calls)
+    ]
+    prompt = [SystemMessage(system_message_content)] + conversation_messages
+
+    # Run
+    response = llm.invoke(prompt)
+    return {"messages": [response]}</pre>
+
+<div class="example-block">
+  <div class="label">Why filter the messages before generating?</div>
+  <p>
+    The raw state contains the user's question, the AI's tool-call message, and the tool's result.
+    Feeding the tool-call plumbing back to the LLM would confuse it. <code>generate</code> keeps the
+    <em>human</em> turns and any <em>final</em> AI answers, injects the retrieved text as a fresh
+    system message, and drops the intermediate machinery &mdash; so the model sees a clean
+    &ldquo;here's the context, here's the conversation, now answer&rdquo; prompt.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Step 5 &mdash; Wiring &amp; Compiling with a Checkpointer</h2>
+<p>
+  Now assemble the graph. Entry is <code>query_or_respond</code>. From there, the prebuilt
+  <code>tools_condition</code> router inspects the last message: if it carries a tool call, go to
+  <code>tools</code>; if not, the model already answered, so go straight to <code>END</code>. After
+  <code>tools</code> runs, flow always continues to <code>generate</code>, then ends.
+</p>
+
+<pre># Build graph
+graph_builder = StateGraph(MessagesState)
+
+graph_builder.add_node(query_or_respond)
+graph_builder.add_node(tools)
+graph_builder.add_node(generate)
+
+graph_builder.set_entry_point("query_or_respond")
+graph_builder.add_conditional_edges(
+    "query_or_respond",
+    tools_condition,
+    {END: END, "tools": "tools"},
+)
+graph_builder.add_edge("tools", "generate")
+graph_builder.add_edge("generate", END)</pre>
+
+<p>
+  The one line that grants memory is the last one: <code>compile(checkpointer=memory)</code>. Without
+  it, this graph is stateless like every previous chapter's. With it, every super-step's state is
+  written to the <code>MemorySaver</code> and reloaded on the next call with the same thread id.
+</p>
+
+<pre>memory = MemorySaver()
+graph = graph_builder.compile(checkpointer=memory)</pre>
+
+<p>
+  This is what <code>graph.get_graph().draw_mermaid_png()</code> renders &mdash; the compiled graph.
+  The solid arrows are direct edges (<code>tools</code>&rarr;<code>generate</code>&rarr;<code>__end__</code>);
+  the dashed arrows are the <code>tools_condition</code> branch out of <code>query_or_respond</code>,
+  which either calls <code>tools</code> or skips straight to <code>__end__</code>.
+</p>
+
+<img src="Asset/21-1.png" style="max-width:300px; margin:1.5rem auto;" alt="Figure 1: compiled LangGraph for the custom persistent-memory RAG graph. From __start__ a solid edge goes to query_or_respond, which branches with dashed conditional edges either to tools (when retrieval is requested) or straight to __end__. tools has a solid edge to generate, and generate has a solid edge to __end__.">
+
+<hr class="divider">
+
+<h2>Step 6 &mdash; Threads: Giving the Conversation an ID</h2>
+<p>
+  A checkpointer stores <em>many</em> conversations. The <code>thread_id</code> in the
+  <code>config</code> selects which one this call belongs to. Reuse the same id to continue a
+  conversation; pick a new id to start a clean one.
+</p>
+
+<pre># Specify an ID for the thread
+config = {"configurable": {"thread_id": "abc123"}}</pre>
+
+<p>
+  First message &mdash; a plain greeting. The model answers directly with <strong>no tool call</strong>,
+  so <code>tools_condition</code> routes straight to <code>END</code>. Nothing to retrieve.
+</p>
+
+<pre>input_message = "Hello"
+for step in graph.stream(
+    {"messages": [{"role": "user", "content": input_message}]},
+    stream_mode="values",
+    config=config,
+):
+    step["messages"][-1].pretty_print()</pre>
+
+<pre>================================ Human Message =================================
+
+Hello
+================================== Ai Message ==================================
+
+Hi there! How can I help you today?</pre>
+
+<hr class="divider">
+
+<h2>Step 7 &mdash; A Conversation That Remembers</h2>
+<p>
+  Now the second turn, on the <strong>same thread id</strong>. Interestingly the model answers
+  &ldquo;What is Task Decomposition?&rdquo; from its own knowledge &mdash; it doesn't <em>need</em> the
+  vector store for such a general concept, so again no tool call. That's the agent's judgement at work.
+</p>
+
+<pre>input_message = "What is Task Decomposition?"
+
+for step in graph.stream(
+    {"messages": [{"role": "user", "content": input_message}]},
+    stream_mode="values",
+    config=config,
+):
+    step["messages"][-1].pretty_print()</pre>
+
+<pre>================================ Human Message =================================
+
+What is Task Decomposition?
+================================== Ai Message ==================================
+
+Task decomposition is the process of breaking a complex goal into smaller, clearer,
+and more manageable subtasks. Each subtask can be planned, executed, and validated
+more easily, and the results are combined to achieve the original goal.
+
+Why it's useful
+- Improves clarity and focus by isolating concerns
+- Enables parallel work and better resource allocation
+- Makes estimation and scheduling more accurate
+...</pre>
+
+<p>
+  The payoff turn. The user says <em>&ldquo;Can you look up some common ways of doing it?&rdquo;</em>
+  &mdash; and &ldquo;it&rdquo; only means anything because the previous turn is still in state. This
+  time the model <strong>does</strong> issue tool calls (&ldquo;look up&rdquo; is a strong signal),
+  fanning out several retrieval queries against the vector store before answering.
+</p>
+
+<pre>input_message = "Can you look up some common ways of doing it?"
+
+for step in graph.stream(
+    {"messages": [{"role": "user", "content": input_message}]},
+    stream_mode="values",
+    config=config,
+):
+    step["messages"][-1].pretty_print()</pre>
+
+<pre>================================ Human Message =================================
+
+Can you look up some common ways of doing it?
+================================== Ai Message ==================================
+Tool Calls:
+  retrieve (call_DEFYiX5zOL1gMNanyXdk7vCO)
+ Call ID: call_DEFYiX5zOL1gMNanyXdk7vCO
+  Args:
+    query: common task decomposition methods in project management (WBS)...
+  retrieve (call_LzbF3FmdPVnXMiHg0aefi6RB)
+  Args:
+    query: Hierarchical Task Analysis (HTA) and other task analysis methods...
+  retrieve (call_qyE8oySA8aiGY7w8hCmbGhff)
+  Args:
+    query: AI planning task decomposition methods: HTN, GOAP, options in RL...
+================================= Tool Message =================================
+Name: retrieve
+
+Source: {'source': 'https://lilianweng.github.io/posts/2023-06-23-agent/'}
+Content: ...</pre>
+
+<div class="example-block">
+  <div class="label">This is the whole chapter in one exchange</div>
+  <p>
+    &ldquo;doing <em>it</em>&rdquo; has no antecedent inside this single message. The only reason the
+    agent knows &ldquo;it&rdquo; = task decomposition is that the checkpointer reloaded the earlier
+    turns before <code>query_or_respond</code> ran. Drop the checkpointer (or change the
+    <code>thread_id</code>) and this exact turn would fail to understand the follow-up. That's the
+    difference persistent memory makes.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Step 8 &mdash; Inspecting the Conversation History</h2>
+<p>
+  Because the state is persisted, you can read it back at any time with
+  <code>graph.get_state(config)</code>. The <code>messages</code> value is the entire thread &mdash;
+  every human, AI, and tool message, in order. This is invaluable for debugging and for showing a user
+  their chat history.
+</p>
+
+<pre>## Conversation History
+chat_history = graph.get_state(config).values["messages"]
+for message in chat_history:
+    message.pretty_print()</pre>
+
+<pre>================================ Human Message =================================
+Hello
+================================== Ai Message ==================================
+Hi there! How can I help you today?
+================================ Human Message =================================
+What is Task Decomposition?
+================================== Ai Message ==================================
+Task decomposition is the process of breaking a complex goal or problem into
+smaller, manageable subtasks ...
+================================ Human Message =================================
+Can you look up some common ways of doing it?
+...</pre>
+
+<hr class="divider">
+
+<h2>The ReAct Agent Version</h2>
+<p>
+  The custom graph is explicit and teachable, but LangGraph ships a prebuilt that gives you the same
+  memory-backed, tool-calling behavior in <strong>three lines</strong>.
+  <code>create_react_agent</code> builds the classic <em>reason &rarr; act &rarr; observe</em> loop:
+  the agent thinks, optionally calls a tool, reads the result, and loops until it has enough to answer.
+  Pass the same <code>MemorySaver</code> and it's persistent too.
+</p>
+
+<pre>from langgraph.prebuilt import create_react_agent
+
+memory = MemorySaver()
+agent_executor = create_react_agent(llm, [retrieve], checkpointer=memory)</pre>
+
+<p>
+  Here's the compiled ReAct agent. The shape is the key difference from the custom graph: after
+  <code>tools</code> runs, a <strong>solid edge loops back to <code>agent</code></strong> instead of
+  going to a separate <code>generate</code> node. That back-edge is the ReAct loop &mdash; the agent
+  can retrieve, look at what it got, and decide to retrieve again before finally answering.
+</p>
+
+<img src="Asset/21-2.png" style="max-width:340px; margin:1.5rem auto;" alt="Figure 2: compiled LangGraph for the prebuilt ReAct agent. From __start__ a solid edge goes to agent, which branches with dashed conditional edges to __end__ (ready to answer) or to tools (to retrieve). tools has a solid edge looping back up to agent, forming the reason-act-observe loop.">
+
+<p>
+  Give it a new thread id and a two-part question &mdash; answer the first part, then use the result to
+  drive a second lookup. The ReAct loop handles the chaining on its own.
+</p>
+
+<pre>config = {"configurable": {"thread_id": "def234"}}
+
+input_message = (
+    "What is the standard method for Task Decomposition?\n\n"
+    "Once you get the answer, look up common extensions of that method."
+)
+
+for event in agent_executor.stream(
+    {"messages": [{"role": "user", "content": input_message}]},
+    stream_mode="values",
+    config=config,
+):
+    event["messages"][-1].pretty_print()</pre>
+
+<pre>================================== Ai Message ==================================
+Tool Calls:
+  retrieve (call_pEjSgtoICI9f7kopZhj08POb)
+  Args:
+    query: "standard method for task decomposition" HTA Hierarchical Task Analysis
+  retrieve (call_nK2nHTmjc5BDSz9h5hOOUEod)
+  Args:
+    query: common extensions of Hierarchical Task Analysis, GOMS, CTA extensions
+================================= Tool Message =================================
+Name: retrieve
+Content: ...Chain of thought (CoT; Wei et al. 2022)... Tree of Thoughts (Yao et al. 2023)...
+================================== Ai Message ==================================
+
+Short answer:
+- In human factors/UX, the standard method for task decomposition is Hierarchical
+  Task Analysis (HTA).
+- In LLM/AI reasoning, the standard method is Chain-of-Thought (CoT) prompting.
+
+Common extensions
+- Tree of Thoughts (ToT): explores multiple reasoning branches with search (BFS/DFS).
+- Self-consistency: samples multiple CoTs and votes to improve reliability.
+- Least-to-Most prompting: decomposes into progressively harder subproblems.
+- ReAct: interleaves chain-of-thought with actions/tool use.
+- LLM+P: outsources long-horizon decomposition to classical planners via PDDL.</pre>
+
+<hr class="divider">
+
+<h2>Custom Graph vs ReAct Agent</h2>
+<p>
+  Both remember. Both call the <code>retrieve</code> tool. The choice is about <em>control</em> versus
+  <em>convenience</em> &mdash; the same trade-off from Chapter 14, now with memory attached.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Aspect</th><th>Custom Graph</th><th>ReAct Agent (<code>create_react_agent</code>)</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Nodes</td>
+      <td>Three explicit: <code>query_or_respond</code>, <code>tools</code>, <code>generate</code></td>
+      <td>Two, prebuilt: <code>agent</code> + <code>tools</code></td>
+    </tr>
+    <tr>
+      <td>Tool loop</td>
+      <td>Single pass &mdash; retrieve once, then <code>generate</code> &rarr; <code>END</code></td>
+      <td>Loops <code>tools</code>&rarr;<code>agent</code> until the model stops calling tools</td>
+    </tr>
+    <tr>
+      <td>Generation prompt</td>
+      <td>Fully under your control (custom system prompt, message filtering)</td>
+      <td>Handled internally by the prebuilt</td>
+    </tr>
+    <tr>
+      <td>Lines of code</td>
+      <td>~40 (nodes + wiring)</td>
+      <td>3</td>
+    </tr>
+    <tr>
+      <td>Memory</td>
+      <td colspan="2"><strong>Identical</strong> &mdash; <code>compile(checkpointer=memory)</code> + a <code>thread_id</code></td>
+    </tr>
+    <tr>
+      <td>Best when</td>
+      <td>You need to shape the prompt, filter messages, or add custom steps</td>
+      <td>You want a solid tool-using, memory-backed agent fast</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">Short-term vs long-term memory</div>
+  <p>
+    The memory in this chapter is <strong>short-term</strong> &mdash; it remembers the current
+    conversation (the thread). It is <em>not</em> the &ldquo;long-term memory&rdquo; Lilian Weng's post
+    describes, where an agent stores and recalls facts across <em>separate</em> sessions via a vector
+    store. Persistent short-term memory keeps a chat coherent; long-term memory (a topic for later)
+    lets an agent remember you tomorrow. A production assistant usually wants both.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+<div class="example-block">
+  <div class="label">Remember These Four</div>
+  <p><strong>1. Memory is switched on at compile time.</strong> <code>graph.compile(checkpointer=MemorySaver())</code> is the entire mechanism &mdash; no memory code inside your nodes. The checkpointer saves state after every step and reloads it on the next call.</p>
+  <p><strong>2. The <code>thread_id</code> selects the conversation.</strong> Passed in <code>config["configurable"]</code>, it keys the stored checkpoints. Same id continues a chat; a new id starts fresh; different ids keep different users isolated.</p>
+  <p><strong>3. Memory is what makes follow-ups work.</strong> &ldquo;Look up common ways of doing <em>it</em>&rdquo; only resolves because the earlier turns were reloaded from the checkpointer before the model ran. That's the whole point.</p>
+  <p><strong>4. Same memory, two graphs.</strong> The custom <code>query_or_respond</code>&rarr;<code>tools</code>&rarr;<code>generate</code> graph gives you full control; <code>create_react_agent</code> gives you a looping ReAct agent in three lines. Both become persistent by adding a checkpointer and a thread id.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter18">&larr; Chapter 18: Adaptive RAG</a>
+    <span></span>
+</nav>

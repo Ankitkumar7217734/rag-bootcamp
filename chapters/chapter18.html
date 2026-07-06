@@ -1,0 +1,1063 @@
+<h1>Chapter 18: Adaptive RAG &mdash; Routing &amp; Self-Correcting Across Sources</h1>
+<p style="color:#888; margin-bottom: 2rem;"><em>Not every question deserves the same pipeline. Route each query to the right source first, then self-correct the answer until it is grounded and actually useful.</em></p>
+
+<div class="example-block">
+  <div class="label">Adaptive RAG in One Paragraph</div>
+  <p style="margin-top:0;">
+    <strong><span style="color:#f2662e;">Adaptive RAG</span></strong> is a framework that
+    <strong>dynamically adjusts its strategy for handling queries based on their complexity</strong>.
+    It's like a smart assistant that knows when to dig deep for information and when to give a simple
+    answer. Instead of one rigid pipeline, Adaptive RAG chooses the most appropriate
+    <strong><span style="color:#4ecca3;">retrieval method for each query</span></strong>, balancing
+    <strong>speed and accuracy</strong>.
+  </p>
+  <p style="margin-bottom:0;">
+    Concretely, Adaptive RAG unites two ideas:
+    <strong><span style="color:#fbbf24;">(1) query analysis</span></strong> &mdash; route the
+    question to a vectorstore or the web &mdash; with
+    <strong><span style="color:#fbbf24;">(2) active / self-corrective RAG</span></strong> &mdash;
+    grade documents, check the answer for hallucinations, and rewrite-and-retry until it holds up.
+  </p>
+</div>
+
+<h2>Overview</h2>
+<p>
+  Chapter 17's Corrective RAG added one quality gate: grade the documents, and fall back to web
+  search if they're weak. <strong>Adaptive RAG</strong> generalizes that instinct in two directions
+  at once.
+</p>
+<p>
+  First, it makes a <strong>routing decision up front</strong> &mdash; before retrieving anything, a
+  <strong>router</strong> LLM looks at the question and decides whether it belongs to the
+  vectorstore (topics the index actually covers) or whether it needs a live <strong>web
+  search</strong>. Second, after generating, it runs <strong>two self-reflection graders</strong>:
+  one asks &ldquo;is this answer grounded in the documents?&rdquo; (hallucination check) and another
+  asks &ldquo;does it actually answer the question?&rdquo; (usefulness check). Failing either sends
+  the graph back to re-write the query or re-generate.
+</p>
+<p>
+  This chapter builds the complete Adaptive RAG graph from <code>4-AdaptiveRAG_1.ipynb</code>: a
+  query router, three graders (relevance, hallucination, answer), a generator, a re-writer, a Tavily
+  web-search tool, and a LangGraph <code>StateGraph</code> that wires them into a self-correcting
+  loop with a source-routing entry point.
+</p>
+
+<img src="Asset/Untitled Diagram.svg" alt="Adaptive RAG conceptual flow. A Question enters Query Analysis, which routes related-to-index queries into a RAG plus self-reflection loop (Retrieve, Grade, Docs-relevant decision, Generate, Hallucination check, Answers-question check, ending in Answer, with a Re-write question node feeding retrieval again) and routes unrelated-to-index queries to Web search, then Generate, then an answer produced with web search.">
+
+<div class="example-block">
+  <div class="label">The Core Idea</div>
+  <p>
+    Corrective RAG always retrieves first, then reacts. <strong>Adaptive RAG decides where to look
+    before it looks</strong>, and validates the answer <em>twice</em> before returning it. A router
+    sends the question to the vectorstore or the web; the vectorstore path then runs the full
+    self-reflective loop &mdash; grade the docs, generate, check for hallucinations, check that it
+    answers the question &mdash; rewriting and retrying whenever a gate fails.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>The Two Ideas Adaptive RAG Unites</h2>
+<p>
+  The handwritten notes state it directly: <em>Adaptive RAG is a strategy for RAG that unites
+  <strong>(1) query analysis</strong> with <strong>(2) active / self-corrective RAG</strong>.</em>
+  Everything in this chapter is one of those two halves.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Half</th><th>What it does</th><th>Built from</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>1 &middot; Query Analysis</strong> (routing)</td>
+      <td>Classifies the incoming question and routes it to the right datasource &mdash; the
+      vectorstore for covered topics, live web search for everything else.</td>
+      <td>The <code>RouteQuery</code> router (Step&nbsp;2)</td>
+    </tr>
+    <tr>
+      <td><strong>2 &middot; Active / Self-Corrective RAG</strong></td>
+      <td>Grades retrieved docs, generates, then checks the answer for hallucinations and
+      usefulness &mdash; looping back to rewrite or re-generate when a check fails.</td>
+      <td>The three graders + edges (Steps&nbsp;3, 7)</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>RAG Chain vs RAG State Machine</h3>
+<p>
+  The notes contrast the old and new mental models. Traditional RAG is a <strong>chain</strong> &mdash;
+  a straight line with no way to react. Adaptive RAG is a <strong>state machine</strong> &mdash; a
+  graph with decision points that can loop, branch, and recover.
+</p>
+
+<svg class="diagram-svg diagram-svg--light" viewBox="0 0 940 230" xmlns="http://www.w3.org/2000/svg"
+  role="img" aria-label="RAG Chain versus RAG State Machine. Left: a linear chain from Question through Indexing, Retrieval, and Generation to Answer. Right: a cyclic state machine from Question through Retrieve and Grade, then a decision on document relevance that either generates an answer or rewrites the query and loops back.">
+  <defs>
+    <marker id="c18c-arr" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4b5563"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
+  <text x="220" y="28" text-anchor="middle" fill="#2c5591" font-family="system-ui" font-size="14" font-weight="700">RAG Chain</text>
+  <text x="700" y="28" text-anchor="middle" fill="#2c5591" font-family="system-ui" font-size="14" font-weight="700">RAG State Machine</text>
+  <line x1="470" y1="38" x2="470" y2="218" stroke="#d1d5db" stroke-width="1.2"/>
+
+  <!-- RAG Chain: Question -->
+  <text x="52" y="88" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="13">Question</text>
+  <line x1="82" y1="82" x2="108" y2="82" stroke="#4b5563" stroke-width="1.5" marker-end="url(#c18c-arr)"/>
+
+  <!-- Indexing cylinder -->
+  <ellipse cx="138" cy="76" rx="18" ry="8" fill="#e5e7eb" stroke="#4b5563" stroke-width="1.4"/>
+  <rect x="120" y="76" width="36" height="28" fill="#e5e7eb" stroke="#4b5563" stroke-width="1.4"/>
+  <ellipse cx="138" cy="104" rx="18" ry="8" fill="#e5e7eb" stroke="#4b5563" stroke-width="1.4"/>
+  <text x="138" y="98" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10">Index</text>
+  <line x1="156" y1="88" x2="182" y2="88" stroke="#4b5563" stroke-width="1.5" marker-end="url(#c18c-arr)"/>
+
+  <!-- Retrieval doc icon -->
+  <rect x="186" y="72" width="28" height="34" rx="2" fill="#ffffff" stroke="#4b5563" stroke-width="1.4"/>
+  <line x1="192" y1="80" x2="208" y2="80" stroke="#9ca3af" stroke-width="1"/>
+  <line x1="192" y1="86" x2="208" y2="86" stroke="#9ca3af" stroke-width="1"/>
+  <line x1="192" y1="92" x2="204" y2="92" stroke="#9ca3af" stroke-width="1"/>
+  <text x="200" y="118" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10">Retrieval</text>
+  <line x1="216" y1="88" x2="242" y2="88" stroke="#4b5563" stroke-width="1.5" marker-end="url(#c18c-arr)"/>
+
+  <!-- Generation brain -->
+  <ellipse cx="272" cy="88" rx="22" ry="18" fill="#fef3c7" stroke="#4b5563" stroke-width="1.4"/>
+  <path d="M258 82 C262 76 282 76 286 82 C290 88 286 94 272 96 C258 94 254 88 258 82" fill="none" stroke="#92400e" stroke-width="1"/>
+  <text x="272" y="118" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10">Generation</text>
+  <line x1="296" y1="88" x2="330" y2="88" stroke="#4b5563" stroke-width="1.5" marker-end="url(#c18c-arr)"/>
+  <text x="370" y="94" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="13" font-style="italic">Answer</text>
+
+  <!-- State Machine: Question -->
+  <text x="510" y="88" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="13">Question</text>
+  <line x1="540" y1="82" x2="566" y2="82" stroke="#4b5563" stroke-width="1.5" marker-end="url(#c18c-arr)"/>
+
+  <!-- Retrieve node -->
+  <text x="598" y="68" text-anchor="middle" fill="#2c5591" font-family="monospace" font-size="11">Retrieve</text>
+  <text x="598" y="80" text-anchor="middle" fill="#2c5591" font-family="monospace" font-size="11">(Node)</text>
+  <circle cx="598" cy="96" r="14" fill="#cfe0f5" stroke="#3b6fb0" stroke-width="1.5"/>
+  <line x1="614" y1="96" x2="640" y2="96" stroke="#4b5563" stroke-width="1.5" marker-end="url(#c18c-arr)"/>
+
+  <!-- Grade node -->
+  <text x="672" y="68" text-anchor="middle" fill="#2c5591" font-family="monospace" font-size="11">Grade</text>
+  <text x="672" y="80" text-anchor="middle" fill="#2c5591" font-family="monospace" font-size="11">(Node)</text>
+  <circle cx="672" cy="96" r="14" fill="#cfe0f5" stroke="#3b6fb0" stroke-width="1.5"/>
+  <line x1="688" y1="96" x2="714" y2="96" stroke="#4b5563" stroke-width="1.5" marker-end="url(#c18c-arr)"/>
+
+  <!-- Any doc relevant? -->
+  <rect x="722" y="84" width="22" height="22" fill="#cfe0f5" stroke="#3b6fb0" stroke-width="1.5" transform="rotate(45 733 95)"/>
+  <text x="733" y="124" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10">Any doc</text>
+  <text x="733" y="136" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10">relevant?</text>
+
+  <!-- Yes -> Generate -> Answer -->
+  <path d="M748 88 L790 62" fill="none" stroke="#4b5563" stroke-width="1.4" marker-end="url(#c18c-arr)"/>
+  <text x="768" y="68" text-anchor="middle" fill="#1f7a54" font-family="system-ui" font-size="10">Yes</text>
+  <text x="828" y="52" text-anchor="middle" fill="#2c5591" font-family="monospace" font-size="11">Generate</text>
+  <text x="828" y="64" text-anchor="middle" fill="#2c5591" font-family="monospace" font-size="11">(Node)</text>
+  <circle cx="828" cy="78" r="14" fill="#cfe0f5" stroke="#3b6fb0" stroke-width="1.5"/>
+  <line x1="844" y1="78" x2="878" y2="78" stroke="#4b5563" stroke-width="1.4" marker-end="url(#c18c-arr)"/>
+  <text x="908" y="84" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="13" font-style="italic">Answer</text>
+
+  <!-- No -> Re-write query -> loop -->
+  <path d="M733 107 L733 168" fill="none" stroke="#4b5563" stroke-width="1.4" marker-end="url(#c18c-arr)"/>
+  <text x="748" y="140" text-anchor="middle" fill="#b91c1c" font-family="system-ui" font-size="10">No</text>
+  <text x="733" y="188" text-anchor="middle" fill="#2c5591" font-family="monospace" font-size="11">Re-write query</text>
+  <text x="733" y="200" text-anchor="middle" fill="#2c5591" font-family="monospace" font-size="11">(Node)</text>
+  <circle cx="733" cy="168" r="14" fill="#cfe0f5" stroke="#3b6fb0" stroke-width="1.5"/>
+  <path d="M719 168 C620 168 598 130 598 112" fill="none" stroke="#4b5563" stroke-width="1.3" marker-end="url(#c18c-arr)"/>
+</svg>
+
+<table>
+  <thead>
+    <tr><th></th><th>RAG Chain (traditional)</th><th>RAG State Machine (adaptive)</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Shape</strong></td>
+      <td>Question &rarr; Index &rarr; Retrieval &rarr; Generation &rarr; Answer</td>
+      <td>Question &rarr; Retrieve &rarr; Grade &rarr; <em>decision</em> &rarr; Generate / Re-write &rarr; Answer</td>
+    </tr>
+    <tr>
+      <td><strong>Control flow</strong></td>
+      <td>Linear, one pass, no checks</td>
+      <td>Cyclic &mdash; conditional edges can loop back</td>
+    </tr>
+    <tr>
+      <td><strong>On bad retrieval</strong></td>
+      <td>Answers anyway</td>
+      <td>Re-writes the query and retrieves again</td>
+    </tr>
+    <tr>
+      <td><strong>On a bad answer</strong></td>
+      <td>Returns it</td>
+      <td>Catches it (hallucination / answer graders) and retries</td>
+    </tr>
+  </tbody>
+</table>
+
+<svg class="diagram-svg diagram-svg--light" viewBox="0 0 940 340" xmlns="http://www.w3.org/2000/svg"
+  role="img" aria-label="Comparison of Single-Step, Multi-Step, and Adaptive RAG. Panel A shows one retrieval for all queries with inaccurate complex answers. Panel B shows k retrieval rounds for every query, inefficient on simple ones. Panel C shows a classifier routing straightforward, simple, and complex queries to different effort levels.">
+  <defs>
+    <marker id="c18d-arr" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4b5563"/></marker>
+    <marker id="c18d-arr-r" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#b91c1c"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
+  <!-- Panel borders -->
+  <rect x="16" y="16" width="290" height="308" rx="8" fill="#fafafa" stroke="#d1d5db" stroke-width="1.2"/>
+  <rect x="326" y="16" width="290" height="308" rx="8" fill="#fafafa" stroke="#d1d5db" stroke-width="1.2"/>
+  <rect x="636" y="16" width="290" height="308" rx="8" fill="#fafafa" stroke="#d1d5db" stroke-width="1.2"/>
+
+  <text x="161" y="42" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="13" font-weight="700">(A) Single-Step</text>
+  <text x="471" y="42" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="13" font-weight="700">(B) Multi-Step</text>
+  <text x="781" y="42" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="13" font-weight="700">(C) Adaptive</text>
+
+  <!-- (A) simple query - works -->
+  <text x="48" y="72" fill="#374151" font-family="system-ui" font-size="10">Simple query</text>
+  <rect x="38" y="78" width="56" height="22" rx="4" fill="#ffffff" stroke="#4b5563" stroke-width="1.2"/>
+  <text x="66" y="93" text-anchor="middle" fill="#374151" font-size="9" font-family="system-ui">Query</text>
+  <line x1="96" y1="89" x2="118" y2="89" stroke="#4b5563" stroke-width="1.2" marker-end="url(#c18d-arr)"/>
+  <rect x="120" y="78" width="56" height="22" rx="4" fill="#ffffff" stroke="#4b5563" stroke-width="1.2"/>
+  <text x="148" y="93" text-anchor="middle" fill="#374151" font-size="9" font-family="system-ui">Retrieval</text>
+  <line x1="178" y1="89" x2="200" y2="89" stroke="#4b5563" stroke-width="1.2" marker-end="url(#c18d-arr)"/>
+  <text x="240" y="93" text-anchor="middle" fill="#1f7a54" font-family="system-ui" font-size="10">Answer</text>
+
+  <!-- (A) complex query - inaccurate -->
+  <text x="48" y="130" fill="#374151" font-family="system-ui" font-size="10">Complex query</text>
+  <rect x="38" y="136" width="120" height="28" rx="4" fill="#ffffff" stroke="#4b5563" stroke-width="1.2"/>
+  <text x="98" y="154" text-anchor="middle" fill="#374151" font-size="8" font-family="system-ui">Currency in birthplace?</text>
+  <line x1="160" y1="150" x2="182" y2="150" stroke="#4b5563" stroke-width="1.2" marker-end="url(#c18d-arr)"/>
+  <rect x="184" y="142" width="56" height="22" rx="4" fill="#ffffff" stroke="#4b5563" stroke-width="1.2"/>
+  <text x="212" y="157" text-anchor="middle" fill="#374151" font-size="9" font-family="system-ui">Retrieval</text>
+  <line x1="242" y1="150" x2="258" y2="150" stroke="#b91c1c" stroke-width="1.2" marker-end="url(#c18d-arr-r)"/>
+  <text x="161" y="188" text-anchor="middle" fill="#b91c1c" font-family="system-ui" font-size="11" font-weight="600">Inaccurate</text>
+
+  <!-- (B) simple - inefficient k loop -->
+  <text x="358" y="72" fill="#374151" font-family="system-ui" font-size="10">Simple query</text>
+  <rect x="348" y="78" width="56" height="22" rx="4" fill="#ffffff" stroke="#4b5563" stroke-width="1.2"/>
+  <text x="376" y="93" text-anchor="middle" fill="#374151" font-size="9" font-family="system-ui">Query</text>
+  <path d="M406 89 C430 89 430 110 406 110 C382 110 382 131 406 131 C430 131 430 152 406 152" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#c18d-arr)"/>
+  <text x="448" y="118" fill="#374151" font-family="system-ui" font-size="9">k times</text>
+  <line x1="460" y1="152" x2="478" y2="152" stroke="#4b5563" stroke-width="1.2" marker-end="url(#c18d-arr)"/>
+  <text x="471" y="188" text-anchor="middle" fill="#b45309" font-family="system-ui" font-size="11" font-weight="600">Inefficient</text>
+
+  <!-- (B) complex - works with loop -->
+  <text x="358" y="210" fill="#374151" font-family="system-ui" font-size="10">Complex query</text>
+  <rect x="348" y="216" width="120" height="28" rx="4" fill="#ffffff" stroke="#4b5563" stroke-width="1.2"/>
+  <text x="408" y="234" text-anchor="middle" fill="#374151" font-size="8" font-family="system-ui">Multi-hop query</text>
+  <path d="M470 230 C500 230 500 252 470 252 C440 252 440 274 470 274" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#c18d-arr)"/>
+  <text x="510" y="252" fill="#374151" font-family="system-ui" font-size="9">k times</text>
+  <line x1="520" y1="274" x2="548" y2="274" stroke="#4b5563" stroke-width="1.2" marker-end="url(#c18d-arr)"/>
+  <text x="580" y="280" fill="#1f7a54" font-family="system-ui" font-size="10">Answer</text>
+
+  <!-- (C) Classifier / Query Analysis -->
+  <rect x="700" y="58" width="162" height="34" rx="6" fill="#f4a6a6" stroke="#c0392b" stroke-width="1.4"/>
+  <text x="781" y="79" text-anchor="middle" fill="#7f1d1d" font-family="system-ui" font-size="11" font-weight="600">Query Analysis</text>
+
+  <!-- Straightforward -->
+  <path d="M730 92 L680 120" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#c18d-arr)"/>
+  <text x="660" y="108" text-anchor="end" fill="#374151" font-family="system-ui" font-size="9">Straightforward</text>
+  <text x="660" y="132" text-anchor="end" fill="#1f7a54" font-family="system-ui" font-size="10">Answer</text>
+
+  <!-- Simple -->
+  <line x1="781" y1="92" x2="781" y2="118" stroke="#4b5563" stroke-width="1.2" marker-end="url(#c18d-arr)"/>
+  <text x="781" y="108" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="9">Simple</text>
+  <rect x="748" y="122" width="66" height="22" rx="4" fill="#ffffff" stroke="#4b5563" stroke-width="1.2"/>
+  <text x="781" y="137" text-anchor="middle" fill="#374151" font-size="9" font-family="system-ui">Retrieval</text>
+  <line x1="781" y1="144" x2="781" y2="168" stroke="#4b5563" stroke-width="1.2" marker-end="url(#c18d-arr)"/>
+  <text x="781" y="182" text-anchor="middle" fill="#1f7a54" font-family="system-ui" font-size="10">Answer</text>
+
+  <!-- Complex -->
+  <path d="M832 92 L882 120" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#c18d-arr)"/>
+  <text x="900" y="108" fill="#374151" font-family="system-ui" font-size="9">Complex</text>
+  <path d="M870 128 C900 128 900 150 870 150 C840 150 840 172 870 172 C900 172 900 194 870 194" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#c18d-arr)"/>
+  <text x="910" y="162" fill="#374151" font-family="system-ui" font-size="9">k times</text>
+  <line x1="870" y1="210" x2="870" y2="232" stroke="#4b5563" stroke-width="1.2" marker-end="url(#c18d-arr)"/>
+  <text x="870" y="252" fill="#1f7a54" font-family="system-ui" font-size="10">Answer</text>
+</svg>
+
+<div class="example-block">
+  <div class="label">Single-Step vs Multi-Step vs Adaptive</div>
+  <p><strong>(A) Single-Step</strong> &mdash; one retrieval for every query. Fast, but
+  <em>inaccurate</em> on complex, multi-hop questions.</p>
+  <p><strong>(B) Multi-Step</strong> &mdash; always iterate several retrieval rounds. Accurate on
+  hard questions, but <em>inefficient</em> &mdash; it wastes rounds on &ldquo;When was X
+  born?&rdquo;</p>
+  <p><strong>(C) Adaptive</strong> &mdash; classify the query first, then spend the right amount of
+  effort: straightforward questions get a direct answer, simple lookups get one retrieval, complex
+  ones get the full iterative loop.</p>
+</div>
+
+<hr class="divider">
+
+<h2>Step 1 &mdash; Build the Index</h2>
+<p>
+  Same knowledge base as Corrective RAG &mdash; three of Lilian Weng's blog posts (agents, prompt
+  engineering, adversarial attacks) chunked into a FAISS store. The one change from Chapter 17 is a
+  <code>chunk_overlap</code> of 50 so ideas aren't cut cleanly at chunk boundaries.
+</p>
+
+<pre>### Build Index
+
+from langchain_classic.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import WebBaseLoader
+from langchain_community.vectorstores import FAISS
+from langchain_openai import OpenAIEmbeddings
+
+# Set embeddings
+embd = OpenAIEmbeddings()
+
+# Docs to index
+urls = [
+    "https://lilianweng.github.io/posts/2023-06-23-agent/",
+    "https://lilianweng.github.io/posts/2023-03-15-prompt-engineering/",
+    "https://lilianweng.github.io/posts/2023-10-25-adv-attack-llm/",
+]
+
+# Load
+docs = [WebBaseLoader(url).load() for url in urls]
+docs_list = [item for sublist in docs for item in sublist]
+
+# Split
+text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+    chunk_size=500, chunk_overlap=50
+)
+doc_splits = text_splitter.split_documents(docs_list)
+
+# Add to vectorstore
+vectorstore = FAISS.from_documents(
+    documents=doc_splits,
+    embedding=OpenAIEmbeddings()
+)
+
+retriever = vectorstore.as_retriever()</pre>
+
+<hr class="divider">
+
+<h2>Step 2 &mdash; The Router (Query Analysis)</h2>
+<p>
+  This is the piece that makes RAG &ldquo;adaptive.&rdquo; Before any retrieval happens, the router
+  reads the question and returns a structured choice: <code>vectorstore</code> or
+  <code>web_search</code>. The <code>Literal</code> type on the Pydantic field constrains the LLM to
+  exactly those two values, and the system prompt tells it <em>what the vectorstore actually
+  contains</em> &mdash; that description is the entire basis for the routing decision.
+</p>
+
+<pre>### Router
+
+from typing import Literal
+
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
+from pydantic import BaseModel, Field
+
+
+# Data model
+class RouteQuery(BaseModel):
+    """Route a user query to the most relevant datasource."""
+
+    datasource: Literal["vectorstore", "web_search"] = Field(
+        ...,
+        description="Given a user question choose to route it to web search or a vectorstore.",
+    )
+
+
+# LLM with function call
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+structured_llm_router = llm.with_structured_output(RouteQuery)
+
+# Prompt
+system = """You are an expert at routing a user question to a vectorstore or web search.
+The vectorstore contains documents related to agents, prompt engineering, and adversarial attacks.
+Use the vectorstore for questions on these topics. Otherwise, use web-search."""
+route_prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system", system),
+        ("human", "{question}"),
+    ]
+)
+
+question_router = route_prompt | structured_llm_router
+
+print(question_router.invoke({"question": "Who won the Cricket world cup 2023 "}))
+print(question_router.invoke({"question": "What are the types of agent memory?"}))</pre>
+
+<pre>datasource='web_search'
+datasource='vectorstore'</pre>
+
+<div class="example-block">
+  <div class="label">Why the router matters</div>
+  <p>
+    A cricket score isn't in three blog posts about LLMs, so routing it to the vectorstore would
+    guarantee irrelevant retrieval. The router catches that <em>before</em> wasting a retrieval call,
+    sending it straight to the web. &ldquo;Agent memory,&rdquo; on the other hand, is squarely in the
+    index &mdash; so it takes the full RAG path. One cheap LLM call picks the right pipeline.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Step 3 &mdash; The Three Graders</h2>
+<p>
+  Adaptive RAG has <strong>three</strong> structured-output graders, each a tiny Pydantic model with
+  a binary <code>yes</code>/<code>no</code> field. Together they are the &ldquo;self-reflection&rdquo;
+  in the diagram: one gate before generation, two after.
+</p>
+
+<h3>Retrieval Grader &mdash; are the docs relevant?</h3>
+<p>
+  The same relevance gate as Corrective RAG: score each retrieved document against the question and
+  keep only the relevant ones. The prompt explicitly says it needn't be stringent &mdash; the goal is
+  just to filter out <em>erroneous</em> retrievals.
+</p>
+
+<pre>### Retrieval Grader
+
+# Data model
+class GradeDocuments(BaseModel):
+    """Binary score for relevance check on retrieved documents."""
+
+    binary_score: str = Field(
+        description="Documents are relevant to the question, 'yes' or 'no'"
+    )
+
+
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+structured_llm_grader = llm.with_structured_output(GradeDocuments)
+
+system = """You are a grader assessing relevance of a retrieved document to a user question. \n
+    If the document contains keyword(s) or semantic meaning related to the user question, grade it as relevant. \n
+    It does not need to be a stringent test. The goal is to filter out erroneous retrievals. \n
+    Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question."""
+grade_prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system", system),
+        ("human", "Retrieved document: \n\n {document} \n\n User question: {question}"),
+    ]
+)
+
+retrieval_grader = grade_prompt | structured_llm_grader
+question = "agent memory"
+docs = retriever.invoke(question)
+doc_txt = docs[1].page_content
+print(retrieval_grader.invoke({"question": question, "document": doc_txt}))</pre>
+
+<pre>binary_score='yes'</pre>
+
+<h3>Hallucination Grader &mdash; is the answer grounded?</h3>
+<p>
+  <strong>New in Adaptive RAG.</strong> After generation, this grader checks whether the answer is
+  actually <em>supported by the retrieved facts</em>, or whether the LLM made something up. A
+  <code>no</code> here means &ldquo;not grounded &mdash; re-generate.&rdquo;
+</p>
+
+<pre>### Hallucination Grader
+
+class GradeHallucinations(BaseModel):
+    """Binary score for hallucination present in generation answer."""
+
+    binary_score: str = Field(
+        description="Answer is grounded in the facts, 'yes' or 'no'"
+    )
+
+
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+structured_llm_grader = llm.with_structured_output(GradeHallucinations)
+
+system = """You are a grader assessing whether an LLM generation is grounded in / supported by a set of retrieved facts. \n
+     Give a binary score 'yes' or 'no'. 'Yes' means that the answer is grounded in / supported by the set of facts."""
+hallucination_prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system", system),
+        ("human", "Set of facts: \n\n {documents} \n\n LLM generation: {generation}"),
+    ]
+)
+
+hallucination_grader = hallucination_prompt | structured_llm_grader
+hallucination_grader.invoke({"documents": docs, "generation": generation})</pre>
+
+<pre>GradeHallucinations(binary_score='yes')</pre>
+
+<h3>Answer Grader &mdash; does it resolve the question?</h3>
+<p>
+  <strong>Also new.</strong> An answer can be perfectly grounded and still miss the point. This final
+  gate asks whether the generation actually <em>addresses and resolves</em> the user's question. A
+  <code>no</code> means &ldquo;grounded but unhelpful &mdash; rewrite the query and try again.&rdquo;
+</p>
+
+<pre>### Answer Grader
+
+class GradeAnswer(BaseModel):
+    """Binary score to assess answer addresses question."""
+
+    binary_score: str = Field(
+        description="Answer addresses the question, 'yes' or 'no'"
+    )
+
+
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+structured_llm_grader = llm.with_structured_output(GradeAnswer)
+
+system = """You are a grader assessing whether an answer addresses / resolves a question \n
+     Give a binary score 'yes' or 'no'. Yes' means that the answer resolves the question."""
+answer_prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system", system),
+        ("human", "User question: \n\n {question} \n\n LLM generation: {generation}"),
+    ]
+)
+
+answer_grader = answer_prompt | structured_llm_grader
+answer_grader.invoke({"question": question, "generation": generation})</pre>
+
+<pre>GradeAnswer(binary_score='yes')</pre>
+
+<hr class="divider">
+
+<h2>Step 4 &mdash; Generate, Re-Writer &amp; Web Search</h2>
+<p>
+  The three &ldquo;worker&rdquo; components. Between the graders in Step&nbsp;3, these actually
+  produce text.
+</p>
+
+<h3>The Generator</h3>
+<p>
+  A standard RAG chain, but here the prompt is pulled from the LangSmith hub
+  (<code>rlm/rag-prompt</code>, the canonical concise-answer RAG prompt) instead of being written
+  inline.
+</p>
+
+<pre>### Generate
+
+from langchain_classic import hub
+from langchain_core.output_parsers import StrOutputParser
+from langsmith import Client
+
+client = Client()
+prompt = client.pull_prompt("rlm/rag-prompt", dangerously_pull_public_prompt=True)
+
+# LLM
+llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0)
+
+
+# Post-processing
+def format_docs(docs):
+    return "\n\n".join(doc.page_content for doc in docs)
+
+
+# Chain
+rag_chain = prompt | llm | StrOutputParser()
+
+# Run
+generation = rag_chain.invoke({"context": docs, "question": question})
+print(generation)</pre>
+
+<pre>Agent memory in LLM-powered autonomous agents consists of short-term and long-term memory.
+Short-term memory utilizes in-context learning, while long-term memory allows agents to retain and
+recall information over extended periods, often using an external vector store for fast retrieval.
+This dual memory system enhances the agent's ability to learn from past experiences and improve
+future performance.</pre>
+
+<h3>The Question Re-Writer</h3>
+<p>
+  Note the difference from Corrective RAG: there the re-writer optimized the question for <em>web
+  search</em>. Here it optimizes for <strong>vectorstore retrieval</strong> &mdash; because when the
+  loop rewrites, it retries against the same index, not the web.
+</p>
+
+<pre>### Question Re-writer
+
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+
+system = """You a question re-writer that converts an input question to a better version that is optimized \n
+     for vectorstore retrieval. Look at the input and try to reason about the underlying semantic intent / meaning."""
+re_write_prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system", system),
+        (
+            "human",
+            "Here is the initial question: \n\n {question} \n Formulate an improved question.",
+        ),
+    ]
+)
+
+question_rewriter = re_write_prompt | llm | StrOutputParser()
+question_rewriter.invoke({"question": question})</pre>
+
+<pre>'What are the key concepts and techniques related to agent memory in artificial intelligence?'</pre>
+
+<h3>The Web Search Tool</h3>
+<p>
+  The fallback source when the router picks <code>web_search</code> &mdash; Tavily, returning the top
+  results.
+</p>
+
+<pre>### Search
+
+from langchain_community.tools.tavily_search import TavilySearchResults
+
+web_search_tool = TavilySearchResults(k=3)</pre>
+
+<hr class="divider">
+
+<h2>Step 5 &mdash; Graph State</h2>
+<p>
+  The shared state is smaller than Corrective RAG's &mdash; just <code>question</code>,
+  <code>generation</code>, and <code>documents</code>. There's no <code>web_search</code> flag,
+  because routing happens at the graph's entry edge instead of via a state field.
+</p>
+
+<pre>from typing import List
+from typing_extensions import TypedDict
+
+
+class GraphState(TypedDict):
+    """
+    Represents the state of our graph.
+
+    Attributes:
+        question: question
+        generation: LLM generation
+        documents: list of documents
+    """
+
+    question: str
+    generation: str
+    documents: List[str]</pre>
+
+<hr class="divider">
+
+<h2>Step 6 &mdash; The Nodes</h2>
+<p>
+  Five node functions. <code>retrieve</code>, <code>generate</code>, <code>grade_documents</code>,
+  and <code>transform_query</code> are close to their Corrective RAG versions; the new one is
+  <code>web_search</code>, reached directly from the router. Note <code>grade_documents</code> here
+  just filters &mdash; it doesn't set a flag, because the <em>emptiness</em> of the filtered list is
+  what the decision edge reads later.
+</p>
+
+<pre>from langchain_classic.schema import Document
+
+
+def retrieve(state):
+    """Retrieve documents."""
+    print("---RETRIEVE---")
+    question = state["question"]
+    documents = retriever.invoke(question)
+    return {"documents": documents, "question": question}
+
+
+def generate(state):
+    """Generate answer."""
+    print("---GENERATE---")
+    question = state["question"]
+    documents = state["documents"]
+    generation = rag_chain.invoke({"context": documents, "question": question})
+    return {"documents": documents, "question": question, "generation": generation}
+
+
+def grade_documents(state):
+    """Determine whether the retrieved documents are relevant to the question."""
+    print("---CHECK DOCUMENT RELEVANCE TO QUESTION---")
+    question = state["question"]
+    documents = state["documents"]
+
+    # Score each doc
+    filtered_docs = []
+    for d in documents:
+        score = retrieval_grader.invoke(
+            {"question": question, "document": d.page_content}
+        )
+        grade = score.binary_score
+        if grade == "yes":
+            print("---GRADE: DOCUMENT RELEVANT---")
+            filtered_docs.append(d)
+        else:
+            print("---GRADE: DOCUMENT NOT RELEVANT---")
+            continue
+    return {"documents": filtered_docs, "question": question}
+
+
+def transform_query(state):
+    """Transform the query to produce a better question."""
+    print("---TRANSFORM QUERY---")
+    question = state["question"]
+    documents = state["documents"]
+    better_question = question_rewriter.invoke({"question": question})
+    return {"documents": documents, "question": better_question}
+
+
+def web_search(state):
+    """Web search based on the re-phrased question."""
+    print("---WEB SEARCH---")
+    question = state["question"]
+    docs = web_search_tool.invoke({"query": question})
+    web_results = "\n".join([d["content"] for d in docs])
+    web_results = Document(page_content=web_results)
+    return {"documents": web_results, "question": question}</pre>
+
+<hr class="divider">
+
+<h2>Step 7 &mdash; The Decision Edges</h2>
+<p>
+  Three functions drive every branch in the graph. None of them is a node &mdash; each returns a
+  <em>string</em> that the graph maps to the next node. Read them in order and the whole control flow
+  falls out.
+</p>
+
+<h3>route_question &mdash; the entry router</h3>
+<p>
+  Runs at <code>START</code>. It calls the router from Step&nbsp;2 and returns either
+  <code>"web_search"</code> or <code>"vectorstore"</code> &mdash; the two possible first nodes.
+</p>
+
+<pre>### Edges ###
+
+
+def route_question(state):
+    """Route question to web search or RAG."""
+    print("---ROUTE QUESTION---")
+    question = state["question"]
+    source = question_router.invoke({"question": question})
+    if source.datasource == "web_search":
+        print("---ROUTE QUESTION TO WEB SEARCH---")
+        return "web_search"
+    elif source.datasource == "vectorstore":
+        print("---ROUTE QUESTION TO RAG---")
+        return "vectorstore"</pre>
+
+<h3>decide_to_generate &mdash; after grading</h3>
+<p>
+  Runs after <code>grade_documents</code>. If the filtered list is <strong>empty</strong> (every doc
+  was irrelevant), it rewrites the query; otherwise it generates.
+</p>
+
+<pre>def decide_to_generate(state):
+    """Determine whether to generate an answer, or re-generate a question."""
+    print("---ASSESS GRADED DOCUMENTS---")
+    state["question"]
+    filtered_documents = state["documents"]
+
+    if not filtered_documents:
+        # All documents have been filtered check_relevance
+        # We will re-generate a new query
+        print("---DECISION: ALL DOCUMENTS ARE NOT RELEVANT TO QUESTION, TRANSFORM QUERY---")
+        return "transform_query"
+    else:
+        # We have relevant documents, so generate answer
+        print("---DECISION: GENERATE---")
+        return "generate"</pre>
+
+<h3>grade_generation_v_documents_and_question &mdash; the double check</h3>
+<p>
+  The most important edge &mdash; it runs after <code>generate</code> and applies both new graders in
+  sequence. First the hallucination check: if the answer isn't grounded, return
+  <code>"not supported"</code> and re-generate. If it <em>is</em> grounded, run the answer check:
+  <code>"useful"</code> ends the graph, <code>"not useful"</code> rewrites the query and loops.
+</p>
+
+<pre>def grade_generation_v_documents_and_question(state):
+    """Determine whether the generation is grounded in the document and answers question."""
+    print("---CHECK HALLUCINATIONS---")
+    question = state["question"]
+    documents = state["documents"]
+    generation = state["generation"]
+
+    score = hallucination_grader.invoke(
+        {"documents": documents, "generation": generation}
+    )
+    grade = score.binary_score
+
+    # Check hallucination
+    if grade == "yes":
+        print("---DECISION: GENERATION IS GROUNDED IN DOCUMENTS---")
+        # Check question-answering
+        print("---GRADE GENERATION vs QUESTION---")
+        score = answer_grader.invoke({"question": question, "generation": generation})
+        grade = score.binary_score
+        if grade == "yes":
+            print("---DECISION: GENERATION ADDRESSES QUESTION---")
+            return "useful"
+        else:
+            print("---DECISION: GENERATION DOES NOT ADDRESS QUESTION---")
+            return "not useful"
+    else:
+        pprint("---DECISION: GENERATION IS NOT GROUNDED IN DOCUMENTS, RE-TRY---")
+        return "not supported"</pre>
+
+<div class="example-block">
+  <div class="label">Three edges, three recovery moves</div>
+  <p><strong>Bad retrieval</strong> &rarr; <code>decide_to_generate</code> returns
+  <code>transform_query</code> &rarr; rewrite &amp; retrieve again.</p>
+  <p><strong>Hallucinated answer</strong> &rarr; <code>not supported</code> &rarr; re-generate from
+  the same documents.</p>
+  <p><strong>Grounded but unhelpful answer</strong> &rarr; <code>not useful</code> &rarr; rewrite the
+  query and run the loop again.</p>
+</div>
+
+<hr class="divider">
+
+<h2>Step 8 &mdash; Wiring the Graph</h2>
+<p>
+  Now assemble the <code>StateGraph</code>. The distinctive part is the <strong>conditional entry
+  edge</strong>: instead of <code>add_edge(START, ...)</code>, the graph uses
+  <code>add_conditional_edges(START, route_question, ...)</code> so routing is the very first thing
+  that happens. Two more conditional edges (out of <code>grade_documents</code> and
+  <code>generate</code>) create the self-correcting loops.
+</p>
+
+<pre>from langgraph.graph import END, StateGraph, START
+
+workflow = StateGraph(GraphState)
+
+# Define the nodes
+workflow.add_node("web_search", web_search)            # web search
+workflow.add_node("retrieve", retrieve)                # retrieve
+workflow.add_node("grade_documents", grade_documents)  # grade documents
+workflow.add_node("generate", generate)                # generate
+workflow.add_node("transform_query", transform_query)  # transform_query
+
+# Build graph
+workflow.add_conditional_edges(
+    START,
+    route_question,
+    {
+        "web_search": "web_search",
+        "vectorstore": "retrieve",
+    },
+)
+workflow.add_edge("web_search", "generate")
+workflow.add_edge("retrieve", "grade_documents")
+workflow.add_conditional_edges(
+    "grade_documents",
+    decide_to_generate,
+    {
+        "transform_query": "transform_query",
+        "generate": "generate",
+    },
+)
+workflow.add_edge("transform_query", "retrieve")
+workflow.add_conditional_edges(
+    "generate",
+    grade_generation_v_documents_and_question,
+    {
+        "not supported": "generate",
+        "useful": END,
+        "not useful": "transform_query",
+    },
+)
+
+# Compile
+app = workflow.compile()</pre>
+
+<p>
+  This is what <code>app.get_graph(xray=True).draw_mermaid_png()</code> renders &mdash; the compiled
+  Adaptive RAG graph. Solid arrows are direct edges; dashed arrows are the conditional branches
+  (routing at <code>__start__</code>, <code>decide_to_generate</code> out of
+  <code>grade_documents</code>, and the double-check out of <code>generate</code>).
+</p>
+
+<svg class="diagram-svg diagram-svg--light" style="display:block; max-width:480px; margin:1.5rem auto;" viewBox="0 0 500 540" xmlns="http://www.w3.org/2000/svg"
+  role="img" aria-label="Compiled LangGraph for Adaptive RAG. Query Analysis at __start__ conditionally routes to web_search or vectorstore retrieve. web_search goes to generate. retrieve goes to grade_documents in the RAG plus self-reflection loop, which conditionally goes to generate or transform_query. transform_query goes back to retrieve. generate conditionally goes to __end__ when useful, loops to itself when not supported, or to transform_query when not useful.">
+  <defs>
+    <marker id="c18g-a" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f46e5"/></marker>
+    <marker id="c18g-d" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#94a3b8"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
+  <!-- Query Analysis bracket -->
+  <path d="M28 8 L28 52 L468 52 L468 8" fill="none" stroke="#2f9e6f" stroke-width="1.4"/>
+  <text x="248" y="22" text-anchor="middle" fill="#1f7a54" font-family="system-ui" font-size="11" font-weight="600">Query Analysis</text>
+
+  <!-- RAG + Self Reflection bracket -->
+  <path d="M248 118 L248 430 L488 430 L488 118" fill="none" stroke="#3b6fb0" stroke-width="1.2" stroke-dasharray="4,3"/>
+  <text x="368" y="108" text-anchor="middle" fill="#2c5591" font-family="system-ui" font-size="11" font-weight="600">RAG + Self Reflection</text>
+
+  <!-- __start__ -->
+  <rect x="190" y="30" width="100" height="28" rx="14" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.3"/>
+  <text x="240" y="48" text-anchor="middle" fill="#5b21b6" font-family="monospace" font-size="12">__start__</text>
+
+  <!-- web_search -->
+  <rect x="48" y="88" width="116" height="34" rx="8" fill="#ecfdf5" stroke="#2f9e6f" stroke-width="1.3"/>
+  <text x="106" y="109" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="12">web_search</text>
+
+  <!-- generate -->
+  <rect x="48" y="168" width="116" height="34" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.3"/>
+  <text x="106" y="189" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="12">generate</text>
+
+  <!-- __end__ -->
+  <rect x="64" y="248" width="84" height="28" rx="14" fill="#ddd6fe" stroke="#7c3aed" stroke-width="1.3"/>
+  <text x="106" y="266" text-anchor="middle" fill="#5b21b6" font-family="monospace" font-size="12">__end__</text>
+
+  <!-- retrieve -->
+  <rect x="312" y="132" width="116" height="34" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.3"/>
+  <text x="370" y="153" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="12">retrieve</text>
+
+  <!-- grade_documents -->
+  <rect x="296" y="218" width="148" height="34" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.3"/>
+  <text x="370" y="239" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="12">grade_documents</text>
+
+  <!-- transform_query -->
+  <rect x="304" y="360" width="132" height="34" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.3"/>
+  <text x="370" y="381" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="12">transform_query</text>
+
+  <!-- START -> web_search -->
+  <path d="M210 58 L130 86" fill="none" stroke="#94a3b8" stroke-width="1.3" stroke-dasharray="3,3" marker-end="url(#c18g-d)"/>
+  <text x="158" y="68" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10">web_search</text>
+
+  <!-- START -> retrieve (vectorstore) -->
+  <path d="M268 44 L420 44 L420 148 L432 148" fill="none" stroke="#94a3b8" stroke-width="1.3" stroke-dasharray="3,3" marker-end="url(#c18g-d)"/>
+  <text x="420" y="98" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10" transform="rotate(-90 420 98)">vectorstore</text>
+
+  <!-- web_search -> generate -->
+  <path d="M106 122 L106 166" fill="none" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c18g-a)"/>
+
+  <!-- retrieve -> grade_documents -->
+  <path d="M370 166 L370 216" fill="none" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c18g-a)"/>
+
+  <!-- grade_documents -> generate -->
+  <path d="M296 228 L170 196" fill="none" stroke="#94a3b8" stroke-width="1.3" stroke-dasharray="3,3" marker-end="url(#c18g-d)"/>
+
+  <!-- grade_documents -> transform_query -->
+  <path d="M370 252 L370 358" fill="none" stroke="#94a3b8" stroke-width="1.3" stroke-dasharray="3,3" marker-end="url(#c18g-d)"/>
+
+  <!-- transform_query -> retrieve -->
+  <path d="M404 360 L404 168" fill="none" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c18g-a)"/>
+
+  <!-- generate -> END (useful) -->
+  <path d="M98 202 L98 246" fill="none" stroke="#94a3b8" stroke-width="1.3" stroke-dasharray="3,3" marker-end="url(#c18g-d)"/>
+  <text x="128" y="228" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10">useful</text>
+
+  <!-- generate -> transform_query (not useful) -->
+  <path d="M164 188 L320 372" fill="none" stroke="#94a3b8" stroke-width="1.3" stroke-dasharray="3,3" marker-end="url(#c18g-d)"/>
+  <text x="228" y="298" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10">not useful</text>
+
+  <!-- generate self-loop (not supported) -->
+  <path d="M48 185 C18 175 18 205 48 195" fill="none" stroke="#94a3b8" stroke-width="1.3" stroke-dasharray="3,3" marker-end="url(#c18g-d)"/>
+  <text x="24" y="168" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9">not supported</text>
+</svg>
+
+<hr class="divider">
+
+<h2>Step 9 &mdash; Running It</h2>
+<p>
+  Two questions exercise the two routes. First, a general-knowledge question the vectorstore can't
+  cover &mdash; the router sends it to the web, and the answer passes both checks on the first try.
+</p>
+
+<pre>app.invoke({"question": "What is machine learning"})</pre>
+
+<pre>---ROUTE QUESTION---
+---ROUTE QUESTION TO WEB SEARCH---
+---WEB SEARCH---
+---GENERATE---
+---CHECK HALLUCINATIONS---
+---DECISION: GENERATION IS GROUNDED IN DOCUMENTS---
+---GRADE GENERATION vs QUESTION---
+---DECISION: GENERATION ADDRESSES QUESTION---</pre>
+
+<pre>{'question': 'What is machine learning',
+ 'generation': 'Machine learning (ML) is a subfield of artificial intelligence that focuses on '
+               'developing algorithms that enable computers to learn from data and make predictions '
+               'or decisions without being explicitly programmed. ...',
+ 'documents': Document(metadata={}, page_content='... Machine learning (ML) is a field of study in '
+              'artificial intelligence concerned with the development and study of statistical '
+              'algorithms that can learn from data and generalize to unseen data ...')}</pre>
+
+<p>
+  Second, a question squarely inside the index &mdash; the router sends it to the vectorstore, all
+  four documents grade relevant, and again both post-generation checks pass.
+</p>
+
+<pre>app.invoke({"question": "What is agent memory"})</pre>
+
+<pre>---ROUTE QUESTION---
+---ROUTE QUESTION TO RAG---
+---RETRIEVE---
+---CHECK DOCUMENT RELEVANCE TO QUESTION---
+---GRADE: DOCUMENT RELEVANT---
+---GRADE: DOCUMENT RELEVANT---
+---GRADE: DOCUMENT RELEVANT---
+---GRADE: DOCUMENT RELEVANT---
+---ASSESS GRADED DOCUMENTS---
+---DECISION: GENERATE---
+---GENERATE---
+---CHECK HALLUCINATIONS---
+---DECISION: GENERATION IS GROUNDED IN DOCUMENTS---
+---GRADE GENERATION vs QUESTION---
+---DECISION: GENERATION ADDRESSES QUESTION---</pre>
+
+<div class="example-block">
+  <div class="label">Read the two traces</div>
+  <p>
+    The first line of each trace is the router deciding the whole path: <code>TO WEB SEARCH</code>
+    vs <code>TO RAG</code>. After that, the vectorstore route runs the extra
+    <code>CHECK DOCUMENT RELEVANCE</code> step that the web route skips &mdash; but <em>both</em>
+    routes converge on the same two-gate finish: <code>CHECK HALLUCINATIONS</code> then
+    <code>GRADE GENERATION vs QUESTION</code>. That shared finish is the &ldquo;self-reflection&rdquo;
+    every answer must pass, no matter where the documents came from.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Adaptive vs Corrective vs Agentic RAG</h2>
+<p>
+  Three chapters, three flavors of &ldquo;RAG that can recover.&rdquo; The difference is <em>what
+  decision the system is allowed to make, and when.</em>
+</p>
+
+<table>
+  <thead>
+    <tr><th>Aspect</th><th>Agentic RAG (Ch. 13)</th><th>Corrective RAG (Ch. 17)</th><th>Adaptive RAG (Ch. 18)</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Source routing</td>
+      <td>LLM picks a retriever tool</td>
+      <td>Always the vectorstore first</td>
+      <td><strong>Router picks vectorstore vs web up front</strong></td>
+    </tr>
+    <tr>
+      <td>Doc grading</td>
+      <td>Yes</td>
+      <td>Yes</td>
+      <td>Yes</td>
+    </tr>
+    <tr>
+      <td>Correction on weak docs</td>
+      <td>Rewrite &amp; retry</td>
+      <td>Rewrite &amp; go to web</td>
+      <td>Rewrite &amp; re-retrieve (same index)</td>
+    </tr>
+    <tr>
+      <td>Answer checks</td>
+      <td>None</td>
+      <td>None</td>
+      <td><strong>Hallucination + answer graders</strong></td>
+    </tr>
+    <tr>
+      <td>Control flow</td>
+      <td>Agent loop (model-driven)</td>
+      <td>Deterministic graph</td>
+      <td>Deterministic graph, router entry</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+<div class="example-block">
+  <div class="label">Remember These Four</div>
+  <p><strong>1. Adaptive RAG = query analysis + self-corrective RAG.</strong> A router chooses the datasource before retrieval; a self-reflective loop validates the answer after generation.</p>
+  <p><strong>2. Routing happens at the entry edge.</strong> <code>add_conditional_edges(START, route_question, ...)</code> sends each question to <code>web_search</code> or <code>retrieve</code> based on a structured <code>RouteQuery</code> decision &mdash; no wasted retrieval on out-of-domain questions.</p>
+  <p><strong>3. Two graders guard every answer.</strong> The hallucination grader checks grounding; the answer grader checks usefulness. Failing either loops back to re-generate or re-write &mdash; this is the &ldquo;RAG state machine,&rdquo; not a one-shot chain.</p>
+  <p><strong>4. It's a graph, so it can loop.</strong> Three conditional edges (route, decide-to-generate, grade-generation) turn RAG into a cyclic state machine that recovers from bad retrieval <em>and</em> bad generation instead of returning either.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter17">&larr; Chapter 17: Corrective RAG (CRAG)</a>
+    <a href="#chapter19" class="next">Chapter 19: RAG with Persistent Memory &rarr;</a>
+</nav>

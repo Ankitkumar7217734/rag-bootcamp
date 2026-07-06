@@ -214,5 +214,20 @@ const chapters = [
                 description: "Nested subgraphs — a research team (search + web scraper) and a writing team (note taker + doc writer + chart generator) — composed under a top-level supervisor for multi-phase projects."
             }
         ]
+    },
+    {
+        id: "chapter17",
+        title: "Chapter 17: Corrective RAG (CRAG)",
+        description: "Adding self-reflection and self-grading to retrieval — from 2-CorrectiveRAG.ipynb, a LangGraph workflow that grades every retrieved document, and when any is irrelevant, re-writes the question and falls back to Tavily web search before generating, so the LLM never answers from weak context."
+    },
+    {
+        id: "chapter18",
+        title: "Chapter 18: Adaptive RAG",
+        description: "Routing plus self-correction — from 4-AdaptiveRAG_1.ipynb, a LangGraph state machine that first routes each question to the vectorstore or web search, then grades documents, checks the answer for hallucinations and usefulness, and rewrites-and-retries until the response is grounded and resolves the question."
+    },
+    {
+        id: "chapter19",
+        title: "Chapter 19: RAG with Persistent Memory",
+        description: "Giving a RAG agent conversational memory — from ragmemory.ipynb, a checkpointer plus a thread_id that persists MessagesState across calls so follow-up questions resolve, built two ways: a custom query_or_respond → tools → generate graph and the prebuilt create_react_agent, each shown as a compiled LangGraph."
     }
 ];
