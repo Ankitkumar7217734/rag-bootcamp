@@ -229,5 +229,10 @@ const chapters = [
         id: "chapter19",
         title: "Chapter 19: RAG with Persistent Memory",
         description: "Giving a RAG agent conversational memory — from ragmemory.ipynb, a checkpointer plus a thread_id that persists MessagesState across calls so follow-up questions resolve, built two ways: a custom query_or_respond → tools → generate graph and the prebuilt create_react_agent, each shown as a compiled LangGraph."
+    },
+    {
+        id: "chapter20",
+        title: "Chapter 20: Cache-Augmented Generation (CAG)",
+        description: "Answering repeat questions in 0.00 seconds — from cache_augment_generation.ipynb, a simple exact-match dict cache (and why it breaks on rephrasing), then a semantic FAISS cache built as a LangGraph: normalize → semantic_cache_lookup branches on an L2 distance threshold to serve from cache or run retrieve → generate → cache_write."
     }
 ];

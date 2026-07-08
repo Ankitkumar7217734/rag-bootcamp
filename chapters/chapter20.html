@@ -1,0 +1,848 @@
+<h1>Chapter 20: Cache-Augmented Generation (CAG)</h1>
+<p style="color:#888; margin-bottom: 2rem;"><em>Why call the LLM twice for the same question? Cache the answer once and serve it back in 0.00 seconds &mdash; first with a simple key&ndash;value dictionary, then with a semantic FAISS cache wired into a LangGraph workflow.</em></p>
+
+<div class="example-block">
+  <div class="label">CAG in One Paragraph</div>
+  <p style="margin-top:0;">
+    Every chapter so far has treated the LLM call as unavoidable: question in, retrieval, generation,
+    answer out &mdash; every single time. <strong><span style="color:#818cf8;">Cache-Augmented
+    Generation</span></strong> asks a simpler question first: <em>have we answered this before?</em>
+    If yes, return the <strong><span style="color:#4ecca3;">stored response</span></strong> instantly
+    &mdash; no retrieval, no generation, no tokens billed. If no, run the normal pipeline and
+    <strong><span style="color:#fbbf24;">write the answer into the cache</span></strong> on the way out,
+    so the <em>next</em> similar question is free.
+  </p>
+  <p style="margin-bottom:0;">
+    In the notebook this cuts a 17-second, 500-word generation down to <strong>0.00 seconds</strong> on
+    the second ask. That's not an optimization &mdash; it's a different cost curve.
+  </p>
+</div>
+
+<h2>Overview</h2>
+<p>
+  CAG is a <strong>retrieval-free path</strong> through your RAG system. Instead of querying external
+  knowledge sources at inference time, it reuses work the model has already done &mdash; storing
+  question&ndash;answer pairs and serving them back when the same (or a similar) question arrives. The
+  broader CAG idea goes further still: preload relevant documents into the LLM's extended context
+  window and precompute the model's key&ndash;value (KV) cache, so generation needs no retrieval step
+  at all.
+</p>
+<p>
+  This chapter builds caching twice, exactly as the source notebook does, and the difference between
+  the two versions is the whole lesson:
+</p>
+<ul>
+  <li><strong>Simple CAG</strong> &mdash; a Python dictionary keyed on the <em>exact query string</em>.
+  Ten lines, dramatic speedup, one fatal flaw: change a single word and the cache misses.</li>
+  <li><strong>Advanced CAG</strong> &mdash; a <em>semantic</em> cache. Questions are embedded and stored
+  in a FAISS index; a new question that lands within a distance threshold of a cached one gets the
+  cached answer, even when the wording is different. Built as a six-node LangGraph with a conditional
+  edge that branches between the cache path and the full RAG path.</li>
+</ul>
+
+<svg class="diagram-svg diagram-svg--light" viewBox="0 0 940 520" xmlns="http://www.w3.org/2000/svg" role="img"
+  aria-label="Cache-Augmented Generation architecture from the handwritten notes. A query enters the LLM, which can call tools backed by a retriever over documents. The response flows to END and is also stored in the cache as a key-value pair of query and response. When the same query arrives again it goes straight to the cache, which serves the stored response directly to END, skipping the LLM. Below, three example queries show an exact repeat hitting the cache and a rephrased question that needs a semantic cache.">
+  <defs>
+    <marker id="c20a-gry" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4b5563"/></marker>
+    <marker id="c20a-grn" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#2f9e6f"/></marker>
+    <marker id="c20a-red" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#dc2626"/></marker>
+    <marker id="c20a-org" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#ea580c"/></marker>
+    <marker id="c20a-pur" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#7c3aed"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
+  <text x="470" y="32" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="16" font-weight="700">Cache-Augmented Generation (CAG)</text>
+
+  <!-- Query -->
+  <text x="75" y="176" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="15">Query</text>
+  <line x1="112" y1="170" x2="192" y2="170" stroke="#4b5563" stroke-width="1.8" marker-end="url(#c20a-gry)"/>
+
+  <!-- LLM box -->
+  <rect x="196" y="126" width="180" height="88" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+  <text x="286" y="177" text-anchor="middle" fill="#92400e" font-family="system-ui" font-size="19" font-weight="700">LLM</text>
+
+  <!-- Tools box -->
+  <rect x="520" y="48" width="140" height="48" rx="10" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.8"/>
+  <text x="590" y="78" text-anchor="middle" fill="#5b21b6" font-family="system-ui" font-size="15" font-weight="600">Tools</text>
+
+  <!-- LLM <-> Tools -->
+  <path d="M376 140 C 440 100, 468 82, 516 72" fill="none" stroke="#4b5563" stroke-width="1.5" marker-end="url(#c20a-gry)"/>
+  <path d="M520 92 C 468 116, 438 134, 380 156" fill="none" stroke="#4b5563" stroke-width="1.5" marker-end="url(#c20a-gry)"/>
+
+  <!-- Tools -> Retriever -> Docs -->
+  <line x1="660" y1="72" x2="716" y2="72" stroke="#7c3aed" stroke-width="1.6" marker-end="url(#c20a-pur)"/>
+  <text x="775" y="66" text-anchor="middle" fill="#7c3aed" font-family="system-ui" font-size="13" font-weight="600">Retriever</text>
+  <text x="775" y="86" text-anchor="middle" fill="#6b7280" font-family="system-ui" font-size="12">&#8595; Docs</text>
+
+  <!-- Response -> END -->
+  <line x1="376" y1="170" x2="684" y2="170" stroke="#4b5563" stroke-width="1.8" marker-end="url(#c20a-gry)"/>
+  <text x="505" y="160" text-anchor="middle" fill="#1f7a54" font-family="system-ui" font-size="14" font-style="italic">Response</text>
+  <rect x="688" y="154" width="100" height="32" rx="16" fill="#ddd6fe" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="738" y="175" text-anchor="middle" fill="#5b21b6" font-family="monospace" font-size="13" font-weight="700">END</text>
+
+  <!-- Cache box -->
+  <rect x="420" y="300" width="180" height="72" rx="10" fill="#ecfdf5" stroke="#2f9e6f" stroke-width="2"/>
+  <text x="510" y="343" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="17" font-weight="700">Cache</text>
+
+  <!-- first-time write: response down into cache -->
+  <line x1="488" y1="178" x2="504" y2="296" stroke="#2f9e6f" stroke-width="1.8" marker-end="url(#c20a-grn)"/>
+  <text x="470" y="240" text-anchor="end" fill="#047857" font-family="system-ui" font-size="12.5">1st time: store</text>
+
+  <!-- repeat: cache serves the stored response straight to END -->
+  <line x1="566" y1="296" x2="674" y2="192" stroke="#dc2626" stroke-width="1.8" marker-end="url(#c20a-red)"/>
+  <text x="644" y="256" text-anchor="start" fill="#b91c1c" font-family="system-ui" font-size="12.5">repeat: response</text>
+
+  <!-- repeat query goes straight to cache -->
+  <path d="M75 190 L75 336 L414 336" fill="none" stroke="#ea580c" stroke-width="1.7" marker-end="url(#c20a-org)"/>
+  <text x="240" y="326" text-anchor="middle" fill="#c2410c" font-family="system-ui" font-size="12.5">same query again</text>
+
+  <!-- K-V pair annotation -->
+  <line x1="600" y1="336" x2="652" y2="336" stroke="#9ca3af" stroke-width="1.3" stroke-dasharray="4,3"/>
+  <rect x="656" y="298" width="234" height="92" rx="8" fill="#fafafa" stroke="#d1d5db" stroke-width="1.2"/>
+  <text x="773" y="328" text-anchor="middle" fill="#b45309" font-family="monospace" font-size="14" font-weight="700">K &ndash; V pair</text>
+  <line x1="700" y1="338" x2="846" y2="338" stroke="#dc2626" stroke-width="1.3"/>
+  <text x="773" y="366" text-anchor="middle" fill="#374151" font-family="monospace" font-size="13">Q1 &#8596; Response</text>
+
+  <!-- example queries -->
+  <line x1="40" y1="420" x2="900" y2="420" stroke="#d1d5db" stroke-width="1.1"/>
+  <text x="60" y="454" fill="#374151" font-family="system-ui" font-size="13">Q1 &#8594; What is LangChain?</text>
+  <text x="430" y="454" fill="#374151" font-family="system-ui" font-size="13">Q2 &#8594; What is LangChain?  <tspan fill="#1f7a54">(exact repeat &#8594; cache)</tspan></text>
+  <text x="60" y="490" fill="#374151" font-family="system-ui" font-size="13">Q3 &#8594; Explain about LangChain?  <tspan fill="#6b7280">(same meaning, different words &#8594; needs a </tspan><tspan fill="#4338ca" font-weight="600">semantic</tspan><tspan fill="#6b7280"> cache)</tspan></text>
+</svg>
+
+<div class="example-block">
+  <div class="label">The Core Idea</div>
+  <p>
+    A cache is just a <strong>key&ndash;value store</strong>: the question is the key, the answer is the
+    value. The entire design question of CAG is <em>what counts as &ldquo;the same key&rdquo;</em>.
+    Match on the exact string and you get a dictionary &mdash; fast, trivial, brittle. Match on
+    <strong>meaning</strong> (embed the question, search a vector index, accept anything within a
+    distance threshold) and you get a semantic cache that survives rephrasing. Part&nbsp;1 builds the
+    first; Part&nbsp;2 builds the second.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>CAG vs RAG &mdash; What Actually Changes</h2>
+<p>
+  CAG doesn't replace RAG &mdash; in the advanced build below, the full retrieve-and-generate pipeline
+  is still there. CAG wraps a <strong>fast path around it</strong>. The comparison that matters is what
+  happens per request:
+</p>
+
+<table>
+  <thead>
+    <tr><th></th><th>Plain RAG</th><th>RAG + CAG (this chapter)</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Every request</strong></td>
+      <td>Embed &rarr; retrieve &rarr; generate</td>
+      <td>Check cache first; only misses run the pipeline</td>
+    </tr>
+    <tr>
+      <td><strong>Repeat question</strong></td>
+      <td>Full cost again (~17s in the demo)</td>
+      <td>Served from cache (~0.00s)</td>
+    </tr>
+    <tr>
+      <td><strong>Token cost</strong></td>
+      <td>Paid on every call</td>
+      <td>Paid once per <em>unique</em> question</td>
+    </tr>
+    <tr>
+      <td><strong>Answer consistency</strong></td>
+      <td>Same question can get different answers</td>
+      <td>Cached questions always get the same answer</td>
+    </tr>
+    <tr>
+      <td><strong>Freshness</strong></td>
+      <td>Always current</td>
+      <td>Cached answers can go stale &rarr; add a TTL</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Part 1 &mdash; Simple CAG: An Exact-Match Dictionary</h2>
+<p>
+  The first version needs nothing but a Python <code>dict</code>. Set up the model the usual way
+  &mdash; <code>init_chat_model</code> with <code>gpt-4o-mini</code>:
+</p>
+
+<pre>import os
+from dotenv import load_dotenv
+load_dotenv()
+os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
+
+from langchain.chat_models import init_chat_model
+
+llm = init_chat_model("openai:gpt-4o-mini")</pre>
+
+<p>
+  The cache itself is one line &mdash; an empty dictionary that will map
+  <code>query&nbsp;&rarr;&nbsp;response</code>:
+</p>
+
+<pre>### Cache variable
+Model_Cache = {}</pre>
+
+<h3>The <code>cache_model</code> Function</h3>
+<p>
+  All the logic lives in one function. Look up the query in the dict: if it's there,
+  <strong>cache hit</strong> &mdash; return the stored response and skip the LLM entirely. If not,
+  <strong>cache miss</strong> &mdash; invoke the model, time it, and store the response under the query
+  before returning it. Timing both paths is what makes the payoff visible.
+</p>
+
+<pre>import time
+
+def cache_model(query):
+    start_time = time.time()
+    if Model_Cache.get(query):
+        print("**Cache Hit**")
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print(f"EXECUTION TIME: {elapsed_time:.2f} seconds")
+        return Model_Cache.get(query)
+    else:
+        print("***CACHE MISS - EXECUTING MODEL***")
+        start_time = time.time()
+        response = llm.invoke(query)
+        end_time = time.time()
+        elapsed = end_time - start_time
+        print(f"EXECUTION TIME: {elapsed:.2f} seconds")
+        Model_Cache[query] = response
+        return response</pre>
+
+<h3>Watching It Work</h3>
+<p>
+  First call with a real question &mdash; a 500-word essay request. The cache is empty for this key, so
+  the model runs, and it takes a while:
+</p>
+
+<pre>query = "can you give me 500 words on langgraph?"
+response = cache_model(query)
+print(response)</pre>
+
+<pre>***CACHE MISS - EXECUTING MODEL***
+EXECUTION TIME: 17.24 seconds
+content="LangGraph is an innovative framework that seeks to improve language
+modeling and understanding by leveraging the power of graph-based
+representations. ..."</pre>
+
+<p>
+  Ask the <strong>exact same string</strong> again and the dictionary lookup returns instantly &mdash;
+  same answer, seventeen seconds and one LLM bill cheaper:
+</p>
+
+<pre>query = "can you give me 500 words on langgraph?"
+response = cache_model(query)
+print(response)</pre>
+
+<pre>**Cache Hit**
+EXECUTION TIME: 0.00 seconds
+content="LangGraph is an innovative framework that seeks to improve language
+modeling and understanding by leveraging the power of graph-based
+representations. ..."</pre>
+
+<p>
+  And the cache is inspectable at any time &mdash; it's just a dict of
+  <code>query&nbsp;&rarr;&nbsp;AIMessage</code>:
+</p>
+
+<pre>Model_Cache</pre>
+
+<pre>{'can you give me 500 words on langgraph?': AIMessage(content="LangGraph is an
+ innovative framework ...", response_metadata={...}, usage_metadata={...})}</pre>
+
+<h3>The Fatal Flaw</h3>
+<p>
+  Now drop two words &mdash; <em>&ldquo;can you&rdquo;</em> &mdash; and ask again. Any human would say
+  this is the same question. The dictionary disagrees:
+</p>
+
+<pre>query = "give me 500 words on langgraph?"
+response = cache_model(query)
+print(response)</pre>
+
+<pre>***CACHE MISS - EXECUTING MODEL***
+EXECUTION TIME: 12.18 seconds
+content='LangGraph is an innovative concept that sits at the intersection of
+natural language processing (NLP) and graph-based representation of
+information. ...'</pre>
+
+<div class="example-block">
+  <div class="label">Gotcha &mdash; Exact Match Means EXACT</div>
+  <p>
+    The dict key is the raw string. <em>&ldquo;What is LangChain?&rdquo;</em> and <em>&ldquo;Explain
+    about LangChain?&rdquo;</em> mean the same thing to a person &mdash; and are completely different
+    keys to a dictionary. So are a stray space, a capital letter, or a trailing question mark. Real
+    users never phrase a question the same way twice, which means an exact-match cache almost never
+    hits in production. The fix: stop comparing <strong>strings</strong> and start comparing
+    <strong>embeddings</strong>.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Part 2 &mdash; Advanced CAG: A Semantic Cache in LangGraph</h2>
+<p>
+  The advanced build turns the cache into a <strong>second vector store</strong>. Every answered
+  question is embedded and written into a FAISS index (<code>QA_CACHE</code>) with its answer stored in
+  the metadata. When a new question arrives, we embed it and search the cache: if the nearest cached
+  question is within an <strong>L2 distance threshold</strong>, that's a semantic hit &mdash; serve the
+  stored answer. Otherwise fall through to normal RAG (retrieve from <code>RAG_STORE</code>, generate)
+  and write the fresh Q&amp;A pair into the cache for next time.
+</p>
+<p>
+  This is the graph from the notes &mdash; six nodes and one conditional edge, exactly as the compiled
+  LangGraph renders it:
+</p>
+
+<svg class="diagram-svg diagram-svg--light" style="display:block; max-width:520px; margin:1.5rem auto;" viewBox="0 0 520 590" xmlns="http://www.w3.org/2000/svg" role="img"
+  aria-label="Compiled LangGraph for Advanced CAG. From __start__ a solid edge goes to normalize_query, then to semantic_cache_lookup, which branches on the distance threshold. On a cache miss the left path runs retrieve, then generate, then cache_write, then __end__. On a cache hit the right path goes directly to respond_from_cache, then __end__.">
+  <defs>
+    <marker id="c20g-arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4338ca"/></marker>
+    <marker id="c20g-mut" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#94a3b8"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
+  <!-- __start__ -->
+  <rect x="195" y="16" width="130" height="30" rx="15" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.4"/>
+  <text x="260" y="36" text-anchor="middle" fill="#5b21b6" font-family="monospace" font-size="13">__start__</text>
+  <line x1="260" y1="46" x2="260" y2="70" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c20g-arr)"/>
+
+  <!-- normalize_query -->
+  <rect x="170" y="72" width="180" height="38" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.4"/>
+  <text x="260" y="96" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="13">normalize_query</text>
+  <line x1="260" y1="110" x2="260" y2="134" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c20g-arr)"/>
+
+  <!-- semantic_cache_lookup -->
+  <rect x="145" y="136" width="230" height="38" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.4"/>
+  <text x="260" y="160" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="13">semantic_cache_lookup</text>
+  <text x="260" y="202" text-anchor="middle" fill="#6b7280" font-family="monospace" font-size="11">dist &lt;= 0.45 ?</text>
+
+  <!-- conditional: cache miss -> retrieve (dashed) -->
+  <path d="M 200 174 C 158 198, 138 216, 131 236" fill="none" stroke="#94a3b8" stroke-width="1.4" stroke-dasharray="3,4" marker-end="url(#c20g-mut)"/>
+  <text x="112" y="206" text-anchor="middle" fill="#b91c1c" font-family="system-ui" font-size="11" font-style="italic">cache miss</text>
+
+  <!-- conditional: cache hit -> respond_from_cache (dashed) -->
+  <path d="M 320 174 C 368 214, 386 262, 389 320" fill="none" stroke="#94a3b8" stroke-width="1.4" stroke-dasharray="3,4" marker-end="url(#c20g-mut)"/>
+  <text x="398" y="224" text-anchor="start" fill="#047857" font-family="system-ui" font-size="11" font-style="italic">cache hit</text>
+
+  <!-- retrieve -->
+  <rect x="60" y="240" width="140" height="38" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.4"/>
+  <text x="130" y="264" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="13">retrieve</text>
+  <line x1="130" y1="278" x2="130" y2="324" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c20g-arr)"/>
+
+  <!-- generate -->
+  <rect x="60" y="326" width="140" height="38" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.4"/>
+  <text x="130" y="350" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="13">generate</text>
+  <line x1="130" y1="364" x2="130" y2="410" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c20g-arr)"/>
+
+  <!-- cache_write -->
+  <rect x="60" y="412" width="140" height="38" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.4"/>
+  <text x="130" y="436" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="13">cache_write</text>
+
+  <!-- respond_from_cache -->
+  <rect x="295" y="326" width="190" height="38" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.4"/>
+  <text x="390" y="350" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="13">respond_from_cache</text>
+
+  <!-- to __end__ -->
+  <path d="M 130 450 L 130 545 L 190 545" fill="none" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c20g-arr)"/>
+  <path d="M 390 364 L 390 545 L 330 545" fill="none" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c20g-arr)"/>
+  <rect x="195" y="530" width="130" height="30" rx="15" fill="#ddd6fe" stroke="#7c3aed" stroke-width="1.4"/>
+  <text x="260" y="550" text-anchor="middle" fill="#5b21b6" font-family="monospace" font-size="13">__end__</text>
+</svg>
+
+<h3>Imports &amp; Configuration</h3>
+<p>
+  Two vector stores share one embedding model: HuggingFace's
+  <code>all-MiniLM-L6-v2</code> (384 dimensions, free, local). The numbers that shape the cache's
+  behavior are pulled into one config block so they're tunable in one place:
+</p>
+
+<pre>from __future__ import annotations
+from typing import TypedDict, List, Optional
+import time
+
+# ---- LangGraph / LangChain ----
+from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.memory import MemorySaver
+
+from langchain_core.documents import Document
+from langchain_openai import ChatOpenAI
+from langchain_huggingface import HuggingFaceEmbeddings
+
+# ---- FAISS vector stores ----
+import faiss
+from langchain_community.vectorstores import FAISS
+from langchain_community.docstore.in_memory import InMemoryDocstore</pre>
+
+<pre># ================= CONFIG =================
+EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"  # 384-dim
+VECTOR_DIM = 384
+
+LLM_MODEL = "gpt-4o-mini"
+LLM_TEMPERATURE = 0
+
+RETRIEVE_TOP_K = 4
+CACHE_TOP_K = 3
+
+CACHE_DISTANCE_THRESHOLD = 0.45
+
+# Optional TTL for cache entries (seconds). 0 = disabled.
+CACHE_TTL_SEC = 0</pre>
+
+<table>
+  <thead>
+    <tr><th>Setting</th><th>Value</th><th>What it controls</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>CACHE_DISTANCE_THRESHOLD</code></td>
+      <td><code>0.45</code></td>
+      <td>The heart of the semantic cache. FAISS returns <strong>L2 distance</strong> (lower = more
+      similar); only a nearest neighbor at or under this distance counts as a hit. Lower it and the
+      cache gets stricter (fewer, safer hits); raise it and it gets looser (more hits, more risk of
+      serving a wrong answer).</td>
+    </tr>
+    <tr>
+      <td><code>CACHE_TOP_K</code></td>
+      <td><code>3</code></td>
+      <td>How many cached neighbors to fetch per lookup &mdash; only the best one is gated against the
+      threshold.</td>
+    </tr>
+    <tr>
+      <td><code>RETRIEVE_TOP_K</code></td>
+      <td><code>4</code></td>
+      <td>Chunks pulled from the knowledge base on the miss path (normal RAG retrieval).</td>
+    </tr>
+    <tr>
+      <td><code>CACHE_TTL_SEC</code></td>
+      <td><code>0</code></td>
+      <td>Expiry for cached answers. <code>0</code> disables it; set it in production so stale answers
+      age out (every entry stores a <code>ts</code> timestamp for exactly this).</td>
+    </tr>
+    <tr>
+      <td><code>LLM_TEMPERATURE</code></td>
+      <td><code>0</code></td>
+      <td>Deterministic generation &mdash; sensible when answers are going to be reused verbatim.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>The State</h3>
+<p>
+  The graph's state carries the question through both paths. <code>cache_hit</code> is the flag the
+  conditional edge will branch on; <code>citations</code> lets us see at a glance where an answer came
+  from (<code>[doc-i]</code> markers on the RAG path, <code>"(cache)"</code> on the cache path).
+</p>
+
+<pre># ================= STATE ==================
+class RAGState(TypedDict):
+    question: str
+    normalized_question: str
+    context_docs: List[Document]
+    answer: Optional[str]
+    citations: List[str]
+    cache_hit: bool</pre>
+
+<h3>Two Vector Stores &amp; the LLM</h3>
+<p>
+  First the embedder, then the <strong>empty cache</strong>. You can't call
+  <code>FAISS.from_texts</code> with nothing, so the cache is assembled by hand from a raw
+  <code>IndexFlatL2</code> (exact L2 search), an empty in-memory docstore, and an empty id map &mdash;
+  a safe zero-entry start:
+</p>
+
+<pre># ============== GLOBALS ===================
+from langchain_huggingface import HuggingFaceEmbeddings
+EMBED = HuggingFaceEmbeddings(model_name=EMBED_MODEL)</pre>
+
+<pre># ----- QA CACHE (EMPTY, SAFE INIT) -----
+qa_index = faiss.IndexFlatL2(VECTOR_DIM)  # distance; lower is better
+QA_CACHE = FAISS(
+    embedding_function=EMBED,
+    index=qa_index,
+    docstore=InMemoryDocstore({}),
+    index_to_docstore_id={}
+)</pre>
+
+<p>
+  The knowledge base for the RAG path is a small demo store &mdash; four facts about LangGraph, RAG,
+  and caching:
+</p>
+
+<pre># ----- RAG STORE (demo only) -----
+RAG_STORE = FAISS.from_texts(
+    texts=[
+        "LangGraph lets you compose stateful LLM workflows as graphs.",
+        "In LangGraph, nodes can be cached; node caching memoizes outputs keyed by inputs for a TTL.",
+        "Retrieval-Augmented Generation (RAG) retrieves external context and injects it into prompts.",
+        "Semantic caching reuses prior answers when new questions are semantically similar."
+    ],
+    embedding=EMBED,
+)</pre>
+
+<pre>LLM = ChatOpenAI(model=LLM_MODEL, temperature=LLM_TEMPERATURE)</pre>
+
+<div class="example-block">
+  <div class="label">Why two FAISS stores?</div>
+  <p>
+    They hold different things and answer different questions. <code>RAG_STORE</code> holds
+    <strong>knowledge chunks</strong> and answers <em>&ldquo;what documents are relevant to this
+    question?&rdquo;</em> <code>QA_CACHE</code> holds <strong>previously asked questions</strong>
+    (with their answers tucked into metadata) and answers <em>&ldquo;have I been asked something like
+    this before?&rdquo;</em> Same technology, opposite roles &mdash; one feeds the LLM, the other
+    replaces it.
+  </p>
+</div>
+
+<h3>The Six Nodes</h3>
+<p>
+  Each node is a plain function over <code>RAGState</code>. The interesting one is
+  <code>semantic_cache_lookup</code> &mdash; note its three guard rails: skip an empty question, skip
+  an <strong>empty index</strong> (FAISS crashes if you search a zero-entry index), and optionally skip
+  entries older than the TTL. Only then does the distance gate decide hit or miss.
+</p>
+
+<pre># ================ NODES ===================
+def normalize_query(state: RAGState) -> RAGState:
+    q = (state["question"] or "").strip()
+    state["normalized_question"] = q.lower()
+    return state
+
+def semantic_cache_lookup(state: RAGState) -> RAGState:
+    q = state["normalized_question"]
+    state["cache_hit"] = False  # default
+
+    if not q:
+        return state
+
+    # Guard: FAISS crashes if ntotal == 0 and you ask for k>0
+    if getattr(QA_CACHE, "index", None) is None or QA_CACHE.index.ntotal == 0:
+        return state
+
+    # For FAISS L2 wrapper, this returns (Document, distance) with lower=better
+    hits = QA_CACHE.similarity_search_with_score(q, k=CACHE_TOP_K)
+    if not hits:
+        return state
+
+    best_doc, dist = hits[0]
+
+    # Optional TTL
+    if CACHE_TTL_SEC > 0:
+        ts = best_doc.metadata.get("ts")
+        if ts is None or (time.time() - float(ts)) > CACHE_TTL_SEC:
+            return state
+
+    # L2 distance gate (lower = more similar)
+    if dist <= CACHE_DISTANCE_THRESHOLD:
+        cached_answer = best_doc.metadata.get("answer")
+        if cached_answer:
+            state["answer"] = cached_answer
+            state["citations"] = ["(cache)"]
+            state["cache_hit"] = True
+
+    return state
+
+def respond_from_cache(state: RAGState) -> RAGState:
+    return state
+
+def retrieve(state: RAGState) -> RAGState:
+    q = state["normalized_question"]
+    docs = RAG_STORE.similarity_search(q, k=RETRIEVE_TOP_K)
+    state["context_docs"] = docs
+    return state
+
+def generate(state: RAGState) -> RAGState:
+    q = state["question"]
+    docs = state.get("context_docs", [])
+    ctx = "\n\n".join([f"[doc-{i}] {d.page_content}" for i, d in enumerate(docs, start=1)])
+
+    system = (
+        "You are a precise RAG assistant. Use the context when helpful. "
+        "Cite with [doc-i] markers if you use a fact from the context."
+    )
+    user = f"Question: {q}\n\nContext:\n{ctx}\n\nWrite a concise answer with citations."
+
+    resp = LLM.invoke([{"role": "system", "content": system},
+                       {"role": "user", "content": user}])
+    state["answer"] = resp.content
+    state["citations"] = [f"[doc-{i}]" for i in range(1, len(docs) + 1)]
+    return state
+
+def cache_write(state: RAGState) -> RAGState:
+    q = state["normalized_question"]
+    a = state.get("answer")
+    if not q or not a:
+        return state
+
+    QA_CACHE.add_texts(
+        texts=[q],
+        metadatas=[{
+            "answer": a,
+            "ts": time.time(),
+        }]
+    )
+    return state</pre>
+
+<table>
+  <thead>
+    <tr><th>Node</th><th>Job</th><th>Detail worth noticing</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>normalize_query</code></td>
+      <td>Canonicalize the question</td>
+      <td><code>strip()</code> + <code>lower()</code> &mdash; so trivial formatting differences never
+      reach the cache</td>
+    </tr>
+    <tr>
+      <td><code>semantic_cache_lookup</code></td>
+      <td>Decide hit or miss</td>
+      <td>Embeds the question, finds the nearest cached question, gates on
+      <code>dist &lt;= 0.45</code>; on a hit it copies the stored answer into state and sets
+      <code>cache_hit = True</code></td>
+    </tr>
+    <tr>
+      <td><code>respond_from_cache</code></td>
+      <td>Serve the hit</td>
+      <td>A pass-through &mdash; the lookup already wrote the answer; this node just gives the hit path
+      a named stop before <code>END</code></td>
+    </tr>
+    <tr>
+      <td><code>retrieve</code></td>
+      <td>Normal RAG retrieval</td>
+      <td>Top-4 chunks from <code>RAG_STORE</code> on the miss path</td>
+    </tr>
+    <tr>
+      <td><code>generate</code></td>
+      <td>Grounded answer</td>
+      <td>Labels each chunk <code>[doc-i]</code> and asks for citations &mdash; the citation markers
+      survive into the cached answer</td>
+    </tr>
+    <tr>
+      <td><code>cache_write</code></td>
+      <td>Remember for next time</td>
+      <td>Adds the <em>normalized question</em> as the vector, with the answer and a timestamp in
+      metadata &mdash; the write that makes the next similar question free</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Wiring the Graph</h3>
+<p>
+  The wiring mirrors the diagram exactly. One conditional edge does the branching: after
+  <code>semantic_cache_lookup</code>, the <code>_branch</code> router reads <code>cache_hit</code> and
+  sends the flow either to <code>respond_from_cache</code> (&rarr; <code>END</code>) or into the RAG
+  path <code>retrieve &rarr; generate &rarr; cache_write</code> (&rarr; <code>END</code>).
+</p>
+
+<pre># ============== GRAPH WIRING ==============
+graph = StateGraph(RAGState)
+
+graph.add_node("normalize_query", normalize_query)
+graph.add_node("semantic_cache_lookup", semantic_cache_lookup)
+graph.add_node("respond_from_cache", respond_from_cache)
+graph.add_node("retrieve", retrieve)
+graph.add_node("generate", generate)
+graph.add_node("cache_write", cache_write)
+
+graph.set_entry_point("normalize_query")
+graph.add_edge("normalize_query", "semantic_cache_lookup")
+
+def _branch(state: RAGState) -> str:
+    return "respond_from_cache" if state.get("cache_hit") else "retrieve"
+
+graph.add_conditional_edges(
+    "semantic_cache_lookup",
+    _branch,
+    {
+        "respond_from_cache": "respond_from_cache",
+        "retrieve": "retrieve"
+    }
+)
+
+graph.add_edge("respond_from_cache", END)
+graph.add_edge("retrieve", "generate")
+graph.add_edge("generate", "cache_write")
+graph.add_edge("cache_write", END)
+
+memory = MemorySaver()
+app = graph.compile(checkpointer=memory)</pre>
+
+<hr class="divider">
+
+<h2>Running It &mdash; Semantic Hits in Action</h2>
+<p>
+  <strong>Question 1</strong> is brand new, so the cache is empty and the flow takes the long path:
+  retrieve four docs, generate with citations, write the pair into the cache.
+</p>
+
+<pre># ================= DEMO ===================
+if __name__ == "__main__":
+    thread_cfg = {"configurable": {"thread_id": "demo-user-1"}}
+
+    q1 = "What is LangGraph ?"
+    out1 = app.invoke({"question": q1, "context_docs": [], "citations": []}, thread_cfg)
+    print("Answer:", out1["answer"])
+    print("Citations:", out1.get("citations"))
+    print("Cache hit?:", out1.get("cache_hit"))</pre>
+
+<pre>Answer: LangGraph is a framework that allows users to compose stateful workflows
+for large language models (LLMs) in the form of graphs, enabling the management
+of complex interactions and processes [doc-2]. It also features node caching,
+which memoizes outputs based on inputs for a specified time-to-live (TTL) [doc-1].
+Citations: ['[doc-1]', '[doc-2]', '[doc-3]', '[doc-4]']
+Cache hit?: False</pre>
+
+<p>
+  <strong>Question 2</strong> is the one the simple cache failed on &mdash; <em>different words, same
+  meaning</em>. &ldquo;Explain about LangGraph?&rdquo; embeds close enough to the cached &ldquo;what is
+  langgraph ?&rdquo; to pass the 0.45 distance gate. Cache hit &mdash; the identical answer comes back,
+  with <code>(cache)</code> as its citation and zero LLM calls:
+</p>
+
+<pre>q1 = "Explain about LangGraph ?"
+out1 = app.invoke({"question": q1, "context_docs": [], "citations": []}, thread_cfg)
+print("Answer:", out1["answer"])
+print("Citations:", out1.get("citations"))
+print("Cache hit?:", out1.get("cache_hit"))</pre>
+
+<pre>Answer: LangGraph is a framework that allows users to compose stateful workflows
+for large language models (LLMs) in the form of graphs, enabling the management
+of complex interactions and processes [doc-2]. It also features node caching,
+which memoizes outputs based on inputs for a specified time-to-live (TTL) [doc-1].
+Citations: ['(cache)']
+Cache hit?: True</pre>
+
+<p>
+  <strong>Question 3</strong> shifts topic &mdash; LangGraph <em>agents</em>, not LangGraph itself.
+  That's far enough in embedding space to miss the cache, and rightly so: serving the generic
+  LangGraph answer here would be wrong. The graph runs the full RAG path and caches this new pair too:
+</p>
+
+<pre>q1 = "Explain about LangGraph agents ?"
+out1 = app.invoke({"question": q1, "context_docs": [], "citations": []}, thread_cfg)
+print("Answer:", out1["answer"])
+print("Citations:", out1.get("citations"))
+print("Cache hit?:", out1.get("cache_hit"))</pre>
+
+<pre>Answer: LangGraph agents are part of a framework that allows users to compose
+stateful workflows using large language models (LLMs) represented as graphs
+[doc-2]. These agents can utilize features like node caching [doc-1]. Additionally,
+they can leverage retrieval-augmented generation (RAG) to fetch external context
+[doc-3], and semantic caching to reuse previous answers when new queries are
+semantically similar [doc-4].
+Citations: ['[doc-1]', '[doc-2]', '[doc-3]', '[doc-4]']
+Cache hit?: False</pre>
+
+<p>
+  <strong>Question 4</strong> asks the agents question again with the words shuffled &mdash;
+  <em>&ldquo;Explain about agents in Langgraph?&rdquo;</em> &mdash; and the semantic cache catches it:
+</p>
+
+<pre>q1 = "Explain about agents in Langgraph ?"
+out1 = app.invoke({"question": q1, "context_docs": [], "citations": []}, thread_cfg)
+print("Answer:", out1["answer"])
+print("Citations:", out1.get("citations"))
+print("Cache hit?:", out1.get("cache_hit"))</pre>
+
+<pre>Answer: LangGraph agents are part of a framework that allows users to compose
+stateful workflows using large language models (LLMs) represented as graphs
+[doc-2]. ...
+Citations: ['(cache)']
+Cache hit?: True</pre>
+
+<div class="example-block">
+  <div class="label">Read the citations, they tell the story</div>
+  <p>
+    <code>['[doc-1]', '[doc-2]', ...]</code> means the answer was <strong>generated</strong> &mdash;
+    the full retrieve-and-generate path ran. <code>['(cache)']</code> means the answer was
+    <strong>remembered</strong> &mdash; no retrieval, no generation. Four questions produced only
+    <em>two</em> LLM calls. That ratio is the entire value proposition of CAG, and it improves the
+    longer the system runs.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Exact-Match vs Semantic Cache</h2>
+
+<table>
+  <thead>
+    <tr><th>Aspect</th><th>Simple CAG (<code>Model_Cache</code> dict)</th><th>Advanced CAG (FAISS <code>QA_CACHE</code>)</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Key</strong></td>
+      <td>Exact query string</td>
+      <td>Embedding of the normalized query</td>
+    </tr>
+    <tr>
+      <td><strong>&ldquo;Same question&rdquo; means</strong></td>
+      <td>Byte-for-byte identical</td>
+      <td>Within L2 distance <code>0.45</code> of a cached question</td>
+    </tr>
+    <tr>
+      <td><strong>Survives rephrasing</strong></td>
+      <td>No &mdash; &ldquo;give me&rdquo; vs &ldquo;can you give me&rdquo; misses</td>
+      <td>Yes &mdash; &ldquo;What is X?&rdquo; hits for &ldquo;Explain about X?&rdquo;</td>
+    </tr>
+    <tr>
+      <td><strong>Lookup cost</strong></td>
+      <td>O(1) dict lookup, effectively free</td>
+      <td>One embedding + one FAISS search &mdash; milliseconds, still far cheaper than the LLM</td>
+    </tr>
+    <tr>
+      <td><strong>False-hit risk</strong></td>
+      <td>None (exact match can't be wrong)</td>
+      <td>Real &mdash; threshold too loose serves wrong answers; tune it on your traffic</td>
+    </tr>
+    <tr>
+      <td><strong>Staleness control</strong></td>
+      <td>None built in</td>
+      <td>Per-entry <code>ts</code> timestamp + <code>CACHE_TTL_SEC</code></td>
+    </tr>
+    <tr>
+      <td><strong>Best for</strong></td>
+      <td>Demos, fixed FAQ lists, idempotent internal calls</td>
+      <td>Real user traffic, where nobody phrases anything the same way twice</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">Production notes</div>
+  <p>
+    Three knobs matter when you take this live. <strong>The threshold</strong>: 0.45 works for this
+    demo's embedder and data &mdash; validate on your own query pairs, because it's a trade between hit
+    rate and wrong-answer risk. <strong>The TTL</strong>: any cache serving facts that change needs
+    <code>CACHE_TTL_SEC &gt; 0</code>, or yesterday's answer outlives its truth. <strong>The
+    store</strong>: both the in-RAM dict and the in-RAM FAISS index vanish on restart &mdash;
+    production semantic caches persist (saved FAISS index, Redis semantic cache, or a vector DB), just
+    like Chapter 19's checkpointer story.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+<div class="example-block">
+  <div class="label">Remember These Four</div>
+  <p><strong>1. CAG is a fast path, not a replacement.</strong> The full RAG pipeline is still there &mdash; the cache just answers the questions it has already seen, turning a 17-second generation into a 0.00-second lookup and cutting token spend to once per unique question.</p>
+  <p><strong>2. Exact-match caching breaks on real users.</strong> A dict keyed on the query string misses the moment anyone rephrases &mdash; &ldquo;What is LangChain?&rdquo; and &ldquo;Explain about LangChain?&rdquo; are different keys but the same question. That flaw is what motivates everything in Part 2.</p>
+  <p><strong>3. A semantic cache is a vector store of past questions.</strong> Embed the normalized query, search <code>QA_CACHE</code>, and gate the nearest neighbor on an L2 distance threshold (<code>0.45</code> here). Hit &rarr; serve the answer from metadata; miss &rarr; retrieve, generate, and <code>cache_write</code> the new pair.</p>
+  <p><strong>4. One conditional edge makes it a graph.</strong> <code>normalize_query &rarr; semantic_cache_lookup</code>, then <code>_branch</code> on <code>cache_hit</code>: hit &rarr; <code>respond_from_cache &rarr; END</code>, miss &rarr; <code>retrieve &rarr; generate &rarr; cache_write &rarr; END</code>. The citations tell you which path ran &mdash; <code>[doc-i]</code> means generated, <code>(cache)</code> means remembered.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter19">&larr; Chapter 19: RAG with Persistent Memory</a>
+    <span></span>
+</nav>
