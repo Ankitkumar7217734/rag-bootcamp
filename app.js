@@ -93,6 +93,33 @@ function setGroupExpanded(group, expanded) {
     if (toggle) toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
 }
 
+/**
+ * Jump to the top of the page instantly. Route changes must NOT smooth-scroll
+ * (html has scroll-behavior:smooth for anchors) — a new page should simply
+ * start at the top, not visibly scroll up from wherever the old page was.
+ *
+ * Call this BEFORE swapping page content: scrolling while the old layout is
+ * still stable is reliable, whereas scrolling right after innerHTML replacement
+ * can be ignored/re-clamped while layout is dirty. A next-frame re-assert
+ * covers the swap itself.
+ */
+function resetScroll() {
+    const doc = document.documentElement;
+    doc.style.scrollBehavior = 'auto';
+    window.scrollTo(0, 0);
+    requestAnimationFrame(() => {
+        window.scrollTo(0, 0);
+        doc.style.scrollBehavior = '';   // restore so anchor/TOC clicks stay smooth
+    });
+}
+
+/** Replay the content fade/rise animation for a freshly injected page. */
+function animateContentEnter(main) {
+    main.classList.remove('entering');
+    void main.offsetWidth;   // restart the CSS animation
+    main.classList.add('entering');
+}
+
 function buildHomepage() {
     const main = document.getElementById('main-content');
     main.classList.add('is-home');
@@ -128,9 +155,11 @@ function buildHomepage() {
         </div>
     `;
 
+    resetScroll();
     main.innerHTML = html;
     updateSidebarActive(null);
     buildTOC(null);
+    animateContentEnter(main);
 }
 
 async function loadChapter(id) {
@@ -142,6 +171,7 @@ async function loadChapter(id) {
         if (!response.ok) throw new Error('Not found');
         const html = await response.text();
 
+        resetScroll();
         main.innerHTML = html;
         updateSidebarActive(id);
         buildTOC(main);
@@ -149,8 +179,9 @@ async function loadChapter(id) {
         addCopyButtons(main);
         addDiagramCopyButtons(main);
         wrapScrollables(main);
-        window.scrollTo(0, 0);
+        animateContentEnter(main);
     } catch (e) {
+        resetScroll();
         main.innerHTML = `
             <h1>Page not found</h1>
             <p>The chapter "${id}" could not be loaded. Make sure the file <code>chapters/${id}.html</code> exists.</p>
@@ -158,6 +189,7 @@ async function loadChapter(id) {
         `;
         updateSidebarActive(null);
         buildTOC(null);
+        animateContentEnter(main);
     }
 }
 
@@ -445,6 +477,18 @@ function wireTOCInteractions(headings) {
     // Scroll-spy: highlight the heading currently in view
     const setActive = (id) => {
         links.forEach(l => l.parentElement.classList.toggle('active', l.dataset.target === id));
+
+        // If the TOC itself overflows, keep the active entry in view. Adjust
+        // only the TOC's own scrollTop — scrollIntoView could move the page.
+        const active = links.find(l => l.dataset.target === id);
+        if (active && toc.scrollHeight > toc.clientHeight) {
+            const li = active.parentElement;
+            const top = li.offsetTop;
+            const bottom = top + li.offsetHeight;
+            if (top < toc.scrollTop || bottom > toc.scrollTop + toc.clientHeight) {
+                toc.scrollTop = top - toc.clientHeight / 2;
+            }
+        }
     };
 
     tocObserver = new IntersectionObserver((entries) => {
@@ -481,6 +525,13 @@ function updateSidebarActive(activeId) {
         const containsActive = !!group.querySelector(`a[href="#${activeId}"]`);
         setGroupExpanded(group, containsActive);
     });
+
+    // With 14+ chapters the sidebar scrolls — keep the active link in view so
+    // the reader never loses their place in the nav.
+    const activeLink = document.querySelector(`#sidebar-nav a[href="#${activeId}"]`);
+    if (activeLink) {
+        activeLink.scrollIntoView({ block: 'nearest' });
+    }
 }
 
 function handleRoute() {
@@ -514,6 +565,8 @@ function openSidebar() {
     if (isMobileViewport()) {
         document.getElementById('sidebar').classList.add('open');
         document.getElementById('sidebar-backdrop').classList.add('visible');
+        // Freeze the page behind the drawer so it doesn't scroll underneath
+        document.body.classList.add('no-scroll');
     } else {
         document.body.classList.remove('sidebar-collapsed');
         try { localStorage.setItem(SIDEBAR_PREF_KEY, 'false'); } catch (e) { /* ignore */ }
@@ -527,6 +580,7 @@ function closeSidebar() {
     if (sidebar) sidebar.classList.remove('open');
     const backdrop = document.getElementById('sidebar-backdrop');
     if (backdrop) backdrop.classList.remove('visible');
+    document.body.classList.remove('no-scroll');
 
     // …and on desktop, collapse it out of the layout and remember the choice.
     if (!isMobileViewport()) {
@@ -591,10 +645,51 @@ function wireSidebarToggle() {
     syncSidebarHandle();
 }
 
+/* ---- Scroll-driven UI: reading progress line + back-to-top button ----
+ * One passive scroll listener, throttled to animation frames, drives both.
+ * The progress bar uses transform:scaleX so updates stay on the compositor.
+ */
+function wireScrollUI() {
+    const progress = document.getElementById('progress-bar');
+    const backToTop = document.getElementById('back-to-top');
+    let ticking = false;
+
+    function update() {
+        ticking = false;
+        const doc = document.documentElement;
+        const max = doc.scrollHeight - window.innerHeight;
+        const y = window.scrollY;
+
+        if (progress) {
+            progress.style.transform = `scaleX(${max > 0 ? Math.min(y / max, 1) : 0})`;
+        }
+        if (backToTop) {
+            backToTop.classList.toggle('visible', y > 600);
+        }
+    }
+
+    window.addEventListener('scroll', () => {
+        if (!ticking) {
+            ticking = true;
+            requestAnimationFrame(update);
+        }
+    }, { passive: true });
+    window.addEventListener('resize', update, { passive: true });
+
+    if (backToTop) {
+        backToTop.addEventListener('click', () => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+    }
+
+    update();
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     buildSidebar();
     wireSidebarToggle();
+    wireScrollUI();
     handleRoute();
 });
 
