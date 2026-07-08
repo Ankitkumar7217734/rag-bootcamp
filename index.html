@@ -6,7 +6,7 @@
     <title>RAG Bootcamp</title>
     <!-- Syntax highlighting theme (IDE-style code colors) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
-    <link rel="stylesheet" href="style.css?v=36">
+    <link rel="stylesheet" href="style.css?v=38">
 </head>
 <body>
     <!-- Top header bar -->
@@ -22,6 +22,8 @@
             <span class="topbar-title">RAG Bootcamp</span>
             <span class="topbar-tag">Docs</span>
         </a>
+        <!-- Reading progress line (width driven by app.js) -->
+        <div class="progress-bar" id="progress-bar" aria-hidden="true"></div>
     </header>
 
     <div class="layout">
@@ -59,9 +61,17 @@
         </main>
     </div>
 
-    <script src="chapters.js?v=35"></script>
+    <!-- Back-to-top (revealed by app.js after scrolling) -->
+    <button class="back-to-top" id="back-to-top" type="button" aria-label="Back to top">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+            <path d="M6 14l6-6 6 6" fill="none" stroke="currentColor"
+                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+    </button>
+
+    <script src="chapters.js?v=38"></script>
     <!-- highlight.js core (bundles common languages: python, json, sql, js, bash…) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <script src="app.js?v=35"></script>
+    <script src="app.js?v=38"></script>
 </body>
 </html>
