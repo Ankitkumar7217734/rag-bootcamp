@@ -1,0 +1,1500 @@
+<h1>Chapter 21: Vectorless RAG &mdash; Reasoning-Based Retrieval with PageIndex</h1>
+<p style="color:#888; margin-bottom: 2rem;"><em>Twenty chapters of chunk&ndash;embed&ndash;retrieve, and now the assumption itself goes: no chunking, no embeddings, no vector database. Build a tree from the document, hand it to the LLM, and let it reason its way to the answer &mdash; the way a human expert scans a table of contents.</em></p>
+
+<div class="example-block">
+  <div class="label">Vectorless RAG in One Paragraph</div>
+  <p style="margin-top:0;">
+    Every retrieval system so far has answered <em>&ldquo;which chunks are most similar to this
+    query?&rdquo;</em> &mdash; and similarity is not the same thing as relevance. A chunk about
+    &ldquo;market conditions&rdquo; can outscore the actual answer section simply because it shares more
+    words with the question. <strong><span style="color:#818cf8;">Vectorless RAG</span></strong> asks a
+    different question entirely: <em>&ldquo;which section of this document would a human expert open?&rdquo;</em>
+    It parses the document into a <strong><span style="color:#4ecca3;">hierarchical tree</span></strong>
+    &mdash; a smart table of contents with a summary at every node &mdash; and lets the LLM
+    <strong><span style="color:#fbbf24;">reason over that structure</span></strong> to pick the exact
+    sections that contain the answer. No chunks, no embeddings, no vector DB &mdash; and every answer
+    arrives with the section title and page number it came from.
+  </p>
+</div>
+
+<h2>Overview</h2>
+<p>
+  This chapter is built from two sources: the <strong>Vectorless vs Traditional RAG</strong> deck (the
+  theory &mdash; when each approach wins and why) and the <strong>PageIndex crash-course notebook</strong>
+  (the practice &mdash; a complete reasoning-based RAG pipeline over a real 34-page PDF, the Krish Naik
+  Academy &ldquo;Advanced Route of Learning AI&rdquo; syllabus). PageIndex is the reference
+  implementation of the vectorless idea: a cloud API (plus an open-source, self-hostable version) that
+  turns any PDF into a tree index an LLM can navigate.
+</p>
+<p>Here's the full route:</p>
+
+<table>
+  <thead>
+    <tr><th>#</th><th>What you'll learn</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>Why vector RAG fails on professional documents &mdash; and why <em>similarity &ne; relevance</em></td></tr>
+    <tr><td>2</td><td>How PageIndex builds a hierarchical tree index from a PDF (no chunking)</td></tr>
+    <tr><td>3</td><td>LLM Tree Search &mdash; retrieval as reasoning over structure</td></tr>
+    <tr><td>4</td><td>The full end-to-end pipeline: search &rarr; retrieve &rarr; generate, with page citations</td></tr>
+    <tr><td>5</td><td>Expert-guided retrieval &mdash; injecting domain knowledge as prompt rules, no fine-tuning</td></tr>
+    <tr><td>6</td><td>The Chat API (zero LLM setup) and the self-hosted open-source option</td></tr>
+    <tr><td>7</td><td>The honest comparison, a two-question decision heuristic, and the hybrid pattern</td></tr>
+  </tbody>
+</table>
+
+<svg class="diagram-svg diagram-svg--light" viewBox="0 0 940 590" xmlns="http://www.w3.org/2000/svg" role="img"
+  aria-label="Traditional RAG versus Vectorless RAG, shown as two pipelines. The traditional lane goes docs, chunk, embed, vector DB, cosine top-k, LLM, with weaknesses listed: chunks lose context, similarity is not relevance, opaque cosine score. The vectorless lane goes PDF, tree index, LLM tree search, exact sections, LLM, cited answer, with strengths listed: no chunking, no embeddings, no vector DB, traceable reasoning. A bottom panel explains that a chunk about market conditions can outscore the real answer section, and quotes FinanceBench accuracy of 98.7 percent for PageIndex versus about 80 percent for vector RAG.">
+  <defs>
+    <marker id="c21a-ind" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f46e5"/></marker>
+    <marker id="c21a-grn" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#059669"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
+  <text x="470" y="30" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="16" font-weight="700">Two Retrieval Philosophies</text>
+
+  <!-- Lane 1: Traditional RAG -->
+  <text x="24" y="64" fill="#4338ca" font-family="system-ui" font-size="13" font-weight="700">TRADITIONAL RAG &#8212; match on similarity</text>
+
+  <rect x="24" y="80" width="128" height="60" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="88" y="106" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="13" font-weight="600">Docs</text>
+  <text x="88" y="126" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="11">PDFs &#183; wikis</text>
+  <line x1="152" y1="110" x2="172" y2="110" stroke="#4f46e5" stroke-width="1.6" marker-end="url(#c21a-ind)"/>
+
+  <rect x="176" y="80" width="128" height="60" rx="8" fill="#eef2ff" stroke="#4f46e5" stroke-width="1.5"/>
+  <text x="240" y="106" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="13" font-weight="600">Chunk</text>
+  <text x="240" y="126" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="11">200-500 tokens</text>
+  <line x1="304" y1="110" x2="324" y2="110" stroke="#4f46e5" stroke-width="1.6" marker-end="url(#c21a-ind)"/>
+
+  <rect x="328" y="80" width="128" height="60" rx="8" fill="#eef2ff" stroke="#4f46e5" stroke-width="1.5"/>
+  <text x="392" y="106" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="13" font-weight="600">Embed</text>
+  <text x="392" y="126" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="11">text &#8594; vector</text>
+  <line x1="456" y1="110" x2="476" y2="110" stroke="#4f46e5" stroke-width="1.6" marker-end="url(#c21a-ind)"/>
+
+  <rect x="480" y="80" width="128" height="60" rx="8" fill="#eef2ff" stroke="#4f46e5" stroke-width="1.5"/>
+  <text x="544" y="106" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="13" font-weight="600">Vector DB</text>
+  <text x="544" y="126" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="11">FAISS &#183; Chroma</text>
+  <line x1="608" y1="110" x2="628" y2="110" stroke="#4f46e5" stroke-width="1.6" marker-end="url(#c21a-ind)"/>
+
+  <rect x="632" y="80" width="128" height="60" rx="8" fill="#eef2ff" stroke="#4f46e5" stroke-width="1.5"/>
+  <text x="696" y="106" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="13" font-weight="600">Cosine top-k</text>
+  <text x="696" y="126" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="11">nearest chunks</text>
+  <line x1="760" y1="110" x2="784" y2="110" stroke="#4f46e5" stroke-width="1.6" marker-end="url(#c21a-ind)"/>
+
+  <rect x="788" y="80" width="128" height="60" rx="8" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+  <text x="852" y="106" text-anchor="middle" fill="#92400e" font-family="system-ui" font-size="13" font-weight="600">LLM</text>
+  <text x="852" y="126" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="11">answers from chunks</text>
+
+  <text x="24" y="172" fill="#dc2626" font-family="system-ui" font-size="12.5">&#10007; chunks lose context&#160;&#160;&#160;&#10007; similarity &#8800; relevance&#160;&#160;&#160;&#10007; opaque cosine score&#160;&#160;&#160;&#10007; no section or page refs</text>
+
+  <text x="470" y="216" text-anchor="middle" fill="#6b7280" font-family="system-ui" font-size="13" font-style="italic">Same document, same question &#8212; two retrieval philosophies</text>
+
+  <!-- Lane 2: Vectorless RAG -->
+  <text x="24" y="252" fill="#047857" font-family="system-ui" font-size="13" font-weight="700">VECTORLESS RAG (PAGEINDEX) &#8212; reason over structure</text>
+
+  <rect x="24" y="268" width="128" height="60" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="88" y="294" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="13" font-weight="600">PDF</text>
+  <text x="88" y="314" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="11">long, structured</text>
+  <line x1="152" y1="298" x2="172" y2="298" stroke="#059669" stroke-width="1.6" marker-end="url(#c21a-grn)"/>
+
+  <rect x="176" y="268" width="128" height="60" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+  <text x="240" y="294" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="13" font-weight="600">Tree index</text>
+  <text x="240" y="314" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="11">smart TOC</text>
+  <line x1="304" y1="298" x2="324" y2="298" stroke="#059669" stroke-width="1.6" marker-end="url(#c21a-grn)"/>
+
+  <rect x="328" y="268" width="128" height="60" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="392" y="294" text-anchor="middle" fill="#5b21b6" font-family="system-ui" font-size="12.5" font-weight="600">LLM tree search</text>
+  <text x="392" y="314" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">reads titles + summaries</text>
+  <line x1="456" y1="298" x2="476" y2="298" stroke="#059669" stroke-width="1.6" marker-end="url(#c21a-grn)"/>
+
+  <rect x="480" y="268" width="128" height="60" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+  <text x="544" y="294" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="12.5" font-weight="600">Exact sections</text>
+  <text x="544" y="314" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="11">titles + pages</text>
+  <line x1="608" y1="298" x2="628" y2="298" stroke="#059669" stroke-width="1.6" marker-end="url(#c21a-grn)"/>
+
+  <rect x="632" y="268" width="128" height="60" rx="8" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+  <text x="696" y="294" text-anchor="middle" fill="#92400e" font-family="system-ui" font-size="13" font-weight="600">LLM</text>
+  <text x="696" y="314" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="11">grounded generate</text>
+  <line x1="760" y1="298" x2="784" y2="298" stroke="#059669" stroke-width="1.6" marker-end="url(#c21a-grn)"/>
+
+  <rect x="788" y="268" width="128" height="60" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+  <text x="852" y="294" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="12.5" font-weight="600">Cited answer</text>
+  <text x="852" y="314" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="11">section + page</text>
+
+  <text x="24" y="360" fill="#047857" font-family="system-ui" font-size="12.5">&#10003; no chunking&#160;&#160;&#160;&#10003; no embeddings&#160;&#160;&#160;&#10003; no vector DB&#160;&#160;&#160;&#10003; traceable reasoning path</text>
+
+  <!-- Bottom panel -->
+  <rect x="24" y="392" width="892" height="170" rx="10" fill="#f8fafc" stroke="#d1d5db" stroke-width="1.2"/>
+  <text x="470" y="422" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="13.5" font-weight="700">Why it matters &#8212; similarity is not relevance</text>
+  <text x="470" y="450" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="12.5">A chunk about "market conditions" can outscore the actual answer section just because it shares more words with the query.</text>
+  <text x="470" y="474" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="12.5">PageIndex instead reasons: root &#8594; Financials &#8594; Net Interest Margin &#8212; and returns that section with its page number.</text>
+  <text x="470" y="514" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="13.5">FinanceBench accuracy:&#160;&#160;<tspan fill="#047857" font-weight="700">98.7% PageIndex</tspan>&#160;&#160;vs&#160;&#160;<tspan fill="#dc2626" font-weight="700">~80% vector RAG</tspan></text>
+  <text x="470" y="540" text-anchor="middle" fill="#94a3b8" font-family="system-ui" font-size="11.5">(document-heavy financial QA benchmark, as reported by PageIndex)</text>
+</svg>
+
+<div class="example-block">
+  <div class="label">The Core Idea</div>
+  <p>
+    <strong>Similarity &ne; relevance.</strong> Cosine similarity measures how much two pieces of text
+    <em>overlap in meaning-space</em> &mdash; it has no idea what the document is <em>about</em>, how it
+    is organized, or what the question actually needs. Vectorless RAG replaces the similarity score
+    with <strong>reasoning</strong>: give the LLM the document's structure (titles, summaries, page
+    numbers, nesting) and ask it, in plain language, <em>which sections contain the answer</em>. The
+    retrieval step becomes an explainable chain of thought instead of an opaque number.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Why Vector RAG Fails on Professional Documents</h2>
+
+<h3>First, Why RAG at All</h3>
+<p>
+  The deck opens with the problem every RAG chapter in this bootcamp has been solving. You can't just
+  feed everything to the LLM, for three reasons:
+</p>
+<ul>
+  <li><strong>Context windows are limited</strong> &mdash; even 1M tokens can't hold a corporate knowledge base.</li>
+  <li><strong>Long context degrades quality</strong> &mdash; LLMs lose recall in the middle of huge prompts.</li>
+  <li><strong>It's expensive</strong> &mdash; tokens cost money; less context means lower bills.</li>
+</ul>
+<p>
+  So we retrieve relevant context on demand: fetch only the pieces that matter for <em>this</em> query,
+  <em>then</em> ask the LLM. The big question &mdash; the one this whole chapter turns on &mdash; is
+  <strong>how do we retrieve?</strong>
+</p>
+
+<h3>The Traditional Answer, and Its Failure Modes</h3>
+<p>
+  Traditional RAG's five-step pipeline is the one you built in Chapters 2&ndash;5: <strong>chunk</strong>
+  documents into 200&ndash;500-token pieces, <strong>embed</strong> each chunk into a vector,
+  <strong>store</strong> the vectors in a database (Chroma, FAISS, Pinecone), <strong>search</strong>
+  top-k by cosine similarity, and <strong>generate</strong> from the retrieved chunks. It's powerful
+  &mdash; but the deck is honest about where it breaks:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Strengths</th><th>Weaknesses</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Massive scale</strong> &mdash; millions of docs, millisecond lookups</td>
+      <td><strong>Chunking destroys context</strong> &mdash; &ldquo;As defined in Section 3.2&hellip;&rdquo; is meaningless when retrieved alone</td>
+    </tr>
+    <tr>
+      <td><strong>Mature ecosystem</strong> &mdash; Chroma, FAISS, Pinecone, Qdrant, Weaviate</td>
+      <td><strong>Similarity &ne; relevance</strong> &mdash; embeddings can match the wrong things, confidently</td>
+    </tr>
+    <tr>
+      <td><strong>Cheap retrieval</strong> &mdash; one embedding + ANN search per query</td>
+      <td><strong>No cross-section reasoning</strong> &mdash; can't answer &ldquo;compare risks vs mitigations&rdquo;</td>
+    </tr>
+    <tr>
+      <td><strong>Great for factoids</strong> &mdash; short, lookup-style questions</td>
+      <td><strong>Hard to explain</strong> &mdash; why was this chunk picked? A cosine score isn't an answer</td>
+    </tr>
+    <tr>
+      <td><strong>Domain agnostic</strong> &mdash; works on any text: blogs, tickets, PDFs</td>
+      <td><strong>Embedding drift</strong> &mdash; change the embedding model and you re-embed everything</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  Notice what the weaknesses have in common: they all bite hardest on <strong>long, professionally
+  structured documents</strong> &mdash; annual reports, 10-Ks, legal contracts, regulatory filings,
+  research papers, textbooks. Exactly the documents where the author already organized the content
+  into a hierarchy, and exactly the structure that chunking throws away.
+</p>
+
+<hr class="divider">
+
+<h2>The Vectorless Answer &mdash; Navigate Like a Human</h2>
+<p>
+  Vectorless RAG skips embeddings entirely and lets the LLM navigate the document the way a person
+  would. The document becomes a <strong>hierarchical index</strong> &mdash; a tree whose nodes are the
+  document's own chapters, sections, and sub-sections, each carrying a short summary. Retrieval is a
+  guided descent:
+</p>
+<ol>
+  <li><strong>Build the tree</strong> &mdash; parse the document structure (headings, sections) and generate a summary at each node. Done once, offline.</li>
+  <li><strong>The LLM reads the root summaries</strong> &mdash; <em>&ldquo;which chapter is most likely to contain the answer?&rdquo;</em></li>
+  <li><strong>Descend the tree</strong> &mdash; repeat the question at each level until reaching a leaf section.</li>
+  <li><strong>Read the full section</strong> &mdash; no chunking, full context preserved.</li>
+  <li><strong>Answer and cite the path</strong> &mdash; the system returns the answer <em>and</em> the navigation path it took.</li>
+</ol>
+<p>The tradeoffs are real &mdash; they're just <em>different</em> tradeoffs:</p>
+
+<table>
+  <thead>
+    <tr><th>Strengths</th><th>Weaknesses</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Preserves document context</strong> &mdash; sections stay whole, no broken references</td>
+      <td><strong>Higher per-query cost</strong> &mdash; one or more LLM calls to traverse the tree</td>
+    </tr>
+    <tr>
+      <td><strong>Cross-section reasoning</strong> &mdash; the LLM can compare, contrast, synthesize</td>
+      <td><strong>Higher latency</strong> &mdash; hundreds of ms to a few seconds per query</td>
+    </tr>
+    <tr>
+      <td><strong>Explainable retrieval</strong> &mdash; returns the navigation path, not a cosine score</td>
+      <td><strong>Doesn't scale to millions</strong> &mdash; tens to thousands of docs, not internet-scale</td>
+    </tr>
+    <tr>
+      <td><strong>No embedding pipeline</strong> &mdash; skip the embed/index/refresh complexity</td>
+      <td><strong>Needs structured docs</strong> &mdash; random blog posts? A tree adds little value</td>
+    </tr>
+    <tr>
+      <td><strong>Shines on structure</strong> &mdash; reports, contracts, filings, textbooks</td>
+      <td><strong>Young ecosystem</strong> &mdash; PageIndex and a few others; tooling is still maturing</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">Keep Both Frames in Mind</div>
+  <p>
+    Traditional RAG asks <em>&ldquo;what looks like the query?&rdquo;</em> and wins on scale, speed, and
+    cost. Vectorless RAG asks <em>&ldquo;where would the answer live?&rdquo;</em> and wins on reasoning,
+    context, and explainability. They are not competitors &mdash; the end of this chapter shows how
+    production systems combine them. But first, let's build the vectorless side for real.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>PageIndex Setup &amp; Indexing a PDF</h2>
+<p>
+  PageIndex needs two API keys: a <strong>PageIndex key</strong> (from
+  <code>dash.pageindex.ai/api-keys</code>) for the indexing service, and an <strong>OpenAI key</strong>
+  for the tree-search LLM we'll drive ourselves. Both live in a <code>.env</code> file &mdash; never in
+  the notebook:
+</p>
+
+<pre># Install required packages
+!pip install -U pageindex openai python-dotenv</pre>
+
+<pre># .env — one line per key, next to the notebook
+PAGEINDEX_API_KEY=your_pageindex_key_here
+OPENAI_API_KEY=your_openai_key_here</pre>
+
+<pre>import os, json, time
+from dotenv import load_dotenv
+
+load_dotenv()
+
+PAGEINDEX_API_KEY = os.getenv("PAGEINDEX_API_KEY")
+OPENAI_API_KEY    = os.getenv("OPENAI_API_KEY")
+
+print("PageIndex key loaded:", "✅" if PAGEINDEX_API_KEY else "❌ Missing!")
+print("OpenAI key loaded:   ", "✅" if OPENAI_API_KEY    else "❌ Missing!")</pre>
+
+<pre>PageIndex key loaded: ✅
+OpenAI key loaded:    ✅</pre>
+
+<p>Two clients, two jobs &mdash; PageIndex indexes and stores the tree, OpenAI does the reasoning:</p>
+
+<pre>from pageindex import PageIndexClient
+from openai import OpenAI
+
+pi_client     = PageIndexClient(api_key=PAGEINDEX_API_KEY)
+openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
+print("✅ PageIndex client ready")
+print("✅ OpenAI client ready")</pre>
+
+<h3>Upload the PDF</h3>
+<p>
+  <code>submit_document</code> uploads the PDF to the PageIndex cloud, where an LLM reads the
+  document's structure and builds the hierarchical tree index. The returned <code>doc_id</code> is the
+  handle for every later operation. Good candidates: annual reports, research papers, legal docs,
+  textbooks &mdash; anything long and structured. The notebook uses the 34-page course-syllabus PDF:
+</p>
+
+<pre># ── Upload your PDF ─────────────────────────────────────────────────────────
+PDF_PATH = "./sample_document.pdf"   # ← change this
+
+print(f"📤 Uploading: {PDF_PATH}")
+result = pi_client.submit_document(PDF_PATH)
+doc_id = result["doc_id"]
+
+print(f"✅ Uploaded!")
+print(f"📋 Document ID: {doc_id}")</pre>
+
+<pre>📤 Uploading: ./sample_document.pdf
+✅ Uploaded!
+📋 Document ID: pi-cmnj5e1b801f801qpozge1pvx</pre>
+
+<h3>Poll Until the Tree Is Ready</h3>
+<p>
+  Tree building is asynchronous &mdash; for a 50-page PDF it typically takes 30&ndash;90 seconds, and it
+  runs <strong>once per document</strong> (the index is cached for reuse). A simple polling loop waits
+  for <code>status == "completed"</code>:
+</p>
+
+<pre># ── Poll until processing is complete ───────────────────────────────────────
+print("⏳ Building tree index...")
+
+while True:
+    status_result = pi_client.get_document(doc_id)
+    status = status_result.get("status")
+    print(f"   Status: {status}")
+
+    if status == "completed":
+        print("\n✅ Tree index ready!")
+        break
+    elif status == "failed":
+        print("\n❌ Processing failed. Check your PDF format.")
+        break
+
+    time.sleep(5)</pre>
+
+<pre>⏳ Building tree index...
+   Status: completed
+
+✅ Tree index ready!</pre>
+
+<div class="example-block">
+  <div class="label">Why No Chunking?</div>
+  <p>
+    Instead of cutting the document into arbitrary 500-token pieces, PageIndex respects the document's
+    <strong>natural section boundaries</strong> &mdash; chapters, sub-sections, paragraphs &mdash; as
+    the author intended. A section is a unit of <em>meaning</em>; a chunk is a unit of
+    <em>token count</em>. Chapter 6 spent a whole chapter approximating meaning-boundaries with
+    semantic chunking &mdash; a tree index gets them for free, because the author already drew them.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Inspecting the Tree</h2>
+<p>
+  <code>get_tree</code> returns the full index. With <code>node_summary=True</code>, every node carries
+  an LLM-written summary of its section &mdash; these summaries are exactly what the tree-search LLM
+  will read to decide where to descend:
+</p>
+
+<pre># ── Fetch the full tree ─────────────────────────────────────────────────────
+tree_result  = pi_client.get_tree(doc_id, node_summary=True)
+pageindex_tree = tree_result.get("result", [])
+
+print(f"📊 Top-level sections: {len(pageindex_tree)}")
+print("\n🌲 Raw tree (first node):")
+print(json.dumps(pageindex_tree[0] if pageindex_tree else {}, indent=2))</pre>
+
+<pre>📊 Top-level sections: 24
+
+🌲 Raw tree (first node):
+{
+  "title": "Preface",
+  "node_id": "0000",
+  "page_index": 1,
+  "summary": "This document outlines the comprehensive syllabus for the
+    'Advanced Route of Learning AI' course ... spans 21 modules, covering
+    foundational topics like Neural Networks and Transformers, progressing to
+    ... LLM fine-tuning techniques (including PEFT, SFT, and post-training
+    stacks) ... RAG with multi-modal and security aspects, Context Engineering,
+    DSPy, Agents, and Reinforcement Learning (RL). ...",
+  "text": "ADVANCED ROUTE OF\nLEARNING AI\nComprehensive Syllabus\n ...
+    (the full text of the section, straight from the PDF) ..."
+}</pre>
+
+<p>Every node in the tree has the same shape:</p>
+
+<table>
+  <thead>
+    <tr><th>Field</th><th>What it is</th><th>Used for</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>node_id</code></td>
+      <td>Unique ID like <code>"0010"</code></td>
+      <td>What the LLM returns during retrieval</td>
+    </tr>
+    <tr>
+      <td><code>title</code></td>
+      <td>The section heading</td>
+      <td>Primary signal for tree search; also cited in answers</td>
+    </tr>
+    <tr>
+      <td><code>page_index</code></td>
+      <td>Page number in the original PDF</td>
+      <td>Traceability &mdash; every answer can point at a page</td>
+    </tr>
+    <tr>
+      <td><code>summary</code> / <code>text</code></td>
+      <td>LLM summary / full section text</td>
+      <td>Summary guides navigation; text feeds generation</td>
+    </tr>
+    <tr>
+      <td><code>nodes</code></td>
+      <td>Child sections (nested)</td>
+      <td>The hierarchy itself &mdash; what makes it a tree</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>A Visual Overview</h3>
+<p>
+  Two small recursive helpers make the structure readable &mdash; one prints the tree, one counts the
+  nodes. Both walk the <code>nodes</code> children exactly like <code>getAllPages()</code> walks
+  sub-chapters in this site's own router:
+</p>
+
+<pre># ── Pretty-print the full tree ───────────────────────────────────────────────
+def print_tree(nodes, indent=0):
+    """Recursively print tree titles for a visual overview."""
+    for node in nodes:
+        prefix = "  " * indent + ("└─ " if indent > 0 else "")
+        page   = node.get("page_index", "?")
+        print(f"{prefix}[{node['node_id']}] {node['title']}  (p.{page})")
+        if node.get("nodes"):
+            print_tree(node["nodes"], indent + 1)
+
+print("📚 Full Document Structure:\n")
+print_tree(pageindex_tree)</pre>
+
+<pre>📚 Full Document Structure:
+
+[0000] Preface  (p.1)
+[0001] MODULE 1  (p.4)
+[0002] Neural Network Refresher  (p.4)
+[0003] Hardware  (p.5)
+[0004] Transformers 101  (p.6)
+[0005] Tokenization Deep Dive  (p.7)
+[0008] Scaling Laws  (p.10)
+[0009] Mixture of Experts  (p.11)
+[0010] Modern LLMs Finetuning  (p.12)
+  └─ [0011] The LLM Development Lifecycle  (p.12)
+  └─ [0012] Pre-Training Deep Dive  (p.12)
+  └─ [0013] Data Preparation for Fine-Tuning  (p.12)
+  └─ [0014] Parameter-Efficient Fine-Tuning (PEFT)  (p.13)
+  └─ [0015] Supervised Fine-Tuning (SFT)  (p.13)
+  └─ [0016] Preference Alignment  (p.13)
+  └─ [0017] The Modern Post-Training Stack  (p.14)
+  └─ [0018] Evaluation  (p.14)
+  └─ [0019] Quantization &amp; Deployment Prep  (p.14)
+  └─ [0020] Tooling &amp; Frameworks  (p.14)
+  └─ [0021] Synthetic Dataset Generation  (p.15)
+  └─ [0022] Reasoning Models  (p.15)
+[0023] SLM  (p.16)
+[0025] Hybrid Architectures — SSMs, Mamba, RWKV &amp; Beyond  (p.18)
+...
+[0032] RAG  (p.25)
+[0035] DSPy — Programmatic LLM Optimization  (p.29)
+[0036] Agents  (p.30)
+[0038] RL  (p.32)
+[0039] Programme Summary  (p.34)</pre>
+
+<pre># ── Count total nodes ────────────────────────────────────────────────────────
+def count_nodes(nodes):
+    total = len(nodes)
+    for n in nodes:
+        if n.get("nodes"):
+            total += count_nodes(n["nodes"])
+    return total
+
+total = count_nodes(pageindex_tree)
+print(f"🔢 Total nodes in tree: {total}")</pre>
+
+<pre>🔢 Total nodes in tree: 40
+   Each node = one retrievable section of the document</pre>
+
+<p>
+  Forty nodes, each one a retrievable section with a title and a page number. Compare that to what a
+  chunker would produce from the same 34 pages: a hundred-plus anonymous fragments, none of which knows
+  which module it belongs to. <strong>This structure is what the LLM reasons over during retrieval.</strong>
+</p>
+
+<hr class="divider">
+
+<h2>LLM Tree Search &mdash; The Core of Vectorless Retrieval</h2>
+<p>
+  This is where PageIndex fundamentally differs from vector RAG. Put the two retrieval mechanics side
+  by side:
+</p>
+
+<pre># Vector RAG retrieval:
+query → embed → cosine_similarity(query_vec, all_chunk_vecs) → top-k chunks
+# Problem: finds what's SIMILAR, not what's RELEVANT
+
+# PageIndex retrieval:
+query + tree → LLM reasons → "nodes 0010 and 0014 contain the answer"
+# Advantage: the LLM understands document structure, context, and intent</pre>
+
+<svg class="diagram-svg diagram-svg--light" style="display:block; max-width:560px; margin:1.5rem auto;" viewBox="0 0 560 620" xmlns="http://www.w3.org/2000/svg" role="img"
+  aria-label="LLM tree search flow. A query about Modern LLM Finetuning goes to the LLM, which reasons over a compressed document tree of 40 nodes. In the tree, the Modern LLMs Finetuning node and its children PEFT, SFT, and Preference Alignment are highlighted as picked, while Preface, Scaling Laws and other nodes are not selected. The LLM returns a node_list of IDs, find_nodes_by_ids fetches the full section text and page numbers, and generate_answer produces a grounded, cited answer such as Section PEFT, Page 13.">
+  <defs>
+    <marker id="c21b-arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f46e5"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
+  <text x="280" y="26" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="15" font-weight="700">LLM Tree Search &#8212; retrieval as reasoning</text>
+
+  <rect x="100" y="42" width="360" height="32" rx="16" fill="#eef2ff" stroke="#4f46e5" stroke-width="1.4"/>
+  <text x="280" y="63" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="12">Query: "What does Modern LLM Finetuning cover?"</text>
+  <line x1="280" y1="74" x2="280" y2="92" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c21b-arr)"/>
+
+  <rect x="180" y="96" width="200" height="46" rx="8" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+  <text x="280" y="115" text-anchor="middle" fill="#92400e" font-family="system-ui" font-size="13.5" font-weight="700">LLM</text>
+  <text x="280" y="132" text-anchor="middle" fill="#b45309" font-family="system-ui" font-size="10.5">reasons over the compressed tree</text>
+  <line x1="280" y1="142" x2="280" y2="160" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c21b-arr)"/>
+
+  <rect x="30" y="164" width="500" height="254" rx="10" fill="#f8fafc" stroke="#d1d5db" stroke-width="1.2"/>
+  <rect x="50" y="180" width="210" height="28" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.3"/>
+  <text x="155" y="199" text-anchor="middle" fill="#374151" font-family="monospace" font-size="11.5">Document tree &#8212; 40 nodes</text>
+
+  <line x1="70" y1="208" x2="70" y2="303" stroke="#cbd5e1" stroke-width="1.3"/>
+  <line x1="70" y1="235" x2="86" y2="235" stroke="#cbd5e1" stroke-width="1.3"/>
+  <line x1="70" y1="269" x2="86" y2="269" stroke="#cbd5e1" stroke-width="1.3"/>
+  <line x1="70" y1="303" x2="86" y2="303" stroke="#cbd5e1" stroke-width="1.3"/>
+
+  <rect x="86" y="222" width="250" height="26" rx="5" fill="#ffffff" stroke="#d1d5db" stroke-width="1.2"/>
+  <text x="98" y="239" fill="#6b7280" font-family="monospace" font-size="11">[0000] Preface</text>
+
+  <rect x="86" y="256" width="250" height="26" rx="5" fill="#ffffff" stroke="#d1d5db" stroke-width="1.2"/>
+  <text x="98" y="273" fill="#6b7280" font-family="monospace" font-size="11">[0008] Scaling Laws</text>
+
+  <rect x="86" y="290" width="250" height="26" rx="5" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+  <text x="98" y="307" fill="#047857" font-family="monospace" font-size="11" font-weight="700">[0010] Modern LLMs Finetuning</text>
+  <text x="346" y="307" fill="#047857" font-family="system-ui" font-size="11" font-style="italic">&#8592; the LLM picks this</text>
+
+  <line x1="106" y1="316" x2="106" y2="386" stroke="#cbd5e1" stroke-width="1.3"/>
+  <line x1="106" y1="331" x2="122" y2="331" stroke="#cbd5e1" stroke-width="1.3"/>
+  <line x1="106" y1="359" x2="122" y2="359" stroke="#cbd5e1" stroke-width="1.3"/>
+  <line x1="106" y1="386" x2="122" y2="386" stroke="#cbd5e1" stroke-width="1.3"/>
+
+  <rect x="122" y="318" width="214" height="24" rx="5" fill="#ecfdf5" stroke="#059669" stroke-width="1.3"/>
+  <text x="132" y="334" fill="#047857" font-family="monospace" font-size="10.5">[0014] PEFT  (p.13)</text>
+  <rect x="122" y="346" width="214" height="24" rx="5" fill="#ecfdf5" stroke="#059669" stroke-width="1.3"/>
+  <text x="132" y="362" fill="#047857" font-family="monospace" font-size="10.5">[0015] SFT  (p.13)</text>
+  <rect x="122" y="374" width="214" height="24" rx="5" fill="#ecfdf5" stroke="#059669" stroke-width="1.3"/>
+  <text x="132" y="390" fill="#047857" font-family="monospace" font-size="10.5">[0016] Preference Alignment  (p.13)</text>
+
+  <text x="86" y="411" fill="#94a3b8" font-family="monospace" font-size="10.5">... [0032] RAG, [0039] Programme Summary &#8212; not selected</text>
+
+  <line x1="280" y1="418" x2="280" y2="436" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c21b-arr)"/>
+
+  <rect x="70" y="440" width="420" height="34" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.4"/>
+  <text x="280" y="462" text-anchor="middle" fill="#5b21b6" font-family="monospace" font-size="11.5">node_list: ["0010", "0014", "0015", "0016", ...]</text>
+  <line x1="280" y1="474" x2="280" y2="492" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c21b-arr)"/>
+
+  <rect x="70" y="496" width="420" height="34" rx="8" fill="#eef2ff" stroke="#4f46e5" stroke-width="1.4"/>
+  <text x="280" y="518" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="12">find_nodes_by_ids() &#8594; full section text + page numbers</text>
+  <line x1="280" y1="530" x2="280" y2="548" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c21b-arr)"/>
+
+  <rect x="70" y="552" width="420" height="46" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.4"/>
+  <text x="280" y="571" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="12" font-weight="700">generate_answer() &#8212; grounded, cited answer</text>
+  <text x="280" y="588" text-anchor="middle" fill="#1f7a54" font-family="monospace" font-size="10.5">(Section: 'PEFT' | Page 13)</text>
+</svg>
+
+<h3>The <code>llm_tree_search</code> Function</h3>
+<p>
+  The whole trick is one prompt. Send the LLM the query plus the document tree, and ask it to return
+  the relevant node IDs <em>with its reasoning</em>. Two details make this production-worthy rather
+  than a toy:
+</p>
+<ul>
+  <li><strong>Tree compression.</strong> The full tree carries the complete text of every section &mdash;
+  far too many tokens to send on every query. The inner <code>compress()</code> helper rebuilds the tree
+  with only <code>node_id</code>, <code>title</code>, <code>page</code>, and the <strong>first 150
+  characters of each summary</strong> &mdash; enough signal to navigate by, at a fraction of the cost.</li>
+  <li><strong>Forced JSON.</strong> <code>response_format={"type": "json_object"}</code> guarantees the
+  reply parses &mdash; a <code>thinking</code> string (the audit trail) and a <code>node_list</code>
+  array (the retrieval result).</li>
+</ul>
+
+<pre># ── LLM Tree Search Function ─────────────────────────────────────────────────
+
+def llm_tree_search(query: str, tree: list, model: str = "gpt-4o") -> dict:
+    """
+    Core PageIndex retrieval:
+    Sends the query + document tree to an LLM.
+    LLM reasons over the structure and returns relevant node_ids.
+
+    Returns: dict with 'thinking' (reasoning) and 'node_list' (node IDs)
+    """
+
+    # Compress tree to save tokens — only send titles + short summaries
+    def compress(nodes):
+        out = []
+        for n in nodes:
+            entry = {
+                "node_id": n["node_id"],
+                "title":   n["title"],
+                "page":    n.get("page_index", "?"),
+                "summary": n.get("text", "")[:150]  # first 150 chars
+            }
+            if n.get("nodes"):
+                entry["children"] = compress(n["nodes"])
+            out.append(entry)
+        return out
+
+    compressed_tree = compress(tree)
+
+    prompt = f"""You are given a query and a document's tree structure (like a Table of Contents).
+Your task: identify which node IDs most likely contain the answer to the query.
+Think step-by-step about which sections are relevant.
+
+Query: {query}
+
+Document Tree:
+{json.dumps(compressed_tree, indent=2)}
+
+Reply ONLY in this exact JSON format:
+{{
+  "thinking": "&lt;your step-by-step reasoning&gt;",
+  "node_list": ["node_id1", "node_id2"]
+}}"""
+
+    response = openai_client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        response_format={"type": "json_object"}
+    )
+
+    return json.loads(response.choices[0].message.content)</pre>
+
+<h3>Watching the LLM Think</h3>
+<p>
+  Run it on a real question and read the reasoning &mdash; this is the part no cosine score can give
+  you:
+</p>
+
+<pre># ── Test with a sample query ─────────────────────────────────────────────────
+query = "What is the syllabus covered in Modern LLM finetuning?"
+
+print(f"🔍 Query: {query}\n")
+result = llm_tree_search(query, pageindex_tree)
+
+print("🧠 LLM Reasoning:")
+print(result.get("thinking", "N/A"))
+print()
+print("🎯 Selected Node IDs:", result.get("node_list", []))</pre>
+
+<pre>🔍 Query: What is the syllabus covered in Modern LLM finetuning?
+
+🧠 LLM Reasoning:
+To find nodes relevant to the query about the syllabus for Modern LLM
+finetuning, I first identify the section titles that directly mention
+'Finetuning' and 'LLMs'. The node labeled 'Modern LLMs Finetuning'
+(node_id: 0010) appears to be highly relevant ... Within this node, several
+children nodes detail various aspects of finetuning, such as pre-training,
+data preparation, parameter-efficient fine-tuning, supervised fine-tuning,
+preference alignment, and more. ...
+
+🎯 Selected Node IDs: ['0010', '0011', '0012', '0013', '0014', '0015',
+'0016', '0017', '0018', '0019', '0020', '0021']</pre>
+
+<p>
+  The LLM did what a person would do: scanned the table of contents, spotted the
+  <em>Modern LLMs Finetuning</em> module, and selected it <strong>along with all of its
+  children</strong>. It understood the hierarchy &mdash; that a question about a module implies its
+  sub-sections &mdash; which is a structural inference no flat chunk store can make.
+</p>
+
+<hr class="divider">
+
+<h2>The Full Pipeline &mdash; Search, Retrieve, Generate</h2>
+<p>
+  Three steps make the complete system: <strong>tree search</strong> picks the node IDs,
+  <strong>retrieval</strong> fetches those nodes' actual content, and <strong>generation</strong>
+  writes a grounded answer with citations. Each step is a small function.
+</p>
+
+<h3>Step 2 &mdash; Retrieve the Nodes</h3>
+<p>
+  The tree search returned IDs; now walk the tree and collect the matching nodes (children included,
+  so the recursion mirrors <code>print_tree</code>):
+</p>
+
+<pre># ── Helper: Find nodes by ID ─────────────────────────────────────────────────
+
+def find_nodes_by_ids(tree: list, target_ids: list) -> list:
+    """Recursively walk the tree and collect nodes matching target_ids."""
+    found = []
+    for node in tree:
+        if node["node_id"] in target_ids:
+            found.append(node)
+        if node.get("nodes"):
+            found.extend(find_nodes_by_ids(node["nodes"], target_ids))
+    return found</pre>
+
+<h3>Step 3 &mdash; Generate With Citations</h3>
+<p>
+  Each retrieved node becomes a labeled context block &mdash;
+  <code>[Section: 'PEFT' | Page 13]</code> &mdash; and the prompt <em>requires</em> the LLM to cite the
+  section title and page number for every claim. Because the context arrives as named sections rather
+  than anonymous chunks, the citations are real, checkable references into the original PDF:
+</p>
+
+<pre># ── Generate answer from retrieved nodes ─────────────────────────────────────
+
+def generate_answer(query: str, nodes: list, model: str = "gpt-4o") -> str:
+    """
+    Takes retrieved nodes as context and generates a grounded answer.
+    Instructs the LLM to cite section titles and page numbers.
+    """
+    if not nodes:
+        return "⚠️ No relevant sections found in the document."
+
+    # Build context string from retrieved nodes
+    context_parts = []
+    for node in nodes:
+        context_parts.append(
+            f"[Section: '{node['title']}' | Page {node.get('page_index', '?')}]\n"
+            f"{node.get('text', 'Content not available.')}"
+        )
+    context = "\n\n---\n\n".join(context_parts)
+
+    prompt = f"""You are an expert document analyst.
+Answer the question using ONLY the provided context.
+For every claim you make, cite the section title and page number in parentheses.
+Be concise and precise.
+
+Question: {query}
+
+Context:
+{context}
+
+Answer:"""
+
+    response = openai_client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    return response.choices[0].message.content</pre>
+
+<h3>Putting It Together</h3>
+<p>One function chains the three steps, with verbose logging so you can watch every stage:</p>
+
+<pre># ── The complete Vectorless RAG function ─────────────────────────────────────
+
+def vectorless_rag(query: str, tree: list, verbose: bool = True) -> str:
+    """
+    Full end-to-end PageIndex RAG pipeline:
+
+    Step 1: LLM Tree Search  → finds relevant node_ids
+    Step 2: Node Retrieval   → fetches section content
+    Step 3: Answer Generation → produces cited answer
+    """
+    if verbose:
+        print(f"{'='*55}")
+        print(f"🔍 Query: {query}")
+        print(f"{'='*55}")
+
+    # Step 1: Tree Search
+    search_result  = llm_tree_search(query, tree)
+    node_ids       = search_result.get("node_list", [])
+
+    if verbose:
+        print(f"\n🧠 Reasoning: {search_result.get('thinking', '')[:200]}...")
+        print(f"🎯 Retrieved node IDs: {node_ids}")
+
+    # Step 2: Retrieve nodes
+    nodes = find_nodes_by_ids(tree, node_ids)
+
+    if verbose:
+        print(f"📄 Sections found: {[n['title'] for n in nodes]}")
+
+    # Step 3: Generate answer
+    answer = generate_answer(query, nodes)
+
+    if verbose:
+        print(f"\n📝 Answer:\n{answer}")
+
+    return answer</pre>
+
+<pre># ── Run the full pipeline ────────────────────────────────────────────────────
+answer = vectorless_rag(
+    query="What are the syllabus covered in modern llm finetuning?",
+    tree=pageindex_tree
+)</pre>
+
+<pre>=======================================================
+🔍 Query: What are the syllabus covered in modern llm finetuning?
+=======================================================
+
+🧠 Reasoning: The query asks about the syllabus covered in modern LLM
+fine-tuning. Looking at the document tree, the most relevant section under
+'Modern LLMs Finetuning' is node_id '0010'. ...
+🎯 Retrieved node IDs: ['0010', '0013', '0014', '0015', '0016', '0017', '0018']
+📄 Sections found: ['Modern LLMs Finetuning', 'Data Preparation for
+Fine-Tuning', 'Parameter-Efficient Fine-Tuning (PEFT)', 'Supervised
+Fine-Tuning (SFT)', 'Preference Alignment', 'The Modern Post-Training Stack',
+'Evaluation']
+
+📝 Answer:
+The syllabus covered in modern LLM fine-tuning includes:
+
+1. **Pre-training**
+2. **Data Preparation**: Topics include dataset formats, chat templates, loss
+   masking, ... (Section: 'Data Preparation for Fine-Tuning', Page 12).
+3. **Parameter-Efficient Fine-Tuning (PEFT)**: Covers various techniques like
+   LoRA, QLoRA, DoRA, AdaLoRA ... (Section: 'PEFT', Page 13).
+4. **Supervised Fine-Tuning (SFT)**: Instruction tuning, chat fine-tuning,
+   chain-of-thought fine-tuning ... (Section: 'SFT', Page 13).
+5. **Preference Alignment**: RLHF with PPO, DPO, ORPO, SimPO ...
+   (Section: 'Preference Alignment', Page 13).
+6. **Evaluation**: Benchmark types, detecting overfitting and capability
+   regression (Section: 'Evaluation', Page 14).
+...</pre>
+
+<p>
+  Every claim lands with a <strong>(Section, Page)</strong> citation. And it generalizes &mdash; the
+  notebook fires three different queries through the same pipeline:
+</p>
+
+<pre># ── Test with multiple queries ───────────────────────────────────────────────
+test_queries = [
+    "What are the syllabus covered in modern llm finetuning?",
+    "What are the syllabus covered in RAG?",
+    "Summarize the syllabus of Tokenization Deep Dive?",
+]
+
+for q in test_queries:
+    print()
+    ans = vectorless_rag(q, pageindex_tree, verbose=False)
+    print(f"Q: {q}")
+    print(f"A: {ans[:300]}...")
+    print("-" * 55)</pre>
+
+<pre>Q: What are the syllabus covered in RAG?
+A: The syllabus covered in RAG includes:
+- Vanilla RAG
+- Embedding models
+- Chunking Strategies
+- BM25, SPLADE &amp; Multi Vector COLBERT
+- Hybrid RAG
+- Query Transformations
+- RAG Evaluations
+- Rerankers
+- Self RAG / Corrective RAG / Adaptive RAG
+- Agentic RAG ...
+-------------------------------------------------------
+
+Q: Summarize the syllabus of Tokenization Deep Dive?
+A: The syllabus for "Tokenization Deep Dive" covers a comprehensive
+exploration of tokenization strategies, including classical methods like
+byte pair encoding (BPE), WordPiece, SentencePiece, and advanced approaches
+involving Byte Latent Transformers (BLT) ...
+-------------------------------------------------------</pre>
+
+<div class="example-block">
+  <div class="label">Notice What's Missing</div>
+  <p>
+    No <code>FAISS.from_texts</code>. No <code>HuggingFaceEmbeddings</code>. No
+    <code>similarity_search(k=4)</code>. The entire retrieval layer that Chapters 4&ndash;5 built is
+    replaced by <strong>one LLM call over a JSON tree</strong> &mdash; and the &ldquo;index&rdquo; is
+    just a JSON file you could check into git. That's the &ldquo;vectorless&rdquo; in Vectorless RAG.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Expert-Guided Retrieval &mdash; Domain Knowledge as a Prompt</h2>
+<p>
+  Here's the feature the notebook calls <em>&ldquo;the killer feature no one talks about.&rdquo;</em>
+  Suppose your retrieval keeps missing because your domain has conventions the model doesn't know
+  &mdash; in finance, EBITDA questions are answered in the MD&amp;A section; in legal, definitions
+  live in the annexes. With vector RAG, teaching the retriever this kind of knowledge means
+  <strong>fine-tuning the embedding model</strong> &mdash; expensive, slow, and it has to be redone
+  for every domain.
+</p>
+<p>
+  With tree search, domain expertise is <strong>just more prompt text</strong>. You write routing
+  rules like a senior analyst's playbook and inject them into the retrieval prompt:
+</p>
+
+<pre># ── Define domain expert rules ───────────────────────────────────────────────
+# Routing rules that tell the LLM WHERE to look for specific queries.
+# Think of it as encoding a senior analyst's institutional knowledge.
+
+FINANCIAL_EXPERT_RULES = """
+Expert routing rules for financial documents (10-K, annual reports):
+- EBITDA, profitability queries    → MD&amp;A section (Management Discussion &amp; Analysis)
+- Liquidity, cash flow queries     → Cash Flow Statement + liquidity footnotes
+- Risk factor queries              → Part I, Item 1A (Risk Factors)
+- Revenue breakdown queries        → Segment reporting or Item 7
+- Forward-looking / strategy       → CEO letter, Outlook, Strategy section
+- Debt, credit, leverage queries   → Balance Sheet + debt footnotes
+- Regulatory / compliance queries  → Legal Proceedings or regulatory filings
+"""</pre>
+
+<p>
+  That's the pattern. Since our indexed document is a course syllabus rather than a 10-K, the notebook
+  then redefines the rules (reusing the same variable name) as a <strong>module router</strong> for
+  the &ldquo;Advanced Route of Learning AI&rdquo; document &mdash; one line per module, plus
+  cross-cutting rules for queries that span modules:
+</p>
+
+<pre># ── Expert Routing Rules — Advanced Route of Learning AI ─────────────────────
+FINANCIAL_EXPERT_RULES = """
+Route queries to the correct module using these rules:
+
+M1  Neural Network Refresher   → backprop, activations, optimizers, PyTorch basics
+M2  Hardware                   → GPU, TPU, Apple Silicon, compute infrastructure
+M3  Transformers 101           → attention, self-attention, encoder-decoder, MHA
+M4  Tokenization               → BPE, WordPiece, SentencePiece, Byte Latent Transformers
+M5  Finetuning Architectures   → hands-on BERT/GPT/T5 finetuning, Hugging Face
+M6  KV Cache &amp; Attention       → KV cache, Flash Attention, MQA, GQA, RoPE, vLLM
+M7  Scaling Laws               → Kaplan, Chinchilla, compute-optimal training
+M8  Mixture of Experts         → MoE, sparse computation, Mixture of Depths
+M9  Modern LLM Finetuning      → LoRA, QLoRA, SFT, DPO, PPO, RLHF, GRPO, ORPO,
+                                  quantization, TRL, Unsloth, synthetic data,
+                                  reasoning models, evaluation, deployment
+M10 SLM                        → small language models, pruning, when SLM vs LLM
+M11 Knowledge Distillation     → student-teacher, soft labels, DistilBERT, DeepSeek-R1
+M12 Hybrid Architectures       → Mamba, RWKV, SSMs, Jamba, beyond Transformers
+M13 Vision Foundations         → ViT, patch embeddings, CLIP, SigLIP, DINOv2
+M14 Visual Language Models     → VLM architecture, aligner, multimodal reasoning
+M15 Stable Diffusion &amp; DiT     → DDPM, latent diffusion, FLUX.1, ControlNet
+M16 Embedding Models           → dense, sparse, binary, Matryoshka, MRL, fine-tuning
+M17 RAG                        → chunking, BM25, ColBERT, hybrid RAG, rerankers,
+                                  self/corrective/adaptive/agentic RAG, Graph RAG,
+                                  multi-modal RAG, ColPali, RAG security
+M18 Context Engineering        → prompt vs context engineering, memory architecture,
+                                  context compression, KV cache, agent context lifecycle
+M19 DSPy                       → signatures, modules, MIPROv2, self-optimizing RAG
+M20 Agents                     → ReAct, MCP, LangGraph, CrewAI, browser agents,
+                                  A2A, guardrails, observability, evaluation
+M21 RL                         → PPO, GRPO, DAPO, GSPO, CISPO, reward models,
+                                  RLHF vs RLVR, policy gradient, DeepSeek-R1 training
+
+Cross-cutting rules:
+- "learning path / where to start"     → M1 → M2 → M3 in order
+- "production / deployment / serving"  → M9 (quantization) + M20 (agents)
+- "fine-tuning vs RAG"                 → M9 + M17 + M18
+- "multimodal / vision + language"     → M13 + M14 + M17 (multi-modal RAG)
+- "reasoning models / test-time RL"    → M9 (reasoning) + M21 (GRPO/DAPO)
+"""</pre>
+
+<h3>Injecting the Rules Into Tree Search</h3>
+<p>
+  The expert version of the search function is <code>llm_tree_search</code> with one extra prompt
+  block &mdash; the rules &mdash; and an instruction to follow them:
+</p>
+
+<pre># ── Expert-guided tree search ────────────────────────────────────────────────
+
+def llm_tree_search_with_expert(
+    query: str,
+    tree: list,
+    expert_rules: str,
+    model: str = "gpt-4o"
+) -> dict:
+    """
+    Same as llm_tree_search() but with domain expert rules injected.
+    The LLM uses these rules to guide its reasoning.
+    """
+
+    def compress(nodes):
+        out = []
+        for n in nodes:
+            entry = {"node_id": n["node_id"], "title": n["title"],
+                     "page": n.get("page_index", "?"),
+                     "summary": n.get("text", "")[:150]}
+            if n.get("nodes"):
+                entry["children"] = compress(n["nodes"])
+            out.append(entry)
+        return out
+
+    prompt = f"""You are a domain expert analyzing a document.
+Find all node IDs that most likely contain the answer to the query.
+Use the expert routing rules below to guide your reasoning.
+
+Query: {query}
+
+Document Tree:
+{json.dumps(compress(tree), indent=2)}
+
+Expert Routing Rules (follow these carefully):
+{expert_rules}
+
+Reply ONLY in this JSON format:
+{{
+  "thinking": "&lt;your reasoning, referencing the expert rules&gt;",
+  "node_list": ["node_id1", "node_id2"]
+}}"""
+
+    response = openai_client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        response_format={"type": "json_object"}
+    )
+    return json.loads(response.choices[0].message.content)</pre>
+
+<h3>With Rules vs Without</h3>
+<p>Same query, both searchers &mdash; watch what the rules do to the selection:</p>
+
+<pre># ── Test expert-guided retrieval ─────────────────────────────────────────────
+query = "Details of the modern llm finetuning?"
+
+print("── Without Expert Rules ──")
+basic   = llm_tree_search(query, pageindex_tree)
+print("Nodes:", basic.get("node_list"))
+
+print("\n── With Expert Rules ──")
+guided  = llm_tree_search_with_expert(query, pageindex_tree, FINANCIAL_EXPERT_RULES)
+print("Nodes:", guided.get("node_list"))
+print("Reasoning:", guided.get("thinking", "")[:300])</pre>
+
+<pre>── Without Expert Rules ──
+Nodes: ['0010', '0011', '0012', '0013', '0014', '0015', '0016', '0017',
+'0018', '0019', '0020', '0021']
+
+── With Expert Rules ──
+Nodes: ['0010', '0014', '0015', '0016', '0018', '0020']
+Reasoning: Based on the expert routing rules, the query 'Details of the modern
+llm finetuning?' aligns with M9, which covers Modern LLM Finetuning. This
+module includes topics like LoRA, QLoRA, SFT, DPO, PPO, RLHF, GRPO, ORPO,
+quantization, evaluation, and deployment ...</pre>
+
+<p>
+  Without rules, the LLM grabbed the whole module &mdash; twelve nodes. With rules, it selected the
+  <strong>six sections that M9 actually emphasizes</strong> (PEFT, SFT, alignment, evaluation,
+  tooling) &mdash; tighter context, cheaper generation, more focused answer. The end-to-end wrapper is
+  three lines:
+</p>
+
+<pre># ── Full expert-guided RAG ───────────────────────────────────────────────────
+
+def expert_rag(query: str, tree: list, rules: str) -> str:
+    """Expert-guided end-to-end RAG pipeline."""
+    result  = llm_tree_search_with_expert(query, tree, rules)
+    nodes   = find_nodes_by_ids(tree, result.get("node_list", []))
+    return generate_answer(query, nodes)
+
+answer = expert_rag(
+    query="Details of the syllabus of modern llm finetuning",
+    tree=pageindex_tree,
+    rules=FINANCIAL_EXPERT_RULES
+)
+print(answer)</pre>
+
+<pre>The syllabus for modern LLM fine-tuning includes several key components:
+
+1. **Comprehensive Fine-Tuning Stack**: Pre-training, data preparation, PEFT,
+   SFT, preference alignment, evaluation, quantization, tooling, and synthetic
+   data generation (Section: 'Modern LLMs Finetuning' | Page 12).
+2. **Parameter-Efficient Fine-Tuning (PEFT)**: LoRA, QLoRA, and adapter tuning,
+   focusing on efficient adjustment without full retraining
+   (Section: 'Parameter-Efficient Fine-Tuning (PEFT)' | Page 13).
+3. **Supervised Fine-Tuning (SFT)**: Instruction tuning, conversational
+   fine-tuning, and domain-specific practices (Section: 'SFT' | Page 13).
+4. **Preference Alignment**: RLHF with PPO and direct preference optimization
+   methods (Section: 'Preference Alignment' | Page 13).
+...</pre>
+
+<div class="example-block">
+  <div class="label">Why This Is the Killer Feature</div>
+  <p>
+    Domain adaptation became <strong>prompt engineering</strong>. A financial analyst, a lawyer, or a
+    doctor can read those routing rules, correct them, and extend them &mdash; no ML expertise, no
+    training run, no re-indexing. Compare the vector-RAG equivalent: collect labeled query&ndash;chunk
+    pairs, fine-tune the embedding model, re-embed the corpus, re-evaluate. PageIndex makes the
+    system's <em>retrieval policy</em> a human-readable, human-editable document.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>The Chat API &mdash; Zero LLM Setup</h2>
+<p>
+  Everything so far drove the reasoning LLM ourselves &mdash; useful when you want control over the
+  model, the prompts, and the rules. If you just want Q&amp;A over a document, PageIndex also runs the
+  LLM for you: pass a question and a <code>doc_id</code> to <code>chat_completions</code>, and no
+  OpenAI key is involved at all.
+</p>
+
+<pre># ── Single question with Chat API ────────────────────────────────────────────
+# No OpenAI key needed — PageIndex runs the LLM internally
+
+question = "What are the key findings in this document?"
+
+response = pi_client.chat_completions(
+    messages=[{"role": "user", "content": question}],
+    doc_id=doc_id
+)
+
+answer = response["choices"][0]["message"]["content"]
+print("💬 Chat API Answer:")
+print(answer)</pre>
+
+<pre>💬 Chat API Answer:
+This is a **comprehensive AI course syllabus** from Krish Naik Academy
+(2025-2026 cohort) titled "Advanced Route of Learning AI."
+
+### Scope &amp; Scale
+- **21 modules**, 38 sections, **481 topics**
+- Progression from fundamentals to advanced production-ready AI systems
+
+### Core Coverage Areas
+**1. Foundations** — Neural Networks, Transformers, Tokenization, Hardware
+**2. Advanced Architectures** — Scaling Laws, MoE, Mamba/RWKV, KV Cache
+**3. LLM Training &amp; Fine-Tuning** — PEFT (LoRA, QLoRA, DoRA), RLHF, DPO, ORPO
+**4. Specialized Models** — Reasoning models, SLMs, VLMs, Diffusion Transformers
+**5. Production Systems** — RAG (hybrid/agentic/Graph), DSPy, Agents, RL
+...</pre>
+
+<p>
+  Multi-turn chat works the same way &mdash; keep the message history yourself and send the whole
+  conversation each turn, exactly like the raw OpenAI chat format:
+</p>
+
+<pre># ── Multi-turn conversation ───────────────────────────────────────────────────
+conversation_history = []
+
+def chat_with_doc(user_message: str, doc_id: str) -> str:
+    """Chat with a document, maintaining conversation history."""
+    global conversation_history
+
+    conversation_history.append({"role": "user", "content": user_message})
+
+    response = pi_client.chat_completions(
+        messages=conversation_history,
+        doc_id=doc_id
+    )
+
+    assistant_reply = response["choices"][0]["message"]["content"]
+    conversation_history.append({"role": "assistant", "content": assistant_reply})
+
+    return assistant_reply</pre>
+
+<p>
+  Note what this <em>doesn't</em> give you: no custom expert rules, no choice of reasoning model, no
+  visibility into the tree search. It's the managed tier &mdash; perfect for a quick document-chat
+  product, wrong for a pipeline you need to steer. Chapter 19's trade-off between
+  <code>create_react_agent</code> and a hand-built graph is the same shape: convenience vs control.
+</p>
+
+<hr class="divider">
+
+<h2>Self-Hosting the Open-Source Version</h2>
+<p>
+  Everything above sent the PDF to the PageIndex cloud. When that's a non-starter &mdash; data privacy,
+  on-prem requirements, or you simply want to inspect the tree-building logic &mdash; the open-source
+  repo at <code>github.com/VectifyAI/PageIndex</code> runs the entire indexing pipeline locally, using
+  your own OpenAI key:
+</p>
+
+<pre># ── Clone the open-source repo ───────────────────────────────────────────────
+!git clone https://github.com/VectifyAI/PageIndex.git
+%cd PageIndex
+!pip install -r requirements.txt</pre>
+
+<pre># ── Create .env for self-hosted mode ─────────────────────────────────────────
+# The local runner uses CHATGPT_API_KEY (not OPENAI_API_KEY)
+
+import os
+openai_key = os.getenv("OPENAI_API_KEY", "your_key_here")
+
+with open(".env", "w") as f:
+    f.write(f"CHATGPT_API_KEY={openai_key}\n")
+
+print("✅ .env created for self-hosted mode")</pre>
+
+<div class="example-block">
+  <div class="label">Gotcha &mdash; Two Different Env Var Names</div>
+  <p>
+    The SDK path reads <code>OPENAI_API_KEY</code>; the self-hosted CLI reads
+    <code>CHATGPT_API_KEY</code>. Same key, different variable name &mdash; the cell above bridges the
+    two. If the local runner complains about a missing key while your environment is clearly set,
+    this is why.
+  </p>
+</div>
+
+<p>
+  The CLI reads your PDF, detects an existing table of contents if there is one, uses GPT-4o to build
+  the hierarchical tree, and saves <code>&lt;your_pdf_name&gt;_pageindex.json</code> next to the PDF:
+</p>
+
+<pre># ── Run PageIndex locally on a PDF ───────────────────────────────────────────
+PDF_PATH = "/path/to/your/document.pdf"   # ← change this
+
+!python run_pageindex.py \
+    --pdf_path {PDF_PATH} \
+    --model gpt-4o-2024-11-20 \
+    --toc-check-pages 20 \
+    --max-pages-per-node 10 \
+    --if-add-node-summary yes</pre>
+
+<table>
+  <thead>
+    <tr><th>Flag</th><th>Default</th><th>What it controls</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>--model</code></td>
+      <td><code>gpt-4o-2024-11-20</code></td>
+      <td>The OpenAI model that reads the document and builds the tree</td>
+    </tr>
+    <tr>
+      <td><code>--toc-check-pages</code></td>
+      <td><code>20</code></td>
+      <td>How many leading pages to scan for an existing Table of Contents to seed the tree</td>
+    </tr>
+    <tr>
+      <td><code>--max-pages-per-node</code></td>
+      <td><code>10</code></td>
+      <td>Upper bound on pages per tree node &mdash; keeps leaf sections a readable size</td>
+    </tr>
+    <tr>
+      <td><code>--if-add-node-summary</code></td>
+      <td><code>yes/no</code></td>
+      <td>Whether to generate the per-node summaries (you want <code>yes</code> &mdash; tree search reads them)</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  The payoff: the local JSON tree is a drop-in replacement. Load it and every function from this
+  chapter &mdash; <code>llm_tree_search</code>, <code>vectorless_rag</code>, <code>expert_rag</code>
+  &mdash; works identically:
+</p>
+
+<pre># ── Load locally generated tree ──────────────────────────────────────────────
+import json
+
+TREE_JSON_PATH = "/path/to/your/document_pageindex.json"  # ← change this
+
+with open(TREE_JSON_PATH, "r") as f:
+    local_tree = json.load(f)
+
+print(f"🌲 Local tree loaded: {count_nodes(local_tree)} total nodes")
+print_tree(local_tree)
+
+# Everything from the earlier sections works identically with local trees
+query  = "Summarize the executive summary section."
+answer = vectorless_rag(query, local_tree)</pre>
+
+<p>
+  One housekeeping note for the cloud path: when you're done with a document, delete it from the
+  PageIndex cloud &mdash; <code>pi_client.delete_document(doc_id)</code> permanently removes the tree
+  index, so only run it when you truly won't reuse that <code>doc_id</code>.
+</p>
+
+<hr class="divider">
+
+<h2>Vector RAG vs Vectorless RAG &mdash; The Honest Comparison</h2>
+<p>
+  Merging the deck's eight production dimensions with the notebook's architecture table gives the full
+  picture:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Dimension</th><th>Traditional Vector RAG</th><th>Vectorless RAG (PageIndex)</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Document prep</strong></td>
+      <td>Chunk into fixed pieces</td>
+      <td>Build hierarchical tree</td>
+    </tr>
+    <tr>
+      <td><strong>Indexing</strong></td>
+      <td>Embed each chunk</td>
+      <td>LLM reads structure</td>
+    </tr>
+    <tr>
+      <td><strong>Storage</strong></td>
+      <td>Vector database</td>
+      <td>JSON file</td>
+    </tr>
+    <tr>
+      <td><strong>Query processing</strong></td>
+      <td>Embed query &rarr; ANN search</td>
+      <td>LLM reasons over tree</td>
+    </tr>
+    <tr>
+      <td><strong>What's retrieved</strong></td>
+      <td>Flat anonymous chunks</td>
+      <td>Named sections + page refs</td>
+    </tr>
+    <tr>
+      <td><strong>Scale</strong></td>
+      <td>Millions of docs &#10003;</td>
+      <td>Tens to thousands</td>
+    </tr>
+    <tr>
+      <td><strong>Latency / query</strong></td>
+      <td>Milliseconds &#10003;</td>
+      <td>Hundreds of ms &ndash; seconds</td>
+    </tr>
+    <tr>
+      <td><strong>Cost / query</strong></td>
+      <td>Cheap &#10003; (one embed + lookup)</td>
+      <td>Higher (LLM calls per query)</td>
+    </tr>
+    <tr>
+      <td><strong>Cross-section reasoning</strong></td>
+      <td>Weak</td>
+      <td>Strong &#10003;</td>
+    </tr>
+    <tr>
+      <td><strong>Explainability</strong></td>
+      <td>Cosine score (opaque)</td>
+      <td>Navigation path &#10003;</td>
+    </tr>
+    <tr>
+      <td><strong>Domain expertise</strong></td>
+      <td>Needs embedding fine-tune</td>
+      <td>Add rules to the prompt &#10003;</td>
+    </tr>
+    <tr>
+      <td><strong>Ecosystem maturity</strong></td>
+      <td>Very mature &#10003;</td>
+      <td>Emerging</td>
+    </tr>
+    <tr>
+      <td><strong>FinanceBench accuracy</strong></td>
+      <td>~80%</td>
+      <td><strong>98.7%</strong></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>When to Use Which</h3>
+
+<table>
+  <thead>
+    <tr><th>Your situation</th><th>Pick</th><th>Because</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Massive heterogeneous corpora &mdash; millions of mixed docs, tickets, transcripts</td>
+      <td><strong>Traditional</strong></td>
+      <td>Vector search is unbeatable on scale</td>
+    </tr>
+    <tr>
+      <td>Latency-critical apps &mdash; chatbots, search-as-you-type, voice</td>
+      <td><strong>Traditional</strong></td>
+      <td>Milliseconds vs seconds per query</td>
+    </tr>
+    <tr>
+      <td>Short factoid queries &mdash; &ldquo;What's the warranty period?&rdquo;</td>
+      <td><strong>Traditional</strong></td>
+      <td>The answer lives in one chunk anyway</td>
+    </tr>
+    <tr>
+      <td>Cost-sensitive at scale &mdash; thousands of queries per minute</td>
+      <td><strong>Traditional</strong></td>
+      <td>Embedding lookups are pennies; LLM tree-walks aren't</td>
+    </tr>
+    <tr>
+      <td>Long, structured documents &mdash; reports, 10-Ks, contracts, textbooks</td>
+      <td><strong>Vectorless</strong></td>
+      <td>The structure is the retrieval signal</td>
+    </tr>
+    <tr>
+      <td>Reasoning &gt; similarity &mdash; &ldquo;compare risks in &sect;7 to mitigations in &sect;12&rdquo;</td>
+      <td><strong>Vectorless</strong></td>
+      <td>Pure similarity can't cross sections</td>
+    </tr>
+    <tr>
+      <td>Explainability required &mdash; compliance, audit, legal, financial advisory</td>
+      <td><strong>Vectorless</strong></td>
+      <td>Show your work, not just the answer</td>
+    </tr>
+    <tr>
+      <td>Chunking destroys meaning &mdash; cross-references like &ldquo;as defined in &sect;3.2&rdquo;</td>
+      <td><strong>Vectorless</strong></td>
+      <td>Sections stay whole, references stay resolvable</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>The Two-Question Decision Heuristic</h3>
+<p>The deck compresses the whole decision into two questions:</p>
+<p>
+  <strong>Q1 &mdash; Is the answer in one localized chunk, or does it require navigating
+  structure?</strong> Localized points to traditional; structural points to vectorless.
+</p>
+<p>
+  <strong>Q2 &mdash; What does your corpus look like?</strong>
+</p>
+<ul>
+  <li><strong>Millions of docs</strong> &rarr; Traditional RAG &mdash; vector search wins on scale.</li>
+  <li><strong>Hundreds to thousands</strong> &rarr; either works &mdash; pick based on query type (Q1).</li>
+  <li><strong>Tens of long, well-structured docs</strong> (TOC, headings) &rarr; likely vectorless &mdash; tree navigation is reliable.</li>
+  <li><strong>Mixed structure</strong> &rarr; hybrid &mdash; vector to filter, tree to reason.</li>
+  <li><strong>Truly unstructured</strong> &rarr; Traditional RAG &mdash; a tree adds little value.</li>
+</ul>
+
+<h3>The Hybrid Pattern</h3>
+<p>
+  Which brings us to where serious production systems actually land: <strong>both</strong>. Vectors
+  are a filter; trees are a microscope.
+</p>
+
+<svg class="diagram-svg diagram-svg--light" viewBox="0 0 940 220" xmlns="http://www.w3.org/2000/svg" role="img"
+  aria-label="The hybrid pattern in four stages. Stage 1, vector filter: embed the query and narrow millions of docs to about ten candidates. Stage 2, tree per candidate: each candidate has a pre-built hierarchical index. Stage 3, LLM navigates: walks each tree to the precise sections. Stage 4, generate: full-section context plus citation paths. Caption: vectors narrow the search space; trees do the precise reasoning inside it.">
+  <defs>
+    <marker id="c21c-arr" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f46e5"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
+  <text x="470" y="30" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="15" font-weight="700">The Hybrid Pattern &#8212; scale from vectors, precision from trees</text>
+
+  <rect x="24" y="52" width="196" height="84" rx="8" fill="#eef2ff" stroke="#4f46e5" stroke-width="1.5"/>
+  <text x="122" y="72" text-anchor="middle" fill="#94a3b8" font-family="system-ui" font-size="10.5" font-weight="600">STAGE 1</text>
+  <text x="122" y="92" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="13.5" font-weight="700">Vector filter</text>
+  <text x="122" y="110" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">embed query; narrow millions</text>
+  <text x="122" y="124" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">of docs to top ~10 candidates</text>
+  <line x1="220" y1="94" x2="250" y2="94" stroke="#4f46e5" stroke-width="1.6" marker-end="url(#c21c-arr)"/>
+
+  <rect x="254" y="52" width="196" height="84" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+  <text x="352" y="72" text-anchor="middle" fill="#94a3b8" font-family="system-ui" font-size="10.5" font-weight="600">STAGE 2</text>
+  <text x="352" y="92" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="13.5" font-weight="700">Tree per candidate</text>
+  <text x="352" y="110" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">each candidate has a</text>
+  <text x="352" y="124" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">pre-built hierarchical index</text>
+  <line x1="450" y1="94" x2="480" y2="94" stroke="#4f46e5" stroke-width="1.6" marker-end="url(#c21c-arr)"/>
+
+  <rect x="484" y="52" width="196" height="84" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="582" y="72" text-anchor="middle" fill="#94a3b8" font-family="system-ui" font-size="10.5" font-weight="600">STAGE 3</text>
+  <text x="582" y="92" text-anchor="middle" fill="#5b21b6" font-family="system-ui" font-size="13.5" font-weight="700">LLM navigates</text>
+  <text x="582" y="110" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">walks each tree to the</text>
+  <text x="582" y="124" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">precise sections</text>
+  <line x1="680" y1="94" x2="710" y2="94" stroke="#4f46e5" stroke-width="1.6" marker-end="url(#c21c-arr)"/>
+
+  <rect x="714" y="52" width="196" height="84" rx="8" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+  <text x="812" y="72" text-anchor="middle" fill="#94a3b8" font-family="system-ui" font-size="10.5" font-weight="600">STAGE 4</text>
+  <text x="812" y="92" text-anchor="middle" fill="#92400e" font-family="system-ui" font-size="13.5" font-weight="700">Generate</text>
+  <text x="812" y="110" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">full-section context +</text>
+  <text x="812" y="124" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">citation paths</text>
+
+  <text x="470" y="176" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="12.5">Vectors narrow the search space; trees do the precise reasoning inside it.</text>
+  <text x="470" y="198" text-anchor="middle" fill="#6b7280" font-family="system-ui" font-size="11.5" font-style="italic">Scale from vectors &#183; precision from trees &#183; explainability from navigation paths</text>
+</svg>
+
+<div class="example-block">
+  <div class="label">They're Not Competitors</div>
+  <p>
+    Pure vector search and pure tree navigation are both extremes. The right pick depends on
+    <strong>the document, not the hype</strong>: long structured filings &rarr; vectorless; mixed
+    knowledge base &rarr; vector; big system &rarr; hybrid. If you remember one sentence from the
+    deck, make it this one.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+<div class="example-block">
+  <div class="label">Remember These Four</div>
+  <p><strong>1. Similarity &ne; relevance &mdash; that's the whole motivation.</strong> Cosine similarity finds chunks that <em>look like</em> the query, and on long professional documents that's routinely the wrong section. Vectorless RAG replaces the similarity score with LLM reasoning over the document's own structure &mdash; and posts 98.7% on FinanceBench vs ~80% for vector RAG.</p>
+  <p><strong>2. The tree is the index.</strong> PageIndex turns a PDF into a hierarchy of nodes &mdash; <code>node_id</code>, <code>title</code>, <code>page_index</code>, summary, children &mdash; stored as plain JSON. Retrieval is <code>llm_tree_search</code> (LLM picks node IDs, with its <code>thinking</code> as an audit trail) &rarr; <code>find_nodes_by_ids</code> &rarr; <code>generate_answer</code> with (Section, Page) citations on every claim.</p>
+  <p><strong>3. Domain expertise is just prompt text.</strong> Expert routing rules &mdash; &ldquo;EBITDA &rarr; MD&amp;A section&rdquo;, &ldquo;fine-tuning questions &rarr; M9&rdquo; &mdash; get injected into the retrieval prompt and immediately reshape what gets retrieved. No embedding fine-tune, no re-indexing, and the rules stay human-readable and human-editable.</p>
+  <p><strong>4. Pick by document, and go hybrid at scale.</strong> Millions of mixed docs, factoid queries, tight latency &rarr; vector RAG. Tens-to-thousands of long structured docs, cross-section reasoning, audit trails &rarr; vectorless. Serious production systems chain them: vector filter to ~10 candidates, then tree navigation inside each &mdash; scale from vectors, precision from trees.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter20">&larr; Chapter 20: Cache-Augmented Generation (CAG)</a>
+    <span></span>
+</nav>

@@ -26,6 +26,14 @@ has — see the verify step in the workflow):
 grep -rn $'�' chapters/      # find corrupted chars (esp. inside inline SVG); should be empty
 ```
 
+If dark-theme colors ever sneak into a diagram, this maintenance script rewrites
+`chapters/*.html` in place, mapping the old dark SVG palette to the light one and
+injecting the white canvas rect (idempotent):
+
+```bash
+python3 scripts/lighten-diagrams.py
+```
+
 Published via GitHub Pages at https://ankitkumar7217734.github.io/rag-bootcamp/
 (`.nojekyll` is present so Pages serves the files as-is).
 
@@ -34,10 +42,11 @@ Published via GitHub Pages at https://ankitkumar7217734.github.io/rag-bootcamp/
 ## What this project is
 
 A static, no-build **single-page documentation site** for a RAG (Retrieval-
-Augmented Generation) course. Dark theme, indigo accent, doc-site feel. Each
-"chapter" is a standalone HTML fragment loaded dynamically by a tiny hash router.
-No frameworks, no bundler — just `index.html` + `style.css` + `app.js` +
-`chapters.js` + one HTML file per chapter.
+Augmented Generation) course. Dark theme, indigo accent, doc-site feel — except
+**diagrams, which sit on a white canvas with a light palette** so the "Copy
+image" button exports clean PNGs. Each "chapter" is a standalone HTML fragment
+loaded dynamically by a tiny hash router. No frameworks, no bundler — just
+`index.html` + `style.css` + `app.js` + `chapters.js` + one HTML file per chapter.
 
 The chapters are the **web version of the user's handwritten RAG bootcamp
 notes**. The user gives source material (a PDF of notes, `.ipynb` notebooks,
@@ -53,7 +62,7 @@ each entry may carry a `children` array of sub-chapters. The sidebar, homepage
 cards, and routing are all *generated* from it; registering a chapter there is
 the only wiring step. There is no central route table to update.
 
-`app.js` (loaded after `chapters.js`) is the whole engine, ~480 lines, no
+`app.js` (loaded after `chapters.js`) is the whole engine, ~700 lines, no
 dependencies except highlight.js from a CDN:
 
 - **Routing is hash-based.** `handleRoute()` runs on `DOMContentLoaded` and on
@@ -66,22 +75,30 @@ dependencies except highlight.js from a CDN:
   pipeline: `buildTOC` (scans `h2`/`h3`, assigns stable ids, wires an
   `IntersectionObserver` scroll-spy) → `highlightCode` (highlight.js,
   language auto-detected) → `addCopyButtons` (wraps each `<pre>` in a
-  `.code-block` and floats a Copy button) → `wrapScrollables` (wraps each
-  `<table>` and `.diagram-svg` in a `.scroll-x` div so wide tables/diagrams
+  `.code-block` and floats a Copy button) → `addDiagramCopyButtons` (wraps each
+  `svg.diagram-svg` in a `.diagram-block` and floats a "Copy image" button that
+  rasterizes the SVG to a 2× PNG on the clipboard) → `wrapScrollables` (wraps
+  each `<table>` and `.diagram-svg` in a `.scroll-x` div so wide tables/diagrams
   scroll horizontally on phones instead of overflowing). **This is why chapter
   fragments only need semantic HTML** — headings, `<pre>`, `<table>`, raw
   `<svg class="diagram-svg">` — and never hand-write TOC entries, ids, copy
   buttons, scroll wrappers, or `<code>` inside `<pre>`.
+- **Scroll/reading UX is deliberate — don't regress it.** `resetScroll()` jumps
+  to the top *instantly* on every route change (smooth scrolling is reserved for
+  anchor/TOC clicks), `animateContentEnter()` replays a fade/rise animation on
+  the injected page, and `wireScrollUI()` drives the topbar reading-progress
+  line (`transform: scaleX`) plus the back-to-top button (appears past 600px)
+  from one rAF-throttled passive scroll listener.
 - **Sidebar has two modes off one hamburger** (`toggleSidebar`): desktop
   collapses it out of the layout and remembers the choice in `localStorage`
   (`sidebarCollapsed`); mobile (≤860px, `isMobileViewport()`) slides an
-  off-canvas drawer over a backdrop. Sub-chapter groups auto-expand only for the
-  active page.
+  off-canvas drawer over a backdrop and locks the page behind it
+  (`body.no-scroll`). Sub-chapter groups auto-expand only for the active page.
 
 So the data flow is: **`chapters.js` (config) → `app.js` (router + post-process)
 → `chapters/*.html` (content fragments) → `style.css` (design system)**. Cache
 busting is manual: `index.html` references `style.css`/`chapters.js`/`app.js`
-with a shared `?v=NN` query (currently `v=28`) — bump it when you change any of
+with a shared `?v=NN` query (currently `v=38`) — bump it when you change any of
 those three.
 
 ---
@@ -100,8 +117,8 @@ Do these in order. Do **not** skip the reading steps.
      `import numpy as py`, misspellings, missing final flush, etc.).
    - **`.txt` / data files** → read them; they're often the sample data used in
      the code examples.
-3. **Read the most recent existing chapter** (latest is `chapters/chapter14.html`;
-   the newest with sub-chapters is `chapter13` + `chapter13-1/-2/-3`) to match
+3. **Read the most recent existing chapter** (latest is `chapters/chapter20.html`;
+   the newest with sub-chapters is `chapter16` + `chapter16-1/-2/-3`) to match
    structure, tone, and components exactly. Also check `chapters.js` for the
    current chapter list and the previous chapter's `<nav class="page-nav">`.
 4. **Find the chapter number**: the source folders are numbered (e.g.
@@ -115,9 +132,11 @@ Do these in order. Do **not** skip the reading steps.
    `style.css` / `app.js` / `chapters.js` you changed (always bump if `app.js`
    or `chapters.js` changed; chapter HTML files are not versioned).
 9. **Verify**: no stray/garbled characters (especially in inline SVG — grep for
-   the U+FFFD replacement char), nav links resolve, IDs are unique.
+   the U+FFFD replacement char), nav links resolve, IDs are unique, diagrams use
+   the light palette on a white canvas.
 10. **Commit only when the user asks.** Match their style: one feature per
-    commit, message like `Add Chapter N: <Title>`. Co-author trailer:
+    commit, message like `Add Chapter N: <Title>`, plus a Claude co-author
+    trailer naming the model that did the work, e.g.
     `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
 
 > The user wants to hand over source files and get back a finished, on-brand
@@ -131,25 +150,28 @@ Do these in order. Do **not** skip the reading steps.
 ## File structure
 
 ```
-RAG_webpages/
-├── index.html        # Shell: topbar (hamburger + brand), sidebar, content, TOC
+rag-bootcamp/
+├── index.html        # Shell: topbar (hamburger + brand + progress bar), sidebar, content, TOC
 ├── style.css         # All styles + CSS variables (the design system)
 ├── chapters.js       # Chapter config — edit to register a chapter
-├── app.js            # Hash router, sidebar toggle, TOC, copy buttons, highlight
+├── app.js            # Hash router, sidebar, TOC, copy buttons, diagram PNG copy, scroll UI
 ├── Asset/            # Images
+├── scripts/
+│   └── lighten-diagrams.py   # maps dark SVG palette → light/white theme (idempotent)
 └── chapters/
     ├── chapter1.html, chapter1-1.html   # "-1" suffix = sub-chapter (child)
     ├── chapter2.html, chapter2-1.html
-    ├── chapter3.html … chapter14.html   # chapters 3–14 (latest is chapter14)
-    └── chapter7-1.html … chapter13-3.html   # sub-chapters (7-*, 8-*, 11-*, 13-*)
+    ├── chapter3.html … chapter20.html   # chapters 3–20 (latest is chapter20)
+    └── chapter7-1.html … chapter16-3.html   # sub-chapter groups: 7-*, 8-*, 11-*, 13-*, 15-* (five parts), 16-*
 ```
 
 - A chapter HTML file is a **fragment**: no `<html>/<head>/<body>`, just the
   content starting with `<h1>`.
 - `app.js` fetches `chapters/<id>.html` based on the URL hash, injects it, then
   builds the "On this page" TOC, syntax-highlights `<pre>` blocks (highlight.js),
-  and adds Copy buttons. **Must be served over HTTP** (it uses `fetch`), e.g.
-  `python3 -m http.server 8000` — opening the file directly won't load chapters.
+  and adds Copy / Copy image buttons. **Must be served over HTTP** (it uses
+  `fetch`), e.g. `python3 -m http.server 8000` — opening the file directly won't
+  load chapters.
 
 ---
 
@@ -184,8 +206,8 @@ Order and components used by every chapter:
 <h2>Overview</h2>
 <p>…what this chapter covers and why it matters…</p>
 
-<!-- Optional inline SVG diagram, see SVG section -->
-<svg class="diagram-svg" viewBox="0 0 940 300" …> … </svg>
+<!-- Optional inline SVG diagram (white canvas, light palette) — see SVG section -->
+<svg class="diagram-svg diagram-svg--light" viewBox="0 0 940 300" …> … </svg>
 
 <div class="example-block">
   <div class="label">The Core Idea</div>
@@ -245,12 +267,12 @@ Order and components used by every chapter:
 ## Design system (from `style.css` `:root`)
 
 Reuse these variables and inline colors so new content stays on-brand. **Dark
-theme, indigo accent.**
+theme, indigo accent** — for everything except diagrams, which are light.
 
 | Token | Value | Use |
 |---|---|---|
 | `--bg-base` | `#0e0e10` | page background |
-| `--bg-elevated` | `#16161a` | sidebar, cards, diagram boxes |
+| `--bg-elevated` | `#16161a` | sidebar, cards |
 | `--bg-card` / `--bg-card-hover` | `#1a1a1f` / `#20202a` | cards |
 | `--border` / `--border-strong` | `#26262c` / `#36363e` | hairlines |
 | `--text-primary` | `#ececf1` | body text |
@@ -259,13 +281,16 @@ theme, indigo accent.**
 | `--accent` (indigo) | `#818cf8` | links, highlights, accents |
 | `--accent-strong` | `#6366f1` | gradient end, emphasis |
 
-**Accent palette for diagrams / emphasis** (used across existing SVGs):
-- Indigo `#818cf8` / `#6366f1` — primary accent, arrows, embeddings
-- Green `#4ecca3` — "good"/success/retriever steps
-- Purple `#a78bfa` — LLM / secondary nodes
+**Prose emphasis accents** (inline `<span style="color:…">` inside callouts and
+paragraphs — these stay on the dark theme):
+- Indigo `#818cf8` / `#6366f1` — key terms, primary accent
+- Green `#4ecca3` — "good"/success
+- Purple `#a78bfa` — LLM / secondary
 - Amber/yellow `#fbbf24` — thresholds, parameters, warnings
 - Red `#ef6461` — breaks, failures, "✗"
-- Caption/muted text in SVG: `#76767f` / `#b4b4be`
+
+**Diagrams use a different, light palette on a white canvas** — never the dark
+colors above inside an SVG. See the next section.
 
 Fonts: system UI stack for prose; `monospace` for code and vector/number bits in
 diagrams.
@@ -274,31 +299,53 @@ diagrams.
 
 ## Inline SVG diagrams
 
-Most chapters include one hand-built diagram showing the chapter's flow. Pattern:
+Most chapters include one or more hand-built diagrams showing the chapter's
+flow. **Diagrams are light-themed on a white canvas** (unlike the dark site
+chrome) so the auto-added "Copy image" button exports a clean white PNG. Pattern:
 
-- `<svg class="diagram-svg" viewBox="0 0 940 H" xmlns="http://www.w3.org/2000/svg"
-  role="img" aria-label="…describe it…">` — width ~940 to fill the column;
-  `.diagram-svg` is already styled (responsive, subtle hover).
-- Define an arrowhead `<marker>` with a **unique id per chapter** (e.g. `c6-arr`,
-  `c5-arr`) so multiple diagrams don't collide.
-- Boxes: `<rect rx="8">` filled `#16161a`/`#1a1a2e` with a colored stroke from the
-  accent palette; labels as `<text>` using `font-family="system-ui"` (or
-  `monospace` for vectors/numbers).
+- `<svg class="diagram-svg diagram-svg--light" viewBox="0 0 940 H"
+  xmlns="http://www.w3.org/2000/svg" role="img" aria-label="…describe it…">` —
+  width ~940 to fill the column. (`.diagram-svg` alone already renders white;
+  `--light` is a legacy alias kept for consistency with recent chapters.)
+  Narrow, vertical graphs (e.g. compiled LangGraphs) may add
+  `style="display:block; max-width:520px; margin:1.5rem auto;"`.
+- **First element after `</defs>`: the baked-in white canvas**
+  `<rect width="100%" height="100%" fill="#ffffff"/>` — so the SVG stays
+  self-contained when exported or viewed outside the site CSS.
+- Define an arrowhead `<marker>` with a **unique id per chapter** (e.g.
+  `c20-arr`, `c17-arr`) so multiple diagrams don't collide.
+- Boxes: `<rect rx="8">` filled `#ffffff` or a soft tint (`#f5f3ff` indigo,
+  `#f8fafc` slate) with a colored stroke; labels as `<text>` using
+  `font-family="system-ui"` (or `monospace` for vectors/numbers).
+- **Light diagram palette** (dark, saturated accents on white):
+  - Strokes: indigo `#4f46e5`, purple `#7c3aed`, green `#059669`, amber
+    `#d97706`, red `#dc2626`; hairline strokes `#d1d5db` / `#cbd5e1`
+  - Text: `#1f2937` primary, `#374151` secondary, `#64748b` muted; colored
+    labels go darker still — indigo `#4338ca`, green `#047857`, purple
+    `#6d28d9`, amber `#b45309`, red `#dc2626`
+  - Arrows/connector lines: gray `#4b5563` / `#94a3b8`, or an accent color
 - Connect stages with `<line … marker-end="url(#cN-arr)">`.
+- **Never use the old dark fills** (`#16161a`, `#1a1a2e`, `#818cf8`-on-dark) in
+  a diagram — if any slip in, run `python3 scripts/lighten-diagrams.py`.
 - **Use only plain ASCII + safe glyphs** (`✓`, `✗`, `→`, `·`). After writing,
   grep the file for the replacement char (U+FFFD `�`) and fix any — corrupted
   multibyte chars sneak into SVG text easily.
 
 ---
 
-## Top bar / sidebar behavior (already built — don't regress)
+## Top bar / sidebar / reading UX (already built — don't regress)
 
 - **Hamburger** (`#sidebar-toggle`, far left of topbar) is the single sidebar
   toggle on **all** screen sizes. Brand text ("RAG Bootcamp") is the homepage
-  link. The old desktop arrow handle + in-sidebar × are retired on desktop.
+  link. The old desktop arrow handle + in-sidebar × are retired on desktop (the
+  markup and JS wiring still exist; CSS hides them — leave that alone).
 - Desktop: toggling collapses the sidebar out of the layout (remembered via
   `localStorage` key `sidebarCollapsed`); the reading column widens.
-- Mobile (≤860px): sidebar is an off-canvas drawer with a backdrop.
+- Mobile (≤860px): sidebar is an off-canvas drawer with a backdrop; the page
+  behind it is scroll-locked (`body.no-scroll`).
+- **Reading UX**: topbar reading-progress line, back-to-top button after 600px,
+  instant scroll-to-top on route change (no smooth scroll between pages —
+  smooth is only for anchor/TOC clicks), content fade-in on page enter.
 - Routing is **hash-based** (`#chapterN`); `app.js` listens for `hashchange`.
   This is intentional deep-linking — keep it.
 
@@ -312,6 +359,7 @@ Most chapters include one hand-built diagram showing the chapter's flow. Pattern
 - [ ] `?v=NN` bumped in `index.html` if `app.js`/`chapters.js`/`style.css` changed.
 - [ ] Code blocks are real code from the user's notebook (typos fixed), in `<pre>`.
 - [ ] Tables and `example-block` callouts used to aid learning.
-- [ ] SVG marker id is unique; no U+FFFD characters anywhere.
-- [ ] On-brand colors only (indigo accent + the palette above).
+- [ ] Diagrams: white canvas rect present, light palette only (no dark fills),
+      unique SVG marker id, no U+FFFD characters anywhere.
+- [ ] On-brand colors: dark-theme indigo accents in prose, light palette in SVGs.
 - [ ] Commit only when asked; `Add Chapter N: …`; co-author trailer included.

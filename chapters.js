@@ -234,5 +234,10 @@ const chapters = [
         id: "chapter20",
         title: "Chapter 20: Cache-Augmented Generation (CAG)",
         description: "Answering repeat questions in 0.00 seconds — from cache_augment_generation.ipynb, a simple exact-match dict cache (and why it breaks on rephrasing), then a semantic FAISS cache built as a LangGraph: normalize → semantic_cache_lookup branches on an L2 distance threshold to serve from cache or run retrieve → generate → cache_write."
+    },
+    {
+        id: "chapter21",
+        title: "Chapter 21: Vectorless RAG — Reasoning-Based Retrieval with PageIndex",
+        description: "RAG with no vector DB, no chunking, no embeddings — from the PageIndex crash-course notebook and the Vectorless vs Traditional RAG deck: why similarity ≠ relevance breaks vector search on professional documents, building a hierarchical tree index from a PDF, LLM tree search, the search → retrieve → generate pipeline with page citations, expert-guided retrieval via prompt rules, the Chat API and self-hosted option, and the two-question decision heuristic plus the hybrid pattern."
     }
 ];
