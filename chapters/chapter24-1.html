@@ -1,0 +1,225 @@
+<h1>Chatbot Evaluation</h1>
+<p style="color:#888; margin-bottom: 2rem;"><em>Learn the LangSmith experiment loop on a simple chatbot first &mdash; curated examples, an LLM correctness judge, a deterministic concision check, then a fair model-vs-model comparison.</em></p>
+
+<h2>Overview</h2>
+<p>
+  Before evaluating retrieval, the notebook builds a five-example chatbot dataset and runs the same
+  target twice: once with GPT-4o-mini and once with GPT-4 Turbo. The only changed variable is the model.
+  That isolates the experiment machinery you will reuse for RAG in the next sub-chapter.
+</p>
+
+<div class="example-block">
+  <div class="label">The Core Idea</div>
+  <p>
+    Pair an <strong><span style="color:#a78bfa;">LLM-as-a-judge</span></strong> for semantic correctness
+    with a <strong><span style="color:#4ecca3;">deterministic</span></strong> concision rule. One catches
+    paraphrase; the other catches verbosity. Neither alone is enough.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Environment and Tracing</h2>
+<pre>import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+os.environ["LANGSMITH_API_KEY"] = os.getenv("LANGSMITH_API_KEY")
+os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
+os.environ["LANGSMITH_TRACING"] = "true"</pre>
+
+<p>
+  Tracing captures the calls behind each experiment row. Keep real keys in the environment and never in
+  the notebook. The source run successfully created its examples but later emitted LangSmith
+  <code>429</code> messages because the account exceeded a monthly trace limit. Dataset creation and trace
+  ingestion have separate operational limits; a benchmark is not complete until its telemetry is stored.
+</p>
+
+<hr class="divider">
+
+<h2>Create the Five-Example Dataset</h2>
+<pre>from langsmith import Client
+
+client = Client()
+
+dataset_name = "Chatbots Evaluation"
+dataset = client.create_dataset(dataset_name)
+
+client.create_examples(
+    dataset_id=dataset.id,
+    examples=[
+        {
+            "inputs": {"question": "What is LangChain?"},
+            "outputs": {"answer": "A framework for building LLM applications"},
+        },
+        {
+            "inputs": {"question": "What is LangSmith?"},
+            "outputs": {
+                "answer": "A platform for observing and evaluating LLM applications"
+            },
+        },
+        {
+            "inputs": {"question": "What is OpenAI?"},
+            "outputs": {"answer": "A company that creates Large Language Models"},
+        },
+        {
+            "inputs": {"question": "What is Google?"},
+            "outputs": {"answer": "A technology company known for search"},
+        },
+        {
+            "inputs": {"question": "What is Mistral?"},
+            "outputs": {"answer": "A company that creates Large Language Models"},
+        },
+    ],
+)</pre>
+
+<p>
+  Each reference is intentionally short because the target is instructed to answer in one sentence.
+  References should specify the essential facts, not force the model to reproduce one exact wording.
+</p>
+
+<hr class="divider">
+
+<h2>Evaluator 1: Correctness With an LLM Judge</h2>
+<p>
+  Exact string equality would mark a correct paraphrase as wrong. The notebook instead gives a judge the
+  question, ground truth, and predicted answer, then constrains its final decision to
+  <code>CORRECT</code> or <code>INCORRECT</code>.
+</p>
+
+<pre>import openai
+from langsmith import wrappers
+
+openai_client = wrappers.wrap_openai(openai.OpenAI())
+
+eval_instructions = (
+    "You are an expert professor specialized in grading students' "
+    "answers to questions."
+)
+
+def correctness(inputs: dict, outputs: dict, reference_outputs: dict) -> bool:
+    user_content = f"""You are grading the following question:
+{inputs['question']}
+Here is the real answer:
+{reference_outputs['answer']}
+You are grading the following predicted answer:
+{outputs['response']}
+Respond with CORRECT or INCORRECT:
+Grade:
+"""
+    response = openai_client.chat.completions.create(
+        model="gpt-4o-mini",
+        temperature=0,
+        messages=[
+            {"role": "system", "content": eval_instructions},
+            {"role": "user", "content": user_content},
+        ],
+    ).choices[0].message.content
+
+    return response == "CORRECT"</pre>
+
+<hr class="divider">
+
+<h2>Evaluator 2: Deterministic Concision</h2>
+<p>
+  Not every metric needs another model call. The notebook defines a fast, transparent rule: the generated
+  response must be shorter than twice the reference answer's character length.
+</p>
+
+<pre>def concision(outputs: dict, reference_outputs: dict) -> bool:
+    return len(outputs["response"]) &lt; 2 * len(reference_outputs["answer"])</pre>
+
+<table>
+  <thead>
+    <tr><th>Judge type</th><th>Strength</th><th>Weakness</th><th>Use here</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>LLM-as-a-judge</td><td>Understands paraphrase and meaning</td><td>Costs money; can drift or disagree</td><td>Semantic correctness</td></tr>
+    <tr><td>Deterministic</td><td>Fast, cheap, and reproducible</td><td>Only measures what the rule encodes</td><td>Concision by length ratio</td></tr>
+    <tr><td>Human review</td><td>Best for nuance and rubric design</td><td>Slow and expensive</td><td>Calibrating and auditing judges</td></tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Run and Compare Chatbot Experiments</h2>
+<p>
+  The target adapter is deliberately small. LangSmith passes one example's <code>inputs</code>; the target
+  calls the application and returns a dictionary whose keys match what the evaluators expect.
+</p>
+
+<pre>default_instructions = (
+    "Respond to the users question in a short, concise manner "
+    "(one short sentence)."
+)
+
+def my_app(
+    question: str,
+    model: str = "gpt-4o-mini",
+    instructions: str = default_instructions,
+) -> str:
+    return openai_client.chat.completions.create(
+        model=model,
+        temperature=0,
+        messages=[
+            {"role": "system", "content": instructions},
+            {"role": "user", "content": question},
+        ],
+    ).choices[0].message.content
+
+def ls_target(inputs: dict) -> dict:
+    return {"response": my_app(inputs["question"])}</pre>
+
+<pre>mini_results = client.evaluate(
+    ls_target,
+    data=dataset_name,
+    evaluators=[correctness, concision],
+    experiment_prefix="openai-4o-mini-chatbot",
+)</pre>
+
+<p>
+  The source run evaluated all five examples in about ten seconds. It then redefined the target to use
+  GPT-4 Turbo and launched a second experiment against the <em>same</em> dataset and evaluators.
+</p>
+
+<pre>def ls_target(inputs: dict) -> dict:
+    return {
+        "response": my_app(
+            inputs["question"],
+            model="gpt-4-turbo",
+        )
+    }
+
+turbo_results = client.evaluate(
+    ls_target,
+    data=dataset_name,
+    evaluators=[correctness, concision],
+    experiment_prefix="openai-4-turbo-chatbot",
+)</pre>
+
+<div class="example-block">
+  <div class="label">Fair Model Comparison</div>
+  <p>
+    Both models receive the same five questions, references, instructions, temperature, and rubrics. The
+    experiment name records the changed variable. Compare aggregate scores, but inspect row-level failures
+    too: two models can have the same average while failing on different questions.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+<div class="example-block">
+  <div class="label">Remember These Four</div>
+  <p><strong>1.</strong> Freeze a named <strong>dataset</strong> of inputs and reference outputs so every model faces the same cases.</p>
+  <p><strong>2.</strong> An <strong>LLM judge</strong> with temperature 0 and a CORRECT/INCORRECT decision handles paraphrase better than string equality.</p>
+  <p><strong>3.</strong> Add a <strong>deterministic</strong> metric (concision by length ratio here) for cheap, reproducible checks.</p>
+  <p><strong>4.</strong> Compare models by changing <em>one</em> variable and inspecting both aggregate scores and row-level failures.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter24">&larr; Chapter 24: RAG Evaluation</a>
+    <a href="#chapter24-2" class="next">2 · RAG Evaluation &rarr;</a>
+</nav>
