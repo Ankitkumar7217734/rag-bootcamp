@@ -5,3 +5,5 @@
 
 # Thumbnails
 ._*
+.code-plugin 
+.claude
