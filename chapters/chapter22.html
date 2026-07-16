@@ -1,0 +1,1394 @@
+<h1>Chapter 22: Guardrails &mdash; Building Safe, Compliant AI Agents</h1>
+<p style="color:#888; margin-bottom: 2rem;"><em>Twenty-one chapters of making agents smarter &mdash; better retrieval, reasoning, memory, caching. This one makes them safe: middleware that intercepts an agent's execution to redact PII, block bad inputs, pause for human approval, and validate outputs before a user ever sees them.</em></p>
+
+<div class="example-block">
+  <div class="label">Guardrails in One Paragraph</div>
+  <p style="margin-top:0;">
+    Every agent so far has had one implicit assumption: whatever the user types goes to the model, and
+    whatever the model produces goes back to the user. In production, both halves of that assumption
+    are dangerous. <strong><span style="color:#818cf8;">Guardrails</span></strong> are checkpoints
+    wrapped around the agent &mdash; <strong><span style="color:#ef6461;">before</span></strong> it
+    starts (block or rewrite bad input), <strong><span style="color:#fbbf24;">around</span></strong>
+    its model and tool calls (redact credit cards, pause for human approval), and
+    <strong><span style="color:#4ecca3;">after</span></strong> it finishes (validate or replace the
+    output). In LangChain they're implemented as <strong>middleware</strong> &mdash; a list you pass to
+    <code>create_agent</code> &mdash; and they stack: each layer catches what the previous one missed.
+  </p>
+</div>
+
+<h2>Overview</h2>
+<p>
+  This chapter is built from the <strong>LangChain Guardrails crash-course notebook</strong>, which
+  works through LangChain's middleware system (docs:
+  <code>docs.langchain.com/oss/python/langchain/guardrails</code>) from first principles to a
+  production-shaped build. Two built-in middlewares do the heavy lifting &mdash; PII detection and
+  human-in-the-loop approval &mdash; and two custom hooks (<code>before_agent</code>,
+  <code>after_agent</code>) cover everything the built-ins don't. The capstone assembles all of it
+  into a healthcare chatbot with four independent safety layers.
+</p>
+<p>Here's the full route:</p>
+
+<table>
+  <thead>
+    <tr><th>#</th><th>What you'll learn</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>What guardrails are, and the four points where they intercept an agent</td></tr>
+    <tr><td>2</td><td>The two approaches &mdash; deterministic (rules) vs model-based (LLM judge) &mdash; and when each wins</td></tr>
+    <tr><td>3</td><td>Built-in: <code>PIIMiddleware</code> &mdash; redact, mask, hash, or block emails, cards, and API keys</td></tr>
+    <tr><td>4</td><td>Built-in: <code>HumanInTheLoopMiddleware</code> &mdash; pause before sensitive tools, resume on approve/reject</td></tr>
+    <tr><td>5</td><td>Custom: a <code>before_agent</code> content filter that blocks requests at zero LLM cost</td></tr>
+    <tr><td>6</td><td>Custom: an <code>after_agent</code> safety judge that validates outputs before the user sees them</td></tr>
+    <tr><td>7</td><td>Layering &mdash; stacking five guardrails into one <code>middleware=[]</code> array</td></tr>
+    <tr><td>8</td><td>Real-world build: a healthcare chatbot with filtering, PII redaction, approval gates, and auto-disclaimers</td></tr>
+  </tbody>
+</table>
+
+<svg class="diagram-svg diagram-svg--light" viewBox="0 0 940 570" xmlns="http://www.w3.org/2000/svg" role="img"
+  aria-label="Where guardrails run in an agent's execution. The main flow goes user input, then a before_agent gate for input guardrails, then the agent loop containing model and tools with PIIMiddleware wrapping model calls and HumanInTheLoop pausing tool calls, then an after_agent gate for output guardrails, then safe response. Blocked inputs and replaced outputs both divert to a safe fallback response pill. A bottom panel maps the four interception points: before_agent, around model calls, around tool calls, and after_agent.">
+  <defs>
+    <marker id="c22a-arr" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f46e5"/></marker>
+    <marker id="c22a-red" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#dc2626"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
+  <text x="470" y="30" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="16" font-weight="700">Where Guardrails Run</text>
+
+  <!-- User input -->
+  <rect x="12" y="124" width="86" height="56" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="55" y="148" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="12" font-weight="600">User</text>
+  <text x="55" y="166" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="11">input</text>
+  <line x1="98" y1="152" x2="128" y2="152" stroke="#4f46e5" stroke-width="1.6" marker-end="url(#c22a-arr)"/>
+
+  <!-- before_agent gate -->
+  <rect x="134" y="112" width="150" height="80" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.8"/>
+  <text x="209" y="138" text-anchor="middle" fill="#b91c1c" font-family="monospace" font-size="12.5" font-weight="700">before_agent</text>
+  <text x="209" y="158" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="11">input guardrails</text>
+  <text x="209" y="176" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="11">filter &#183; auth &#183; rate limit</text>
+  <line x1="284" y1="152" x2="314" y2="152" stroke="#4f46e5" stroke-width="1.6" marker-end="url(#c22a-arr)"/>
+
+  <!-- Agent core -->
+  <rect x="320" y="70" width="300" height="230" rx="10" fill="#ffffff" stroke="#4f46e5" stroke-width="1.8"/>
+  <text x="470" y="96" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="13" font-weight="700">Agent loop</text>
+
+  <rect x="345" y="110" width="115" height="54" rx="8" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+  <text x="402" y="133" text-anchor="middle" fill="#92400e" font-family="system-ui" font-size="12.5" font-weight="600">Model</text>
+  <text x="402" y="151" text-anchor="middle" fill="#b45309" font-family="monospace" font-size="10.5">gpt-4o</text>
+
+  <rect x="480" y="110" width="115" height="54" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="537" y="133" text-anchor="middle" fill="#5b21b6" font-family="system-ui" font-size="12.5" font-weight="600">Tools</text>
+  <text x="537" y="151" text-anchor="middle" fill="#6d28d9" font-family="monospace" font-size="10.5">@tool</text>
+
+  <line x1="460" y1="127" x2="476" y2="127" stroke="#4b5563" stroke-width="1.4" marker-end="url(#c22a-arr)"/>
+  <line x1="480" y1="147" x2="464" y2="147" stroke="#4b5563" stroke-width="1.4" marker-end="url(#c22a-arr)"/>
+
+  <text x="402" y="192" text-anchor="middle" fill="#b45309" font-family="system-ui" font-size="11" font-weight="600">PIIMiddleware</text>
+  <text x="402" y="208" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">wraps model calls</text>
+
+  <text x="537" y="192" text-anchor="middle" fill="#6d28d9" font-family="system-ui" font-size="11" font-weight="600">HumanInTheLoop</text>
+  <text x="537" y="208" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">pauses tool calls</text>
+
+  <text x="470" y="248" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">state persists via checkpointer (thread_id)</text>
+  <text x="470" y="280" text-anchor="middle" fill="#94a3b8" font-family="system-ui" font-size="10.5" font-style="italic">middleware=[...] executes in order</text>
+
+  <line x1="620" y1="152" x2="650" y2="152" stroke="#4f46e5" stroke-width="1.6" marker-end="url(#c22a-arr)"/>
+
+  <!-- after_agent gate -->
+  <rect x="656" y="112" width="150" height="80" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.8"/>
+  <text x="731" y="138" text-anchor="middle" fill="#047857" font-family="monospace" font-size="12.5" font-weight="700">after_agent</text>
+  <text x="731" y="158" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="11">output guardrails</text>
+  <text x="731" y="176" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="11">validate &#183; replace</text>
+  <line x1="806" y1="152" x2="836" y2="152" stroke="#4f46e5" stroke-width="1.6" marker-end="url(#c22a-arr)"/>
+
+  <!-- Response -->
+  <rect x="842" y="124" width="86" height="56" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+  <text x="885" y="148" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="12" font-weight="600">Safe</text>
+  <text x="885" y="166" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="11">response</text>
+
+  <!-- blocked exits -->
+  <path d="M 209 192 C 230 262, 300 322, 354 344" fill="none" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#c22a-red)"/>
+  <text x="238" y="278" text-anchor="middle" fill="#b91c1c" font-family="monospace" font-size="11">jump_to: end</text>
+  <path d="M 731 192 C 710 262, 640 322, 586 344" fill="none" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#c22a-red)"/>
+  <text x="712" y="278" text-anchor="middle" fill="#b91c1c" font-family="system-ui" font-size="11">replace unsafe output</text>
+
+  <rect x="360" y="330" width="220" height="36" rx="18" fill="#fef2f2" stroke="#dc2626" stroke-width="1.5"/>
+  <text x="470" y="353" text-anchor="middle" fill="#b91c1c" font-family="system-ui" font-size="12">blocked &#8594; safe fallback response</text>
+
+  <!-- Hook map -->
+  <text x="470" y="408" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="13.5" font-weight="700">The four interception points</text>
+
+  <rect x="24" y="424" width="205" height="112" rx="8" fill="#ffffff" stroke="#4f46e5" stroke-width="1.5"/>
+  <text x="126" y="448" text-anchor="middle" fill="#4338ca" font-family="monospace" font-size="12" font-weight="700">before_agent</text>
+  <text x="126" y="470" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">runs once, first</text>
+  <text x="126" y="488" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">block or rewrite input</text>
+  <text x="126" y="506" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">jump_to "end" skips it all</text>
+  <text x="126" y="524" text-anchor="middle" fill="#94a3b8" font-family="system-ui" font-size="10">custom middleware</text>
+
+  <rect x="253" y="424" width="205" height="112" rx="8" fill="#ffffff" stroke="#d97706" stroke-width="1.5"/>
+  <text x="355" y="448" text-anchor="middle" fill="#92400e" font-family="system-ui" font-size="12" font-weight="700">around model calls</text>
+  <text x="355" y="470" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">every model round-trip</text>
+  <text x="355" y="488" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">redact &#183; mask &#183; hash &#183; block</text>
+  <text x="355" y="506" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">PII never reaches the LLM</text>
+  <text x="355" y="524" text-anchor="middle" fill="#94a3b8" font-family="system-ui" font-size="10">built-in: PIIMiddleware</text>
+
+  <rect x="482" y="424" width="205" height="112" rx="8" fill="#ffffff" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="584" y="448" text-anchor="middle" fill="#5b21b6" font-family="system-ui" font-size="12" font-weight="700">around tool calls</text>
+  <text x="584" y="470" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">before a sensitive tool runs</text>
+  <text x="584" y="488" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">approve &#183; edit &#183; reject</text>
+  <text x="584" y="506" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">needs a checkpointer</text>
+  <text x="584" y="524" text-anchor="middle" fill="#94a3b8" font-family="system-ui" font-size="10">built-in: HumanInTheLoop</text>
+
+  <rect x="711" y="424" width="205" height="112" rx="8" fill="#ffffff" stroke="#059669" stroke-width="1.5"/>
+  <text x="813" y="448" text-anchor="middle" fill="#047857" font-family="monospace" font-size="12" font-weight="700">after_agent</text>
+  <text x="813" y="470" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">runs once, last</text>
+  <text x="813" y="488" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">validate or replace output</text>
+  <text x="813" y="506" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">the user never sees raw fails</text>
+  <text x="813" y="524" text-anchor="middle" fill="#94a3b8" font-family="system-ui" font-size="10">custom middleware</text>
+</svg>
+
+<div class="example-block">
+  <div class="label">The Core Idea</div>
+  <p>
+    <strong>Guardrails are middleware.</strong> You don't rewrite the agent to make it safe &mdash; you
+    wrap it. Every guardrail in this chapter is an item in the <code>middleware=[]</code> list of
+    <code>create_agent()</code>, intercepting execution at one of four points: <em>before the agent
+    starts</em>, <em>around each model call</em>, <em>around each tool call</em>, or <em>after the
+    agent finishes</em>. Because they're just list items, they compose &mdash; a production agent
+    stacks a cheap deterministic filter in front of PII redaction, an approval gate, and a model-based
+    output check, and each layer catches what the previous one missed.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>What Guardrails Protect Against</h2>
+<p>
+  &ldquo;Safety&rdquo; sounds abstract until you list what actually goes wrong in production. The
+  notebook's use-case table is a checklist of real incidents waiting to happen:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Use case</th><th>Example</th><th>Guardrail in this chapter</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>PII leakage prevention</strong></td>
+      <td>Redact emails/credit cards before they reach the model or logs</td>
+      <td><code>PIIMiddleware</code></td>
+    </tr>
+    <tr>
+      <td><strong>Prompt injection blocking</strong></td>
+      <td>Detect adversarial inputs before any LLM processing</td>
+      <td><code>before_agent</code> filter</td>
+    </tr>
+    <tr>
+      <td><strong>Harmful content filtering</strong></td>
+      <td>Block dangerous requests (&ldquo;how do I hack&hellip;&rdquo;)</td>
+      <td><code>before_agent</code> + model-based judge</td>
+    </tr>
+    <tr>
+      <td><strong>Business rule enforcement</strong></td>
+      <td>Require approval for financial ops, emails, deletions</td>
+      <td><code>HumanInTheLoopMiddleware</code></td>
+    </tr>
+    <tr>
+      <td><strong>Output quality validation</strong></td>
+      <td>Ensure the response meets safety standards before delivery</td>
+      <td><code>after_agent</code> validator</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  Notice the pattern: two of these are about what comes <em>in</em>, one is about what the agent
+  <em>does</em>, and two are about what goes <em>out</em>. That's why guardrails live at different
+  interception points &mdash; no single checkpoint can cover all five rows.
+</p>
+
+<hr class="divider">
+
+<h2>Two Approaches &mdash; Deterministic vs Model-Based</h2>
+<p>
+  Before any middleware, the notebook establishes the fundamental design split. Every guardrail you
+  will ever write is one of two kinds:
+</p>
+
+<h3>Deterministic &mdash; Rules, Regex, Keywords</h3>
+<p>
+  A deterministic guardrail is plain code: keyword lists, regex patterns, explicit checks. Ten lines,
+  no API calls, microsecond latency:
+</p>
+
+<pre># Quick illustration of the two approaches
+
+import re
+
+# --- Deterministic approach ---
+def deterministic_guardrail(text: str) -> bool:
+    """Returns True if content is blocked."""
+    banned_keywords = ["hack", "exploit", "malware", "bomb"]
+    return any(kw in text.lower() for kw in banned_keywords)
+
+test_inputs = [
+    "How do I hack into a database?",
+    "What is the capital of France?",
+    "Explain how malware spreads",
+]
+
+print("=== Deterministic Guardrail Demo ===")
+for inp in test_inputs:
+    blocked = deterministic_guardrail(inp)
+    status = "🚫 BLOCKED" if blocked else "✅ ALLOWED"
+    print(f"{status}: {inp}")</pre>
+
+<pre>=== Deterministic Guardrail Demo ===
+🚫 BLOCKED: How do I hack into a database?
+✅ ALLOWED: What is the capital of France?
+🚫 BLOCKED: Explain how malware spreads</pre>
+
+<h3>Model-Based &mdash; An LLM as the Judge</h3>
+<p>
+  A model-based guardrail hands the decision to an LLM &mdash; here <code>gpt-4o-mini</code> at
+  <code>temperature=0</code>, asked for a one-word verdict. Slower and costlier, but it understands
+  <em>meaning</em>, not just characters:
+</p>
+
+<pre>from langchain_openai import ChatOpenAI
+
+# --- Model-based approach ---
+def model_based_guardrail(text: str) -> str:
+    """Uses an LLM to evaluate content safety. Returns SAFE or UNSAFE."""
+    model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+    prompt = f"""Is the following user input safe to process?
+Reply with only 'SAFE' or 'UNSAFE'.
+
+Input: {text}"""
+    result = model.invoke([{"role": "user", "content": prompt}])
+    return result.content.strip()
+
+print("=== Model-Based Guardrail Demo ===")
+for inp in test_inputs:
+    verdict = model_based_guardrail(inp)
+    status = "🚫 UNSAFE" if "UNSAFE" in verdict else "✅ SAFE"
+    print(f"{status}: {inp}")</pre>
+
+<pre>=== Model-Based Guardrail Demo ===
+🚫 UNSAFE: How do I hack into a database?
+✅ SAFE: What is the capital of France?
+✅ SAFE: Explain how malware spreads</pre>
+
+<p>
+  Read the two outputs side by side &mdash; they <strong>disagree</strong> on the third input. The
+  keyword filter blocked <em>&ldquo;Explain how malware spreads&rdquo;</em> because it contains the
+  string <code>malware</code>; the LLM judged it SAFE because it's a legitimate educational question.
+  That disagreement is the whole trade-off:
+</p>
+
+<table>
+  <thead>
+    <tr><th></th><th>Deterministic</th><th>Model-based</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Mechanism</strong></td>
+      <td>Regex, keyword matching, explicit checks</td>
+      <td>LLM / classifier evaluates semantics</td>
+    </tr>
+    <tr>
+      <td><strong>Speed</strong></td>
+      <td>Microseconds</td>
+      <td>One model call (hundreds of ms)</td>
+    </tr>
+    <tr>
+      <td><strong>Cost</strong></td>
+      <td>Free</td>
+      <td>Tokens per check</td>
+    </tr>
+    <tr>
+      <td><strong>Predictability</strong></td>
+      <td>Fully deterministic &mdash; same input, same verdict</td>
+      <td>Mostly stable at <code>temperature=0</code>, still a model</td>
+    </tr>
+    <tr>
+      <td><strong>Weakness</strong></td>
+      <td>Misses paraphrases; false-positives on innocent matches</td>
+      <td>Slower, more expensive, needs prompt care</td>
+    </tr>
+    <tr>
+      <td><strong>Use for</strong></td>
+      <td>First line of defense &mdash; cheap, early</td>
+      <td>Nuanced calls the rules can't make</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">Deterministic First, Model-Based Second</div>
+  <p>
+    This ordering is the chapter's recurring cost rule. A keyword check costs nothing and runs before
+    any LLM call &mdash; if it blocks the request, you never pay for the model at all. The expensive
+    semantic judge runs only on traffic that survived the cheap filter. You'll see this exact ordering
+    again in the five-layer production stack.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Built-in Guardrail #1 &mdash; PII Detection Middleware</h2>
+<p>
+  The first built-in, <code>PIIMiddleware</code>, detects and handles <strong>Personally Identifiable
+  Information</strong> flowing through the agent. It ships with detectors for common PII types, and
+  you can add your own with a regex:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Built-in type</th><th>Example</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>email</code></td><td>user@example.com</td></tr>
+    <tr><td><code>credit_card</code></td><td>5105-1051-0510-5100</td></tr>
+    <tr><td><code>ip</code></td><td>192.168.1.1</td></tr>
+    <tr><td><code>mac_address</code></td><td>00:1A:2B:3C:4D:5E</td></tr>
+    <tr><td><code>url</code></td><td>https://secret-site.com</td></tr>
+  </tbody>
+</table>
+
+<p>
+  For each type you pick a <strong>strategy</strong> &mdash; what happens when the pattern is found:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Strategy</th><th>Result</th><th>When to use</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>redact</code></td>
+      <td><code>[REDACTED_EMAIL]</code></td>
+      <td>The value is irrelevant to the task &mdash; remove it entirely</td>
+    </tr>
+    <tr>
+      <td><code>mask</code></td>
+      <td><code>****-****-****-1234</code></td>
+      <td>Keep a recognizable tail (last four digits) for reference</td>
+    </tr>
+    <tr>
+      <td><code>hash</code></td>
+      <td><code>a8f5f167...</code></td>
+      <td>Need a stable identifier without exposing the value</td>
+    </tr>
+    <tr>
+      <td><code>block</code></td>
+      <td>Raises an exception</td>
+      <td>The value should never be in a prompt at all (API keys, secrets)</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Wiring Three PII Rules Into an Agent</h3>
+<p>
+  One agent, three <code>PIIMiddleware</code> entries &mdash; each is its own layer with its own type
+  and strategy. Note the third: <code>api_key</code> isn't a built-in type, so it supplies a custom
+  <code>detector</code> regex, and its strategy is <code>block</code> &mdash; a leaked secret should
+  fail loudly, not get politely masked:
+</p>
+
+<pre>from langchain.agents import create_agent
+from langchain.agents.middleware import PIIMiddleware
+from langchain_openai import ChatOpenAI
+from langchain_core.tools import tool
+
+# Define a simple dummy tool
+@tool
+def customer_lookup(query: str) -> str:
+    """Look up customer information."""
+    return f"Customer record found for query: {query}"
+
+# Create agent with PII Middleware
+agent = create_agent(
+    model="gpt-4o",
+    tools=[customer_lookup],
+    middleware=[
+        # Redact emails in user input before sending to model
+        PIIMiddleware(
+            "email",
+            strategy="redact",
+            apply_to_input=True,
+        ),
+        # Mask credit cards in user input
+        PIIMiddleware(
+            "credit_card",
+            strategy="mask",
+            apply_to_input=True,
+        ),
+        # Block API keys - raise error if detected
+        PIIMiddleware(
+            "api_key",
+            detector=r"sk-[a-zA-Z0-9]{32}",
+            strategy="block",
+            apply_to_input=True,
+        ),
+    ],
+)
+
+print("Agent with PII middleware created successfully!")</pre>
+
+<h3>Watching the Redaction Happen</h3>
+<p>Send it a message containing both an email and a credit card:</p>
+
+<pre># Test PII Redaction
+result = agent.invoke({
+    "messages": [{
+        "role": "user",
+        "content": "My email is john.doe@example.com and my card is 5105-1051-0510-5100. Can you help me?"
+    }]
+})
+
+print("=== Agent Response ===")
+print(result["messages"][-1].content)</pre>
+
+<pre>=== Agent Response ===
+I found your customer record associated with the card ending in 5100.
+How can I assist you further?</pre>
+
+<p>
+  The response looks ordinary &mdash; the interesting part is in <code>result["messages"]</code>.
+  Look at what the <em>model actually received</em>:
+</p>
+
+<pre>{'messages': [
+  HumanMessage(content='My email is [REDACTED_EMAIL] and my card is
+                        ****-****-****-5100. Can you help me?'),
+  AIMessage(content='', tool_calls=[{'name': 'customer_lookup',
+                                     'args': {'query': '****-****-****-5100'}, ...}]),
+  ToolMessage(content='Customer record found for query: ****-****-****-5100'),
+  AIMessage(content='I found your customer record associated with the card
+                     ending in 5100. How can I assist you further?')
+]}</pre>
+
+<p>
+  The <code>HumanMessage</code> in the conversation history was <strong>rewritten before the model saw
+  it</strong>: the email became <code>[REDACTED_EMAIL]</code>, the card became
+  <code>****-****-****-5100</code>. The redacted versions are what flow onward &mdash; into the model,
+  into the tool call's arguments, into any logs or traces. The raw PII existed for exactly one moment,
+  in the original request, and nowhere else.
+</p>
+
+<h3>Blocking &mdash; the Hard Stop</h3>
+<p>The <code>block</code> strategy doesn't rewrite &mdash; it raises. Feed the agent an API key:</p>
+
+<pre># Test API Key Blocking
+try:
+    result = agent.invoke({
+        "messages": [{
+            "role": "user",
+            "content": "Here is my key: sk-abcdefghijklmnopqrstuvwxyz123456"
+        }]
+    })
+
+except Exception as e:
+    print(f"🚫 Blocked as expected: {e}")</pre>
+
+<pre>🚫 Blocked as expected: Detected 1 instance(s) of api_key in text content</pre>
+
+<div class="example-block">
+  <div class="label">Why This Matters for RAG Systems</div>
+  <p>
+    Everything you send to a model API leaves your infrastructure, and everything in the message
+    history lands in traces, logs, and &mdash; in this bootcamp's own Chapter 20 &mdash;
+    <strong>caches</strong>. A semantic cache that stores raw questions will happily persist a user's
+    credit card number forever. Redacting PII <em>at the middleware layer</em>, before the model call,
+    is the single cheapest place to stop that entire class of leak.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Built-in Guardrail #2 &mdash; Human-in-the-Loop Middleware</h2>
+<p>
+  Some actions are too consequential for an LLM to take alone: sending emails to external parties,
+  financial transactions, deleting production data. <code>HumanInTheLoopMiddleware</code> pauses the
+  agent <strong>at the moment it tries to call a sensitive tool</strong> and waits for a human
+  decision. Two pieces make it work:
+</p>
+<ul>
+  <li><strong><code>interrupt_on</code></strong> &mdash; a dict mapping tool names to whether they
+  need approval. <code>True</code> pauses; <code>False</code> auto-approves.</li>
+  <li><strong>A checkpointer</strong> &mdash; required, because &ldquo;pause&rdquo; really means the
+  graph state is saved mid-run and resumed later. This is exactly Chapter 19's
+  <code>InMemorySaver</code> + <code>thread_id</code> machinery, reused for safety instead of
+  memory.</li>
+</ul>
+
+<pre>from langchain.agents import create_agent
+from langchain.agents.middleware import HumanInTheLoopMiddleware
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command
+from langchain_core.tools import tool
+
+@tool
+def search_web(query: str) -> str:
+    """Search the web for information."""
+    return f"Search results for: {query}"
+
+@tool
+def send_email(to: str, subject: str, body: str) -> str:
+    """Send an email to a recipient."""
+    return f"Email sent to {to} with subject: {subject}"
+
+@tool
+def delete_records(table: str, condition: str) -> str:
+    """Delete records from the database."""
+    return f"Deleted records from {table} where {condition}"</pre>
+
+<p>
+  Three tools, three risk levels: reading the web is harmless, sending email is outward-facing,
+  deleting records is destructive. The <code>interrupt_on</code> map encodes exactly that judgment:
+</p>
+
+<pre># Create agent with HITL middleware
+hitl_agent = create_agent(
+    model="gpt-4o",
+    tools=[search_web, send_email, delete_records],
+    middleware=[
+        HumanInTheLoopMiddleware(
+            interrupt_on={
+                "send_email": True,       # Require approval
+                "delete_records": True,   # Require approval
+                "search_web": False,      # Auto-approve
+            }
+        ),
+    ],
+    checkpointer=InMemorySaver(),  # Required for state persistence
+)
+
+print("Human-in-the-Loop agent created!")</pre>
+
+<svg class="diagram-svg diagram-svg--light" style="display:block; max-width:560px; margin:1.5rem auto;" viewBox="0 0 560 660" xmlns="http://www.w3.org/2000/svg" role="img"
+  aria-label="Human-in-the-loop flow. A user asks the agent to send an email about Q4. The agent proposes a send_email tool call. The HITL middleware interrupts, saving state via the checkpointer under a thread id, and surfaces action_requests and review_configs. A human then decides: approve, edit, or reject. On approve, Command resume with type approve runs the tool and the agent confirms the email was sent. On reject, the tool is skipped and the agent acknowledges the decision.">
+  <defs>
+    <marker id="c22b-arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f46e5"/></marker>
+    <marker id="c22b-grn" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#059669"/></marker>
+    <marker id="c22b-red" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#dc2626"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
+  <text x="280" y="26" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="15" font-weight="700">Human-in-the-Loop &#8212; pause, decide, resume</text>
+
+  <rect x="100" y="44" width="360" height="32" rx="16" fill="#eef2ff" stroke="#4f46e5" stroke-width="1.4"/>
+  <text x="280" y="65" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="11.5">"Send an email to team@company.com about the Q4 results"</text>
+  <line x1="280" y1="76" x2="280" y2="96" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c22b-arr)"/>
+
+  <rect x="170" y="100" width="220" height="48" rx="8" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+  <text x="280" y="120" text-anchor="middle" fill="#92400e" font-family="system-ui" font-size="12.5" font-weight="600">Agent (gpt-4o)</text>
+  <text x="280" y="138" text-anchor="middle" fill="#b45309" font-family="monospace" font-size="10.5">proposes send_email(to, subject, body)</text>
+  <line x1="280" y1="148" x2="280" y2="170" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c22b-arr)"/>
+
+  <rect x="110" y="174" width="340" height="66" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.6"/>
+  <text x="280" y="194" text-anchor="middle" fill="#b91c1c" font-family="system-ui" font-size="12.5" font-weight="700">HITL: interrupt!</text>
+  <text x="280" y="211" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">state saved via checkpointer &#183; thread_id: session_001</text>
+  <text x="280" y="228" text-anchor="middle" fill="#6b7280" font-family="monospace" font-size="10">__interrupt__: action_requests + review_configs</text>
+  <line x1="280" y1="240" x2="280" y2="262" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c22b-arr)"/>
+
+  <text x="280" y="280" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="11" font-style="italic">human decision &#8212; allowed_decisions</text>
+
+  <rect x="60" y="292" width="120" height="40" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+  <text x="120" y="317" text-anchor="middle" fill="#047857" font-family="monospace" font-size="12" font-weight="700">approve</text>
+
+  <rect x="220" y="292" width="120" height="40" rx="8" fill="#fffbeb" stroke="#d97706" stroke-width="1.5"/>
+  <text x="280" y="317" text-anchor="middle" fill="#b45309" font-family="monospace" font-size="12" font-weight="700">edit</text>
+
+  <rect x="380" y="292" width="120" height="40" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.5"/>
+  <text x="440" y="317" text-anchor="middle" fill="#b91c1c" font-family="monospace" font-size="12" font-weight="700">reject</text>
+
+  <text x="280" y="352" text-anchor="middle" fill="#94a3b8" font-family="system-ui" font-size="10.5">edit: fix the args, then run</text>
+
+  <!-- approve path -->
+  <line x1="120" y1="332" x2="120" y2="378" stroke="#059669" stroke-width="1.5" marker-end="url(#c22b-grn)"/>
+  <rect x="30" y="382" width="230" height="50" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1.3"/>
+  <text x="145" y="402" text-anchor="middle" fill="#374151" font-family="monospace" font-size="10">Command(resume={"decisions":</text>
+  <text x="145" y="419" text-anchor="middle" fill="#374151" font-family="monospace" font-size="10">[{"type": "approve"}]})</text>
+  <line x1="145" y1="432" x2="145" y2="458" stroke="#059669" stroke-width="1.5" marker-end="url(#c22b-grn)"/>
+  <rect x="60" y="462" width="170" height="44" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.4"/>
+  <text x="145" y="481" text-anchor="middle" fill="#5b21b6" font-family="system-ui" font-size="11.5" font-weight="600">send_email runs</text>
+  <text x="145" y="497" text-anchor="middle" fill="#6d28d9" font-family="monospace" font-size="10">ToolMessage returned</text>
+  <line x1="145" y1="506" x2="145" y2="530" stroke="#059669" stroke-width="1.5" marker-end="url(#c22b-grn)"/>
+  <rect x="35" y="534" width="220" height="52" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.4"/>
+  <text x="145" y="555" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="11">"I've sent the email to</text>
+  <text x="145" y="572" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="11">team@company.com about Q4."</text>
+
+  <!-- reject path -->
+  <line x1="440" y1="332" x2="440" y2="378" stroke="#dc2626" stroke-width="1.5" marker-end="url(#c22b-red)"/>
+  <rect x="315" y="382" width="230" height="50" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1.3"/>
+  <text x="430" y="402" text-anchor="middle" fill="#374151" font-family="monospace" font-size="10">Command(resume={... "type": "reject",</text>
+  <text x="430" y="419" text-anchor="middle" fill="#374151" font-family="monospace" font-size="10">"reason": "Too risky, needs DBA review"})</text>
+  <line x1="430" y1="432" x2="430" y2="458" stroke="#dc2626" stroke-width="1.5" marker-end="url(#c22b-red)"/>
+  <rect x="345" y="462" width="170" height="44" rx="8" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.4"/>
+  <text x="430" y="481" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="11.5" font-weight="600">tool skipped</text>
+  <text x="430" y="497" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10">nothing destructive ran</text>
+  <line x1="430" y1="506" x2="430" y2="530" stroke="#dc2626" stroke-width="1.5" marker-end="url(#c22b-red)"/>
+  <rect x="320" y="534" width="220" height="52" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.4"/>
+  <text x="430" y="555" text-anchor="middle" fill="#b91c1c" font-family="system-ui" font-size="11">"It seems you've decided not to</text>
+  <text x="430" y="572" text-anchor="middle" fill="#b91c1c" font-family="system-ui" font-size="11">proceed with the deletion."</text>
+
+  <text x="280" y="632" text-anchor="middle" fill="#94a3b8" font-family="system-ui" font-size="11" font-style="italic">Same thread_id resumes the exact paused state &#8212; Chapter 19's checkpointer machinery, reused for safety</text>
+</svg>
+
+<h3>Step 1 &mdash; The Agent Pauses</h3>
+<p>
+  Ask it to send an email. The model composes the tool call &mdash; and then the run <em>stops</em>.
+  The returned state ends with an <code>__interrupt__</code> instead of a final answer:
+</p>
+
+<pre># Step 1: Invoke — agent will pause before send_email
+config = {"configurable": {"thread_id": "session_001"}}
+
+result = hitl_agent.invoke(
+    {"messages": [{"role": "user", "content": "Send an email to team@company.com about the Q4 results"}]},
+    config=config
+)
+
+print("=== Agent paused — awaiting human approval ===")
+print(result)</pre>
+
+<pre>=== Agent paused — awaiting human approval ===
+{'messages': [
+  HumanMessage(content='Send an email to team@company.com about the Q4 results'),
+  AIMessage(content='', tool_calls=[{'name': 'send_email',
+    'args': {'to': 'team@company.com', 'subject': 'Q4 Results',
+             'body': 'Hello Team, ... I am writing to share the results
+              for Q4. ...'}, ...}])],
+ '__interrupt__': [Interrupt(value={
+    'action_requests': [{'name': 'send_email',
+                         'args': {'to': 'team@company.com', ...},
+                         'description': 'Tool execution requires approval ...'}],
+    'review_configs': [{'action_name': 'send_email',
+                        'allowed_decisions': ['approve', 'edit', 'reject']}]
+ })]}</pre>
+
+<p>
+  Everything a review UI needs is in that interrupt: <code>action_requests</code> shows exactly what
+  the agent wants to do (the full email, recipient and all), and <code>review_configs</code> lists
+  the legal responses &mdash; <code>approve</code>, <code>edit</code>, or <code>reject</code>.
+</p>
+
+<h3>Step 2 &mdash; Approve and Resume</h3>
+<p>
+  Resuming is a second <code>invoke</code> on the <strong>same <code>thread_id</code></strong>,
+  passing a <code>Command</code> instead of messages. The checkpointer restores the paused state, the
+  decision is applied, and the tool finally runs:
+</p>
+
+<pre># Step 2: Human reviews and APPROVES
+approved_result = hitl_agent.invoke(
+    Command(resume={"decisions": [{"type": "approve"}]}),
+    config=config   # Same thread_id resumes the paused session
+)
+
+print("=== Approved! Final response ===")
+print(approved_result["messages"][-1].content)</pre>
+
+<pre>=== Approved! Final response ===
+I've sent the email to team@company.com about the Q4 results.</pre>
+
+<h3>Step 3 &mdash; Or Reject, With a Reason</h3>
+<p>
+  The reject path matters just as much &mdash; a fresh thread asks for a destructive
+  <code>delete_records</code> call, and the human says no:
+</p>
+
+<pre># Step 3: Alternative — Human REJECTS
+config2 = {"configurable": {"thread_id": "session_002"}}
+
+hitl_agent.invoke(
+    {"messages": [{"role": "user", "content": "Delete all records from the users table where active=false"}]},
+    config=config2
+)
+
+rejected_result = hitl_agent.invoke(
+    Command(resume={"decisions": [{"type": "reject", "reason": "Too risky, needs DBA review"}]}),
+    config=config2
+)
+
+print("=== Rejected! Final response ===")
+print(rejected_result["messages"][-1].content)</pre>
+
+<pre>=== Rejected! Final response ===
+It seems that you've decided not to proceed with the deletion. If you have
+any questions or need further assistance, feel free to ask!</pre>
+
+<p>
+  The tool never executed &mdash; the rejection (and its reason) went back to the model, which
+  acknowledged gracefully. No deleted rows, no drama, and the whole exchange is in the thread history
+  for audit.
+</p>
+
+<div class="example-block">
+  <div class="label">Gotcha &mdash; No Checkpointer, No Pause</div>
+  <p>
+    <code>HumanInTheLoopMiddleware</code> <strong>requires</strong> a checkpointer. An interrupt is a
+    saved graph state waiting to be resumed &mdash; with nowhere to save it, the middleware can't
+    pause. <code>InMemorySaver</code> is fine for development; production wants a persistent store
+    (SQLite/Postgres checkpointer), for exactly the same reason as Chapter 19: in-RAM state dies with
+    the process &mdash; and a pending approval that vanishes on restart is a lost transaction.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Custom Guardrail #1 &mdash; <code>before_agent</code>: Input Filtering</h2>
+<p>
+  When the built-ins don't cover your rule, subclass <code>AgentMiddleware</code>. The first custom
+  hook is <code>before_agent()</code> &mdash; it runs <strong>before any LLM processing begins</strong>,
+  which makes it the right home for keyword filters, authentication checks, and rate limits: a blocked
+  request costs <em>zero</em> model tokens.
+</p>
+<p>Three pieces of the class to notice before the code:</p>
+<ul>
+  <li><strong><code>@hook_config(can_jump_to=["end"])</code></strong> declares that this hook is
+  allowed to short-circuit the run.</li>
+  <li><strong>Returning <code>None</code></strong> means &ldquo;no objection &mdash; continue
+  normally.&rdquo;</li>
+  <li><strong>Returning <code>{"messages": [...], "jump_to": "end"}</code></strong> injects a canned
+  assistant reply and skips the entire agent &mdash; model, tools, everything.</li>
+</ul>
+
+<pre>from typing import Any
+from langchain.agents.middleware import AgentMiddleware, AgentState, hook_config
+from langgraph.runtime import Runtime
+from langchain.agents import create_agent
+from langchain_core.tools import tool
+
+class ContentFilterMiddleware(AgentMiddleware):
+    """
+    Deterministic guardrail: Block requests containing banned keywords.
+    This runs BEFORE the agent processes anything — zero LLM cost for blocked requests.
+    """
+
+    def __init__(self, banned_keywords: list[str]):
+        super().__init__()
+        self.banned_keywords = [kw.lower() for kw in banned_keywords]
+
+    @hook_config(can_jump_to=["end"])
+    def before_agent(self, state: AgentState, runtime: Runtime) -> dict[str, Any] | None:
+        if not state["messages"]:
+            return None
+
+        first_message = state["messages"][0]
+        if first_message.type != "human":
+            return None
+
+        content = first_message.content.lower()
+
+        for keyword in self.banned_keywords:
+            if keyword in content:
+                print(f"🚫 Blocked — keyword detected: '{keyword}'")
+                return {
+                    "messages": [{
+                        "role": "assistant",
+                        "content": (
+                            "I cannot process requests containing inappropriate content. "
+                            "Please rephrase your request."
+                        )
+                    }],
+                    "jump_to": "end"
+                }
+        return None</pre>
+
+<p>Attach it to an agent like any other middleware:</p>
+
+<pre>@tool
+def search_tool(query: str) -> str:
+    """Search for information."""
+    return f"Results for: {query}"
+
+
+# Create agent with content filter
+filtered_agent = create_agent(
+    model="gpt-4o",
+    tools=[search_tool],
+    middleware=[
+        ContentFilterMiddleware(
+            banned_keywords=["hack", "exploit", "malware", "jailbreak", "bypass"]
+        ),
+    ],
+)</pre>
+
+<p>A safe question sails through to the full model answer&hellip;</p>
+
+<pre># Test 1: Safe request — should pass through
+result = filtered_agent.invoke({
+    "messages": [{"role": "user", "content": "What is machine learning?"}]
+})
+print("✅ Safe request response:")
+print(result["messages"][-1].content)</pre>
+
+<pre>✅ Safe request response:
+Machine learning is a branch of artificial intelligence (AI) that focuses on
+the development of algorithms and statistical models that enable computers to
+perform tasks without explicit instructions. ...
+   - **Supervised Learning:** The model is trained on labeled data. ...
+   - **Unsupervised Learning:** ... infer the natural structure ...
+   - **Reinforcement Learning:** The model learns by interacting with its
+     environment and receiving rewards or penalties.
+...</pre>
+
+<p>&hellip;while a banned keyword never reaches the model at all:</p>
+
+<pre># Test 2: Unsafe request — should be blocked
+result = filtered_agent.invoke({
+    "messages": [{"role": "user", "content": "How do I hack into a server?"}]
+})
+print("🚫 Unsafe request response:")
+print(result["messages"][-1].content)</pre>
+
+<pre>🚫 Blocked — keyword detected: 'hack'
+🚫 Unsafe request response:
+I cannot process requests containing inappropriate content. Please rephrase
+your request.</pre>
+
+<hr class="divider">
+
+<h2>Custom Guardrail #2 &mdash; <code>after_agent</code>: Output Safety</h2>
+<p>
+  The mirror-image hook is <code>after_agent()</code> &mdash; it runs when the agent has produced its
+  final response, <strong>before the user sees it</strong>. That's the place for model-based safety
+  evaluation, compliance scanning (legal/medical/financial disclaimers), and catching anything that
+  slipped through the input-side layers.
+</p>
+<p>
+  This middleware is the model-based half of the earlier section, packaged as a class. Two design
+  choices worth copying: the judge is a <strong>smaller, cheaper model</strong>
+  (<code>gpt-4o-mini</code> judging <code>gpt-4o</code>'s output), and on failure it doesn't error
+  &mdash; it <strong>replaces</strong> the unsafe content with a safe fallback, in place:
+</p>
+
+<pre>from typing import Any
+from langchain.agents.middleware import AgentMiddleware, AgentState, hook_config
+from langgraph.runtime import Runtime
+from langchain_core.messages import AIMessage
+from langchain_openai import ChatOpenAI
+
+class SafetyGuardrailMiddleware(AgentMiddleware):
+    """
+    Model-based guardrail: Use an LLM to evaluate response safety.
+    Runs AFTER the agent produces a response, before it reaches the user.
+    """
+
+    def __init__(self):
+        super().__init__()
+        # Use a smaller, cheaper model for the safety check
+        self.safety_model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+
+    @hook_config(can_jump_to=["end"])
+    def after_agent(self, state: AgentState, runtime: Runtime) -> dict[str, Any] | None:
+        if not state["messages"]:
+            return None
+
+        last_message = state["messages"][-1]
+        if not isinstance(last_message, AIMessage):
+            return None
+
+        # Use a lightweight model as the safety judge
+        safety_prompt = f"""Evaluate if this AI response is safe and appropriate for users.
+Respond with only 'SAFE' or 'UNSAFE'.
+
+Response to evaluate:
+{last_message.content}"""
+
+        result = self.safety_model.invoke([{"role": "user", "content": safety_prompt}])
+
+        if "UNSAFE" in result.content.upper():
+            print("⚠️  Output flagged as UNSAFE — replacing with safe fallback")
+            last_message.content = (
+                "I'm unable to provide that response. "
+                "Please rephrase your request or contact support."
+            )
+
+        return None</pre>
+
+<pre>@tool
+def general_tool(query: str) -> str:
+    """A general purpose tool."""
+    return f"Tool result: {query}"
+
+
+safe_agent = create_agent(
+    model="gpt-4o",
+    tools=[general_tool],
+    middleware=[SafetyGuardrailMiddleware()],
+)
+
+# Test output safety check
+result = safe_agent.invoke({
+    "messages": [{"role": "user", "content": "What is the weather like today?"}]
+})
+print("Response:")
+print(result["messages"][-1].content)</pre>
+
+<pre>Response:
+I fetched today's weather forecast for you. Please let me know if there's
+anything specific you would like to know about the weather!</pre>
+
+<p>
+  A benign response passes the judge untouched. If the judge had answered UNSAFE, the user would have
+  received the fallback text instead &mdash; and never known what the raw output said. That's the
+  point: <strong>the last thing that touches the response before the user is your validator, not the
+  model.</strong>
+</p>
+
+<div class="example-block">
+  <div class="label">This Is LLM-as-a-Judge &mdash; You've Seen It Before</div>
+  <p>
+    Structurally, <code>SafetyGuardrailMiddleware</code> is the same trick as Chapter 17's document
+    grader and Chapter 18's hallucination checker: a small, cheap LLM with a constrained one-word
+    output sitting in judgment over a bigger model's work. CRAG graded <em>retrieval</em>; Adaptive
+    RAG graded <em>groundedness</em>; a safety guardrail grades <em>appropriateness</em>. Same
+    pattern, new checkpoint.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Layered Guardrails &mdash; Defense in Depth</h2>
+<p>
+  No single guardrail catches everything: the keyword filter misses paraphrases, the PII regex knows
+  nothing about harmful intent, the safety judge never sees requests the filter already blocked. The
+  production answer is to <strong>stack them</strong> &mdash; the <code>middleware=[]</code> array
+  executes in order, so each request passes through every layer:
+</p>
+
+<svg class="diagram-svg diagram-svg--light" style="display:block; max-width:520px; margin:1.5rem auto;" viewBox="0 0 520 648" xmlns="http://www.w3.org/2000/svg" role="img"
+  aria-label="Five-layer guardrail stack. User input flows down through Layer 1 ContentFilterMiddleware, a deterministic keyword filter running before the agent with a blocked exit to end; Layer 2 PIIMiddleware masking credit cards on input; Layer 3 HumanInTheLoopMiddleware, an approval gate on the send email tool; Layer 4 PIIMiddleware redacting emails on output; and Layer 5 SafetyGuardrailMiddleware, a model-based output check running after the agent. The result is a safe response to the user. Caption: deterministic first, model-based last, cheap checks run before expensive ones.">
+  <defs>
+    <marker id="c22c-arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f46e5"/></marker>
+    <marker id="c22c-red" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#dc2626"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
+  <text x="260" y="28" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="15" font-weight="700">Five layers, one middleware array</text>
+
+  <rect x="170" y="46" width="180" height="32" rx="16" fill="#ffffff" stroke="#94a3b8" stroke-width="1.4"/>
+  <text x="260" y="67" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="12">User input</text>
+  <line x1="260" y1="78" x2="260" y2="96" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c22c-arr)"/>
+
+  <rect x="90" y="100" width="340" height="58" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.6"/>
+  <text x="260" y="124" text-anchor="middle" fill="#b91c1c" font-family="system-ui" font-size="12.5" font-weight="700">Layer 1 &#183; ContentFilterMiddleware</text>
+  <text x="260" y="143" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">deterministic keyword filter &#8212; before_agent</text>
+  <line x1="90" y1="129" x2="52" y2="129" stroke="#dc2626" stroke-width="1.4" stroke-dasharray="4,3" marker-end="url(#c22c-red)"/>
+  <rect x="8" y="116" width="42" height="26" rx="13" fill="#ffffff" stroke="#dc2626" stroke-width="1.3"/>
+  <text x="29" y="133" text-anchor="middle" fill="#b91c1c" font-family="monospace" font-size="10">end</text>
+  <text x="29" y="158" text-anchor="middle" fill="#94a3b8" font-family="system-ui" font-size="9.5">blocked</text>
+  <line x1="260" y1="158" x2="260" y2="182" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c22c-arr)"/>
+
+  <rect x="90" y="186" width="340" height="58" rx="8" fill="#fffbeb" stroke="#d97706" stroke-width="1.6"/>
+  <text x="260" y="210" text-anchor="middle" fill="#92400e" font-family="system-ui" font-size="12.5" font-weight="700">Layer 2 &#183; PIIMiddleware (input)</text>
+  <text x="260" y="229" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">mask credit cards before the model sees them</text>
+  <line x1="260" y1="244" x2="260" y2="268" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c22c-arr)"/>
+
+  <rect x="90" y="272" width="340" height="58" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.6"/>
+  <text x="260" y="296" text-anchor="middle" fill="#5b21b6" font-family="system-ui" font-size="12.5" font-weight="700">Layer 3 &#183; HumanInTheLoopMiddleware</text>
+  <text x="260" y="315" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">approval gate on send_email_tool &#8212; around tool calls</text>
+  <line x1="260" y1="330" x2="260" y2="354" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c22c-arr)"/>
+
+  <rect x="90" y="358" width="340" height="58" rx="8" fill="#fffbeb" stroke="#d97706" stroke-width="1.6"/>
+  <text x="260" y="382" text-anchor="middle" fill="#92400e" font-family="system-ui" font-size="12.5" font-weight="700">Layer 4 &#183; PIIMiddleware (output)</text>
+  <text x="260" y="401" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">redact emails in the response</text>
+  <line x1="260" y1="416" x2="260" y2="440" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c22c-arr)"/>
+
+  <rect x="90" y="444" width="340" height="58" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.6"/>
+  <text x="260" y="468" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="12.5" font-weight="700">Layer 5 &#183; SafetyGuardrailMiddleware</text>
+  <text x="260" y="487" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.8">model-based output check &#8212; after_agent</text>
+  <line x1="260" y1="502" x2="260" y2="526" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c22c-arr)"/>
+
+  <rect x="150" y="530" width="220" height="32" rx="16" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+  <text x="260" y="551" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="12" font-weight="600">Safe response to user</text>
+
+  <text x="260" y="596" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="12">Deterministic first, model-based last &#8212; cheap checks run before expensive ones.</text>
+  <text x="260" y="620" text-anchor="middle" fill="#94a3b8" font-family="monospace" font-size="11">middleware=[...] executes in array order</text>
+</svg>
+
+<pre>from langchain.agents import create_agent
+from langchain.agents.middleware import PIIMiddleware, HumanInTheLoopMiddleware
+from langgraph.checkpoint.memory import InMemorySaver
+from langchain_core.tools import tool
+
+@tool
+def search_tool(query: str) -> str:
+    """Search for information."""
+    return f"Search results: {query}"
+
+@tool
+def send_email_tool(to: str, body: str) -> str:
+    """Send an email."""
+    return f"Email sent to {to}"
+
+# Full layered guardrail stack
+production_agent = create_agent(
+    model="gpt-4o",
+    tools=[search_tool, send_email_tool],
+    middleware=[
+        # Layer 1: Deterministic input filter (before agent)
+        ContentFilterMiddleware(banned_keywords=["hack", "exploit", "malware"]),
+
+        # Layer 2: PII redaction on input
+        PIIMiddleware("credit_card", strategy="mask", apply_to_input=True),
+
+        # Layer 3: Human approval for sensitive tools
+        HumanInTheLoopMiddleware(
+            interrupt_on={"send_email_tool": True, "search_tool": False}
+        ),
+
+        # Layer 4: PII redaction on output
+        PIIMiddleware("email", strategy="redact", apply_to_output=True),
+
+        # Layer 5: Model-based output safety
+        SafetyGuardrailMiddleware(),
+    ],
+    checkpointer=InMemorySaver(),
+)
+
+print("🏭 Production-grade agent with 5-layer guardrails created!")</pre>
+
+<p>
+  Read the order again &mdash; it's not arbitrary. The free keyword check runs first, so obviously bad
+  requests cost nothing. PII is scrubbed before any model call. The approval gate wraps only the tool
+  that acts on the outside world. And the one guardrail that costs an LLM call &mdash; the safety judge
+  &mdash; runs last, only on responses that made it through everything else.
+</p>
+
+<hr class="divider">
+
+<h2>Real-World Build &mdash; A Healthcare Chatbot</h2>
+<p>
+  The capstone assembles the whole toolbox for a domain where the stakes are obvious. The requirements
+  read like a compliance document, and each maps to one guardrail:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Requirement</th><th>Guardrail</th><th>Kind</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Block off-topic or harmful requests</td>
+      <td><code>HealthcareSafetyFilter</code> (custom <code>before_agent</code>)</td>
+      <td>Deterministic</td>
+    </tr>
+    <tr>
+      <td>Protect patient PII</td>
+      <td><code>PIIMiddleware</code> &times;2 (email redact, card mask)</td>
+      <td>Deterministic</td>
+    </tr>
+    <tr>
+      <td>Human sign-off before appointments are booked</td>
+      <td><code>HumanInTheLoopMiddleware</code> on <code>book_appointment</code></td>
+      <td>Human</td>
+    </tr>
+    <tr>
+      <td>Every answer carries a medical disclaimer</td>
+      <td><code>MedicalOutputValidator</code> (custom <code>after_agent</code>)</td>
+      <td>Deterministic</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>The Two Custom Middlewares</h3>
+<p>
+  The input filter is <code>ContentFilterMiddleware</code> specialized for the domain &mdash; and its
+  canned refusal is domain-appropriate too, pointing users in crisis to emergency services:
+</p>
+
+<pre># --- Healthcare-specific content filter ---
+class HealthcareSafetyFilter(AgentMiddleware):
+    """Block non-medical or harmful requests in a healthcare context."""
+
+    BLOCKED_TOPICS = ["drug synthesis", "self-harm", "suicide method", "weapon", "hack"]
+
+    @hook_config(can_jump_to=["end"])
+    def before_agent(self, state: AgentState, runtime: Runtime) -> dict[str, Any] | None:
+        if not state["messages"]:
+            return None
+
+        first_msg = state["messages"][0]
+        if first_msg.type != "human":
+            return None
+
+        content = first_msg.content.lower()
+        for topic in self.BLOCKED_TOPICS:
+            if topic in content:
+                return {
+                    "messages": [{
+                        "role": "assistant",
+                        "content": (
+                            "I'm a healthcare assistant and can only help with "
+                            "medical questions, appointments, and health information. "
+                            "If you're in crisis, please call 112 or your local emergency number."
+                        )
+                    }],
+                    "jump_to": "end"
+                }
+        return None</pre>
+
+<p>
+  The output validator shows a third kind of <code>after_agent</code> behavior: not judging, not
+  replacing &mdash; <strong>appending</strong>. Every response that doesn't already carry a medical
+  disclaimer gets one:
+</p>
+
+<pre># --- Medical output validator ---
+class MedicalOutputValidator(AgentMiddleware):
+    """Ensure all responses include appropriate medical disclaimers."""
+
+    DISCLAIMER = "\n\n⚕️ *This is general health information, not medical advice. Please consult a qualified healthcare professional.*"
+
+    @hook_config(can_jump_to=["end"])
+    def after_agent(self, state: AgentState, runtime: Runtime) -> dict[str, Any] | None:
+        if not state["messages"]:
+            return None
+
+        last_message = state["messages"][-1]
+        if not isinstance(last_message, AIMessage):
+            return None
+
+        # Add disclaimer if not already present
+        if "medical advice" not in last_message.content.lower():
+            last_message.content += self.DISCLAIMER
+
+        return None</pre>
+
+<h3>Tools and Assembly</h3>
+
+<pre># --- Healthcare tools ---
+@tool
+def search_symptoms(symptoms: str) -> str:
+    """Search for information about medical symptoms."""
+    return f"Symptom information for: {symptoms}. Please consult a doctor for diagnosis."
+
+@tool
+def book_appointment(patient_name: str, date: str, doctor: str) -> str:
+    """Book a medical appointment."""
+    return f"Appointment booked for {patient_name} with Dr. {doctor} on {date}"
+
+@tool
+def get_medication_info(medication: str) -> str:
+    """Get information about a medication."""
+    return f"General info about {medication}. Always follow your doctor's prescription."</pre>
+
+<pre># --- Build the healthcare chatbot ---
+healthcare_bot = create_agent(
+    model="gpt-4o",
+    tools=[search_symptoms, book_appointment, get_medication_info],
+    middleware=[
+        # Guardrail 1: Block harmful/off-topic requests
+        HealthcareSafetyFilter(),
+
+        # Guardrail 2: Redact patient PII from inputs
+        PIIMiddleware("email", strategy="redact", apply_to_input=True),
+        PIIMiddleware("credit_card", strategy="mask", apply_to_input=True),
+
+        # Guardrail 3: Require approval before booking appointments
+        HumanInTheLoopMiddleware(
+            interrupt_on={
+                "book_appointment": True,
+                "search_symptoms": False,
+                "get_medication_info": False,
+            }
+        ),
+
+        # Guardrail 4: Add medical disclaimer to all outputs
+        MedicalOutputValidator(),
+    ],
+    checkpointer=InMemorySaver(),
+    system_prompt=(
+        "You are a helpful healthcare assistant. "
+        "You can search for symptoms, medication information, and help book appointments. "
+        "Always be empathetic and remind users to consult a doctor for diagnosis."
+    )
+)
+
+print("🏥 Healthcare chatbot with full guardrail stack created!")</pre>
+
+<h3>Test 1 &mdash; A Normal Medical Question</h3>
+<p>
+  A safe query flows through every layer: nothing to filter, no PII,
+  <code>search_symptoms</code> is auto-approved, and the validator appends the disclaimer on the way
+  out:
+</p>
+
+<pre>config_t1 = {"configurable": {"thread_id": "healthcare_session_t1"}}
+
+result = healthcare_bot.invoke(
+    {"messages": [{"role": "user", "content": "What are symptoms of Type 2 Diabetes?"}]},
+    config=config_t1
+)</pre>
+
+<pre>Common symptoms of Type 2 Diabetes include:
+
+1. Increased thirst
+2. Frequent urination, especially at night
+3. Increased hunger
+4. Unplanned weight loss
+5. Fatigue or tiredness
+6. Blurred vision
+7. Slow-healing sores or frequent infections
+8. Areas of darkened skin, usually in the armpits and neck
+
+If you're experiencing any of these symptoms, it's crucial to consult with a
+healthcare professional for a proper assessment and diagnosis.
+
+⚕️ *This is general health information, not medical advice. Please consult
+a qualified healthcare professional.*</pre>
+
+<h3>Test 2 &mdash; A Question Carrying PII</h3>
+<p>The email is redacted before the model sees it &mdash; and the model responds accordingly:</p>
+
+<pre># Test 2: Query with PII (email gets redacted)
+result = healthcare_bot.invoke({
+    "messages": [{
+        "role": "user",
+        "content": "My email is patient123@gmail.com. What can I take for a headache?"
+    }]},
+    config=config_t1
+)
+print("=== PII Redaction Test ===")
+print(result["messages"][-1].content)</pre>
+
+<pre>=== PII Redaction Test ===
+I'm sorry, but I can't assist with using your email address or personal
+contact information. For a headache, there are several over-the-counter
+medications that might help, such as:
+
+1. **Acetaminophen (Tylenol)**
+2. **Ibuprofen (Advil, Motrin)**
+3. **Aspirin**
+4. **Naproxen (Aleve)**
+
+However, it's essential to follow the dosage instructions on the packaging ...
+
+⚕️ *This is general health information, not medical advice. Please consult
+a qualified healthcare professional.*</pre>
+
+<h3>Test 3 &mdash; A Harmful Request</h3>
+<p>
+  &ldquo;Drug synthesis&rdquo; is on the blocked-topics list, so the filter short-circuits the run
+  &mdash; the model produces a refusal, and even that carries the disclaimer, because
+  <code>after_agent</code> runs on <em>every</em> path:
+</p>
+
+<pre># Test 3: Off-topic / harmful request — gets blocked
+result = healthcare_bot.invoke({
+    "messages": [{"role": "user", "content": "How do I synthesize drugs at home?"}]
+},
+ config=config_t1)
+print("=== Blocked Request ===")
+print(result["messages"][-1].content)</pre>
+
+<pre>=== Blocked Request ===
+I'm sorry, but I can't assist with that. It's important to note that
+synthesizing drugs at home is extremely dangerous, illegal, and poses
+significant health risks. ...
+
+If you have questions about medications or if you're seeking treatment
+options, please consult with a healthcare professional. ...
+
+⚕️ *This is general health information, not medical advice. Please consult
+a qualified healthcare professional.*</pre>
+
+<h3>Test 4 &mdash; Booking Requires a Human</h3>
+<p>
+  The booking flow exercises the approval gate end to end &mdash; invoke, interrupt, resume with
+  approval on the same <code>thread_id</code>:
+</p>
+
+<pre># Test 4: Appointment booking — requires human approval
+config = {"configurable": {"thread_id": "healthcare_session_001"}}
+
+result = healthcare_bot.invoke(
+    {"messages": [{"role": "user", "content": "Book me an appointment with Dr. Sharma on March 15"}]},
+    config=config
+)
+print("=== Appointment Booking — Awaiting Approval ===")
+print(result)
+
+# Approve
+from langgraph.types import Command
+approved = healthcare_bot.invoke(
+    Command(resume={"decisions": [{"type": "approve"}]}),
+    config=config
+)
+print("\n=== After Approval ===")
+print(approved["messages"][-1].content)</pre>
+
+<pre>=== After Approval ===
+Could you please provide your full name for the appointment booking with
+Dr. Sharma on March 15?</pre>
+
+<p>
+  An instructive wrinkle in that last run: the agent didn't call <code>book_appointment</code>
+  immediately &mdash; it first asked for the patient's name, because the tool signature requires
+  <code>patient_name</code> and the request didn't include one. The guardrail didn't have to fire
+  yet; it will interrupt the moment the model actually attempts the booking call. Guardrails gate
+  <em>actions</em>, not conversations.
+</p>
+
+<hr class="divider">
+
+<h2>The Guardrail Toolbox at a Glance</h2>
+
+<table>
+  <thead>
+    <tr><th>Guardrail type</th><th>Hook</th><th>When it runs</th><th>Best for</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>PII Middleware</strong></td>
+      <td>Input/Output</td>
+      <td>Around model calls</td>
+      <td>Data privacy, compliance</td>
+    </tr>
+    <tr>
+      <td><strong>Human-in-the-Loop</strong></td>
+      <td>Tool level</td>
+      <td>Before sensitive tools</td>
+      <td>High-stakes decisions</td>
+    </tr>
+    <tr>
+      <td><strong>Content Filter</strong></td>
+      <td><code>before_agent</code></td>
+      <td>Start of invocation</td>
+      <td>Blocking bad inputs early</td>
+    </tr>
+    <tr>
+      <td><strong>Safety Validator</strong></td>
+      <td><code>after_agent</code></td>
+      <td>End of invocation</td>
+      <td>Output quality/safety</td>
+    </tr>
+    <tr>
+      <td><strong>Custom logic</strong></td>
+      <td>Any hook</td>
+      <td>Anywhere</td>
+      <td>Any business rule</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+<div class="example-block">
+  <div class="label">Remember These Four</div>
+  <p><strong>1. Guardrails = middleware.</strong> Every guardrail &mdash; built-in or custom &mdash; is an entry in the <code>middleware=[]</code> parameter of <code>create_agent()</code>, intercepting execution before the agent, around model calls, around tool calls, or after the agent. You wrap the agent; you don't rewrite it.</p>
+  <p><strong>2. Layer them, cheapest first.</strong> Deterministic checks (keywords, PII regex) are free and run early &mdash; a request blocked in <code>before_agent</code> costs zero LLM tokens. Model-based judges are semantic but expensive, so they run last, on the few responses that survive everything else. Defense in depth: each layer catches what the previous one missed.</p>
+  <p><strong>3. Human-in-the-loop needs a checkpointer.</strong> <code>HumanInTheLoopMiddleware</code> pauses by saving graph state (<code>__interrupt__</code> with <code>action_requests</code>) and resumes via <code>Command(resume={"decisions": [...]})</code> on the same <code>thread_id</code> &mdash; approve, edit, or reject. <code>InMemorySaver</code> for dev, a persistent store for production.</p>
+  <p><strong>4. Custom hooks give you full control.</strong> Subclass <code>AgentMiddleware</code>, implement <code>before_agent()</code> or <code>after_agent()</code>, and either return <code>None</code> (continue) or a state update &mdash; with <code>@hook_config(can_jump_to=["end"])</code> letting input filters short-circuit the whole run, and output validators free to judge, replace, or append (the healthcare bot's auto-disclaimer) before the user sees anything.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter21">&larr; Chapter 21: Vectorless RAG &mdash; Reasoning-Based Retrieval with PageIndex</a>
+    <span></span>
+</nav>

@@ -239,5 +239,10 @@ const chapters = [
         id: "chapter21",
         title: "Chapter 21: Vectorless RAG — Reasoning-Based Retrieval with PageIndex",
         description: "RAG with no vector DB, no chunking, no embeddings — from the PageIndex crash-course notebook and the Vectorless vs Traditional RAG deck: why similarity ≠ relevance breaks vector search on professional documents, building a hierarchical tree index from a PDF, LLM tree search, the search → retrieve → generate pipeline with page citations, expert-guided retrieval via prompt rules, the Chat API and self-hosted option, and the two-question decision heuristic plus the hybrid pattern."
+    },
+    {
+        id: "chapter22",
+        title: "Chapter 22: Guardrails — Building Safe, Compliant AI Agents",
+        description: "Making agents safe for production — from the LangChain guardrails crash-course notebook: deterministic vs model-based checks, the built-in PIIMiddleware (redact/mask/hash/block) and HumanInTheLoopMiddleware (interrupt → approve/edit/reject via a checkpointer), custom before_agent input filters and after_agent output validators, stacking five layers of defense in one middleware array, and a healthcare chatbot capstone with PII redaction, approval gates, and auto-disclaimers."
     }
 ];
