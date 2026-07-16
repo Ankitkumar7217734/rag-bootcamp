@@ -1,0 +1,667 @@
+<h1>RAG Evaluation</h1>
+<p style="color:#888; margin-bottom: 2rem;"><em>A RAG target must return its evidence. With answer and documents exposed, four judges can measure correctness, answer relevance, groundedness, and retrieval relevance &mdash; and catch a correct answer that retrieval never supported.</em></p>
+
+<h2>Overview</h2>
+<p>
+  This sub-chapter builds a small RAG application over three Lilian Weng articles, creates three
+  reference examples, and evaluates both retrieval and generation. The LangSmith loop from the chatbot
+  half stays the same; the target and evaluators grow to inspect intermediate documents.
+</p>
+
+<div class="example-block">
+  <div class="label">The Core Idea</div>
+  <p>
+    Returning <code>documents</code> is not debugging noise. Without it, you cannot tell whether a fluent
+    answer came from the corpus or from the model's prior knowledge.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Build the RAG System Under Test</h2>
+<p>
+  The RAG benchmark uses three Lilian Weng posts: autonomous agents, prompt engineering, and adversarial
+  attacks on LLMs. The documents are split into 250-token chunks with no overlap, embedded into an
+  in-memory vector store, and exposed through a retriever.
+</p>
+
+<pre>from langchain_community.document_loaders import WebBaseLoader
+from langchain_core.vectorstores import InMemoryVectorStore
+from langchain_openai import OpenAIEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+urls = [
+    "https://lilianweng.github.io/posts/2023-06-23-agent/",
+    "https://lilianweng.github.io/posts/2023-03-15-prompt-engineering/",
+    "https://lilianweng.github.io/posts/2023-10-25-adv-attack-llm/",
+]
+
+docs = [WebBaseLoader(url).load() for url in urls]
+docs_list = [item for sublist in docs for item in sublist]
+
+text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+    chunk_size=250,
+    chunk_overlap=0,
+)
+doc_splits = text_splitter.split_documents(docs_list)
+
+vectorstore = InMemoryVectorStore.from_documents(
+    documents=doc_splits,
+    embedding=OpenAIEmbeddings(),
+)
+
+retriever = vectorstore.as_retriever(k=6)</pre>
+
+<p>
+  On current LangChain releases, the explicit form is commonly
+  <code>vectorstore.as_retriever(search_kwargs={"k": 6})</code>. The chapter keeps the notebook's executed
+  form above, but production code should pin the LangChain version and confirm the configured <code>k</code>
+  appears in the trace.
+</p>
+
+<h3>The Target Must Return Its Evidence</h3>
+<pre>from langchain.chat_models import init_chat_model
+from langsmith import traceable
+
+llm = init_chat_model("openai:gpt-4o-mini")
+
+@traceable()
+def rag_bot(question: str) -> dict:
+    docs = retriever.invoke(question)
+    docs_string = " ".join(doc.page_content for doc in docs)
+
+    instructions = f"""You are a helpful assistant who is good at analyzing source information and answering questions.
+Use the following source documents to answer the user's questions.
+If you don't know the answer, just say that you don't know.
+Use three sentences maximum and keep the answer concise.
+
+Documents:
+{docs_string}"""
+
+    ai_msg = llm.invoke([
+        {"role": "system", "content": instructions},
+        {"role": "user", "content": question},
+    ])
+
+    return {
+        "answer": ai_msg.content,
+        "documents": docs,
+    }</pre>
+
+<p>
+  Returning <code>documents</code> is not incidental debugging data. Groundedness and retrieval relevance
+  cannot be computed from the final answer alone. Evaluation-friendly application boundaries expose the
+  intermediate artifacts needed to test each stage.
+</p>
+
+<hr class="divider">
+
+<h2>The Four Core RAG Metrics</h2>
+
+<svg class="diagram-svg diagram-svg--light" viewBox="0 0 940 535" xmlns="http://www.w3.org/2000/svg" role="img"
+  aria-label="A clear map of four RAG evaluation metrics. The centre shows the RAG system under test: a question flows through retrieval and retrieved documents to a generator and answer. Four numbered metric cards state exactly which two artifacts each evaluator compares: retrieval relevance compares question and retrieved documents; groundedness compares retrieved documents and answer; answer relevance compares question and answer; correctness compares answer and a reference answer. Only correctness requires a reference answer.">
+  <defs>
+    <marker id="c24b-arr" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4b5563"/></marker>
+    <marker id="c24b-green" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#059669"/></marker>
+    <marker id="c24b-red" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#dc2626"/></marker>
+    <marker id="c24b-amber" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#d97706"/></marker>
+    <marker id="c24b-blue" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#2563eb"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="470" y="29" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="16" font-weight="700">RAG Evaluation: Four Questions, Four Failure Surfaces</text>
+  <text x="470" y="49" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">Each metric evaluates one explicit relationship - so a failed score points to a repairable stage.</text>
+
+  <!-- Metric cards: the comparison is stated before the pipeline is shown. -->
+  <rect x="26" y="72" width="282" height="83" rx="10" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+  <circle cx="51" cy="98" r="13" fill="#059669"/><text x="51" y="102" text-anchor="middle" fill="#ffffff" font-family="system-ui" font-size="11" font-weight="700">1</text>
+  <text x="73" y="100" fill="#047857" font-family="system-ui" font-size="12" font-weight="700">RETRIEVAL RELEVANCE</text>
+  <text x="51" y="124" fill="#374151" font-family="system-ui" font-size="10.5">Question</text><text x="102" y="124" fill="#059669" font-family="system-ui" font-size="11" font-weight="700">↔</text><text x="121" y="124" fill="#374151" font-family="system-ui" font-size="10.5">Retrieved docs</text>
+  <text x="51" y="143" fill="#64748b" font-family="system-ui" font-size="10">Did retrieval find evidence that helps answer it?</text>
+
+  <rect x="626" y="72" width="288" height="83" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.5"/>
+  <circle cx="651" cy="98" r="13" fill="#dc2626"/><text x="651" y="102" text-anchor="middle" fill="#ffffff" font-family="system-ui" font-size="11" font-weight="700">2</text>
+  <text x="673" y="100" fill="#b91c1c" font-family="system-ui" font-size="12" font-weight="700">GROUNDEDNESS</text>
+  <text x="651" y="124" fill="#374151" font-family="system-ui" font-size="10.5">Retrieved docs</text><text x="721" y="124" fill="#dc2626" font-family="system-ui" font-size="11" font-weight="700">↔</text><text x="740" y="124" fill="#374151" font-family="system-ui" font-size="10.5">Answer</text>
+  <text x="651" y="143" fill="#64748b" font-family="system-ui" font-size="10">Are all answer claims supported by the evidence?</text>
+
+  <rect x="26" y="448" width="330" height="66" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+  <circle cx="51" cy="473" r="13" fill="#d97706"/><text x="51" y="477" text-anchor="middle" fill="#ffffff" font-family="system-ui" font-size="11" font-weight="700">3</text>
+  <text x="73" y="475" fill="#92400e" font-family="system-ui" font-size="12" font-weight="700">ANSWER RELEVANCE</text>
+  <text x="51" y="496" fill="#374151" font-family="system-ui" font-size="10.5">Question</text><text x="102" y="496" fill="#d97706" font-family="system-ui" font-size="11" font-weight="700">↔</text><text x="121" y="496" fill="#374151" font-family="system-ui" font-size="10.5">Answer</text>
+  <text x="194" y="496" fill="#64748b" font-family="system-ui" font-size="10">Does it address the user's need?</text>
+
+  <rect x="570" y="448" width="344" height="66" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <circle cx="595" cy="473" r="13" fill="#2563eb"/><text x="595" y="477" text-anchor="middle" fill="#ffffff" font-family="system-ui" font-size="11" font-weight="700">4</text>
+  <text x="617" y="475" fill="#1d4ed8" font-family="system-ui" font-size="12" font-weight="700">CORRECTNESS</text>
+  <text x="595" y="496" fill="#374151" font-family="system-ui" font-size="10.5">Answer</text><text x="637" y="496" fill="#2563eb" font-family="system-ui" font-size="11" font-weight="700">↔</text><text x="656" y="496" fill="#374151" font-family="system-ui" font-size="10.5">Reference answer</text>
+  <text x="778" y="496" fill="#1d4ed8" font-family="system-ui" font-size="10" font-weight="700">ground truth required</text>
+
+  <!-- System under test -->
+  <rect x="18" y="181" width="904" height="163" rx="14" fill="#f8fafc" stroke="#d1d5db"/>
+  <text x="43" y="205" fill="#64748b" font-family="system-ui" font-size="10" font-weight="700" letter-spacing="1">RAG SYSTEM UNDER TEST</text>
+
+  <rect x="38" y="237" width="121" height="62" rx="9" fill="#ffffff" stroke="#94a3b8" stroke-width="1.4"/>
+  <text x="98" y="263" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="12" font-weight="700">Question</text>
+  <text x="98" y="283" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="9.5">inputs.question</text>
+  <line x1="159" y1="268" x2="188" y2="268" stroke="#4b5563" stroke-width="1.5" marker-end="url(#c24b-arr)"/>
+
+  <rect x="194" y="220" width="133" height="96" rx="9" fill="#eff6ff" stroke="#2563eb" stroke-width="1.4"/>
+  <text x="260" y="248" text-anchor="middle" fill="#1d4ed8" font-family="system-ui" font-size="12.5" font-weight="700">Retriever</text>
+  <text x="260" y="270" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5">vector search</text>
+  <text x="260" y="289" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10">top-k chunks</text>
+  <text x="260" y="306" text-anchor="middle" fill="#1d4ed8" font-family="monospace" font-size="10">k = 6</text>
+  <line x1="327" y1="268" x2="364" y2="268" stroke="#4b5563" stroke-width="1.5" marker-end="url(#c24b-arr)"/>
+
+  <rect x="370" y="210" width="155" height="116" rx="9" fill="#ecfdf5" stroke="#059669" stroke-width="1.4"/>
+  <text x="447" y="238" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="12.5" font-weight="700">Retrieved docs</text>
+  <rect x="393" y="255" width="108" height="17" rx="3" fill="#ffffff" stroke="#a7f3d0"/><rect x="393" y="279" width="108" height="17" rx="3" fill="#ffffff" stroke="#a7f3d0"/><rect x="393" y="303" width="73" height="10" rx="3" fill="#ffffff" stroke="#a7f3d0"/>
+  <line x1="525" y1="268" x2="564" y2="268" stroke="#4b5563" stroke-width="1.5" marker-end="url(#c24b-arr)"/>
+
+  <rect x="570" y="220" width="135" height="96" rx="9" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.4"/>
+  <text x="637" y="248" text-anchor="middle" fill="#6d28d9" font-family="system-ui" font-size="12.5" font-weight="700">Generator</text>
+  <text x="637" y="270" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5">question + docs</text>
+  <text x="637" y="290" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="10">GPT-4o-mini</text>
+  <line x1="705" y1="268" x2="744" y2="268" stroke="#4b5563" stroke-width="1.5" marker-end="url(#c24b-arr)"/>
+
+  <rect x="750" y="237" width="140" height="62" rx="9" fill="#ffffff" stroke="#94a3b8" stroke-width="1.4"/>
+  <text x="820" y="263" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="12" font-weight="700">Answer</text>
+  <text x="820" y="283" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="9.5">outputs.answer</text>
+
+  <rect x="194" y="363" width="133" height="59" rx="8" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="260" y="387" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="11" font-weight="700">Document corpus</text>
+  <text x="260" y="407" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9.5">agents · prompts · attacks</text>
+  <line x1="260" y1="363" x2="260" y2="322" stroke="#94a3b8" stroke-width="1.3" marker-end="url(#c24b-arr)"/>
+
+  <rect x="750" y="363" width="140" height="59" rx="8" fill="#ffffff" stroke="#2563eb"/>
+  <text x="820" y="387" text-anchor="middle" fill="#1d4ed8" font-family="system-ui" font-size="11" font-weight="700">Reference answer</text>
+  <text x="820" y="407" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9.5">curated ground truth</text>
+
+  <!-- Light, targeted connectors show which artifacts each card observes. -->
+  <path d="M 98 237 C 98 184, 220 174, 220 155" fill="none" stroke="#059669" stroke-width="1.3" stroke-dasharray="4,4" marker-end="url(#c24b-green)"/>
+  <path d="M 447 210 C 447 174, 252 174, 252 155" fill="none" stroke="#059669" stroke-width="1.3" stroke-dasharray="4,4" marker-end="url(#c24b-green)"/>
+  <path d="M 447 210 C 447 172, 694 172, 694 155" fill="none" stroke="#dc2626" stroke-width="1.3" stroke-dasharray="4,4" marker-end="url(#c24b-red)"/>
+  <path d="M 820 237 C 820 180, 806 173, 806 155" fill="none" stroke="#dc2626" stroke-width="1.3" stroke-dasharray="4,4" marker-end="url(#c24b-red)"/>
+  <path d="M 98 299 C 98 386, 152 413, 152 447" fill="none" stroke="#d97706" stroke-width="1.3" stroke-dasharray="4,4" marker-end="url(#c24b-amber)"/>
+  <path d="M 820 299 C 820 388, 246 412, 246 447" fill="none" stroke="#d97706" stroke-width="1.3" stroke-dasharray="4,4" marker-end="url(#c24b-amber)"/>
+  <path d="M 820 299 C 820 338, 720 411, 720 447" fill="none" stroke="#2563eb" stroke-width="1.3" stroke-dasharray="4,4" marker-end="url(#c24b-blue)"/>
+  <path d="M 820 422 C 820 434, 803 436, 803 447" fill="none" stroke="#2563eb" stroke-width="1.3" stroke-dasharray="4,4" marker-end="url(#c24b-blue)"/>
+
+  <text x="470" y="529" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10" font-style="italic">Only correctness needs a reference answer; the other three metrics can score examples without ground truth.</text>
+</svg>
+
+<table>
+  <thead>
+    <tr><th>Metric</th><th>Compares</th><th>Needs reference?</th><th>Failure means</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Correctness</strong></td><td>Answer ↔ reference answer</td><td>Yes</td><td>The final claim conflicts with or misses ground truth</td></tr>
+    <tr><td><strong>Answer relevance</strong></td><td>Question ↔ answer</td><td>No</td><td>The response does not directly help with the question</td></tr>
+    <tr><td><strong>Groundedness</strong></td><td>Retrieved docs ↔ answer</td><td>No</td><td>The answer contains claims not justified by retrieved evidence</td></tr>
+    <tr><td><strong>Retrieval relevance</strong></td><td>Question ↔ retrieved docs</td><td>No</td><td>The retriever returned evidence unrelated to the question</td></tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">Do Not Merge These Scores</div>
+  <p>
+    A single “RAG quality” number hides the repair action. Low retrieval relevance points to embeddings,
+    chunking, metadata filters, query rewriting, or <code>k</code>. Low groundedness points to the generation
+    prompt, context ordering, citations, or model behavior. Low answer relevance points to instruction
+    following. Low correctness may involve any stage &mdash; and needs row-level evidence to diagnose.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Create the RAG Evaluation Dataset</h2>
+<p>
+  The three examples deliberately target different source articles so the benchmark exercises routing
+  through the shared vector store rather than repeating one topic.
+</p>
+
+<pre>from langsmith import Client
+
+client = Client()
+
+examples = [
+    {
+        "inputs": {
+            "question": "How does the ReAct agent use self-reflection? "
+        },
+        "outputs": {
+            "answer": (
+                "ReAct integrates reasoning and acting, performing actions - "
+                "such tools like Wikipedia search API - and then observing / "
+                "reasoning about the tool outputs."
+            )
+        },
+    },
+    {
+        "inputs": {
+            "question": "What are the types of biases that can arise with few-shot prompting?"
+        },
+        "outputs": {
+            "answer": (
+                "The biases that can arise with few-shot prompting include "
+                "(1) Majority label bias, (2) Recency bias, and "
+                "(3) Common token bias."
+            )
+        },
+    },
+    {
+        "inputs": {
+            "question": "What are five types of adversarial attacks?"
+        },
+        "outputs": {
+            "answer": (
+                "Five types of adversarial attacks are (1) Token manipulation, "
+                "(2) Gradient based attack, (3) Jailbreak prompting, "
+                "(4) Human red-teaming, (5) Model red-teaming."
+            )
+        },
+    },
+]
+
+dataset_name = "RAG Test Evaluation"
+dataset = client.create_dataset(dataset_name=dataset_name)
+client.create_examples(dataset_id=dataset.id, examples=examples)</pre>
+
+<hr class="divider">
+
+<h2>Build Structured LLM Judges</h2>
+<p>
+  The RAG evaluators use <code>TypedDict</code> schemas with two fields: an explanation followed by a
+  Boolean verdict. Putting the explanation first forces the judge to analyze the evidence before emitting
+  its score, while strict JSON Schema makes the return value machine-readable.
+</p>
+
+<h3>Correctness: Answer vs Reference</h3>
+<pre>from typing_extensions import Annotated, TypedDict
+from langchain_openai import ChatOpenAI
+
+class CorrectnessGrade(TypedDict):
+    explanation: Annotated[str, ..., "Explain your reasoning for the score"]
+    correct: Annotated[
+        bool,
+        ...,
+        "True if the answer is correct, False otherwise.",
+    ]
+
+correctness_instructions = """You are a teacher grading a quiz.
+
+You will be given a QUESTION, the GROUND TRUTH (correct) ANSWER,
+and the STUDENT ANSWER.
+
+Grade the student answer only on factual accuracy relative to the
+ground truth. It must not contain conflicting statements. Extra
+information is acceptable when it is factually accurate.
+
+Explain your reasoning, then return the correctness verdict."""
+
+grader_llm = ChatOpenAI(
+    model="gpt-4o-mini",
+    temperature=0,
+).with_structured_output(
+    CorrectnessGrade,
+    method="json_schema",
+    strict=True,
+)
+
+def correctness(inputs: dict, outputs: dict, reference_outputs: dict) -> bool:
+    answers = f"""QUESTION: {inputs['question']}
+GROUND TRUTH ANSWER: {reference_outputs['answer']}
+STUDENT ANSWER: {outputs['answer']}"""
+
+    grade = grader_llm.invoke([
+        {"role": "system", "content": correctness_instructions},
+        {"role": "user", "content": answers},
+    ])
+    return grade["correct"]</pre>
+
+<h3>Answer Relevance: Answer vs Question</h3>
+<pre>class RelevanceGrade(TypedDict):
+    explanation: Annotated[str, ..., "Explain your reasoning for the score"]
+    relevant: Annotated[bool, ..., "Whether the answer addresses the question"]
+
+relevance_llm = ChatOpenAI(
+    model="gpt-4o",
+    temperature=0,
+).with_structured_output(
+    RelevanceGrade,
+    method="json_schema",
+    strict=True,
+)
+
+def relevance(inputs: dict, outputs: dict) -> bool:
+    answer = (
+        f"QUESTION: {inputs['question']}\n"
+        f"STUDENT ANSWER: {outputs['answer']}"
+    )
+    grade = relevance_llm.invoke([
+        {"role": "system", "content": relevance_instructions},
+        {"role": "user", "content": answer},
+    ])
+    return grade["relevant"]</pre>
+
+<p>
+  No reference is passed here. Relevance asks whether the response addresses the user's intent, not whether
+  its claims are factually correct.
+</p>
+
+<h3>Groundedness: Answer vs Retrieved Documents</h3>
+<pre>class GroundedGrade(TypedDict):
+    explanation: Annotated[str, ..., "Explain your reasoning for the score"]
+    grounded: Annotated[
+        bool,
+        ...,
+        "Whether the answer is supported by the documents",
+    ]
+
+grounded_llm = ChatOpenAI(
+    model="gpt-4o",
+    temperature=0,
+).with_structured_output(
+    GroundedGrade,
+    method="json_schema",
+    strict=True,
+)
+
+def groundedness(inputs: dict, outputs: dict) -> bool:
+    doc_string = "\n\n".join(
+        doc.page_content for doc in outputs["documents"]
+    )
+    answer = f"FACTS: {doc_string}\nSTUDENT ANSWER: {outputs['answer']}"
+    grade = grounded_llm.invoke([
+        {"role": "system", "content": grounded_instructions},
+        {"role": "user", "content": answer},
+    ])
+    return grade["grounded"]</pre>
+
+<h3>Retrieval Relevance: Documents vs Question</h3>
+<pre>class RetrievalRelevanceGrade(TypedDict):
+    explanation: Annotated[str, ..., "Explain your reasoning for the score"]
+    relevant: Annotated[
+        bool,
+        ...,
+        "Whether the retrieved documents are relevant to the question",
+    ]
+
+retrieval_relevance_llm = ChatOpenAI(
+    model="gpt-4o",
+    temperature=0,
+).with_structured_output(
+    RetrievalRelevanceGrade,
+    method="json_schema",
+    strict=True,
+)
+
+def retrieval_relevance(inputs: dict, outputs: dict) -> bool:
+    doc_string = "\n\n".join(
+        doc.page_content for doc in outputs["documents"]
+    )
+    answer = f"FACTS: {doc_string}\nQUESTION: {inputs['question']}"
+    grade = retrieval_relevance_llm.invoke([
+        {"role": "system", "content": retrieval_relevance_instructions},
+        {"role": "user", "content": answer},
+    ])
+    return grade["relevant"]</pre>
+
+<table>
+  <thead>
+    <tr><th>Evaluator signature</th><th>Data made available</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>(inputs, outputs, reference_outputs)</code></td><td>Correctness can inspect the curated answer</td></tr>
+    <tr><td><code>(inputs, outputs)</code></td><td>Relevance sees the question and final answer</td></tr>
+    <tr><td><code>(inputs, outputs)</code></td><td>Groundedness and retrieval relevance read <code>outputs["documents"]</code></td></tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Run the RAG Experiment</h2>
+<pre>def target(inputs: dict) -> dict:
+    return rag_bot(inputs["question"])
+
+experiment_results = client.evaluate(
+    target,
+    data=dataset_name,
+    evaluators=[
+        correctness,
+        groundedness,
+        relevance,
+        retrieval_relevance,
+    ],
+    experiment_prefix="rag-doc-relevance",
+    metadata={"version": "LCEL context, gpt-4-0125-preview"},
+)
+
+experiment_results.to_pandas()</pre>
+
+<p>
+  Three application calls plus four model-based evaluators per example completed in about 40 seconds in
+  the captured run. That multiplication matters: LLM judges add evaluation cost and latency. Run them
+  offline, cache stable judge inputs where appropriate, and reserve expensive rubrics for the examples
+  that need semantic review.
+</p>
+
+<h3>Captured Results</h3>
+<table>
+  <thead>
+    <tr><th>Question</th><th>Correct</th><th>Grounded</th><th>Answer relevant</th><th>Retrieval relevant</th><th>Target time</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>How does ReAct use self-reflection?</td><td style="color:#4ecca3;"><strong>True</strong></td><td style="color:#ef6461;"><strong>False</strong></td><td style="color:#4ecca3;"><strong>True</strong></td><td style="color:#ef6461;"><strong>False</strong></td><td>2.47 s</td></tr>
+    <tr><td>Biases in few-shot prompting?</td><td style="color:#4ecca3;"><strong>True</strong></td><td style="color:#4ecca3;"><strong>True</strong></td><td style="color:#4ecca3;"><strong>True</strong></td><td style="color:#4ecca3;"><strong>True</strong></td><td>3.01 s</td></tr>
+    <tr><td>Five adversarial attack types?</td><td style="color:#4ecca3;"><strong>True</strong></td><td style="color:#4ecca3;"><strong>True</strong></td><td style="color:#4ecca3;"><strong>True</strong></td><td style="color:#4ecca3;"><strong>True</strong></td><td>1.78 s</td></tr>
+  </tbody>
+</table>
+
+<table>
+  <thead>
+    <tr><th>Aggregate metric</th><th>Passes</th><th>Rate</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Correctness</td><td>3 / 3</td><td>100%</td></tr>
+    <tr><td>Answer relevance</td><td>3 / 3</td><td>100%</td></tr>
+    <tr><td>Groundedness</td><td>2 / 3</td><td>66.7%</td></tr>
+    <tr><td>Retrieval relevance</td><td>2 / 3</td><td>66.7%</td></tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>The Revealing Failure: Correct Answer, Broken RAG Path</h2>
+
+<svg class="diagram-svg diagram-svg--light" viewBox="0 0 940 390" xmlns="http://www.w3.org/2000/svg" role="img"
+  aria-label="Diagnosis of the failed ReAct example. The answer receives true for correctness and true for answer relevance, but the retrieved documents receive false for retrieval relevance and the answer receives false for groundedness. This indicates that the final answer looks good but was not supported by the retrieved context, likely relying on model prior knowledge. The repair path targets retrieval before generation.">
+  <defs>
+    <marker id="c24c-arr" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f46e5"/></marker>
+    <marker id="c24c-red" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#dc2626"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="470" y="29" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="16" font-weight="700">One Row Exposes the Difference Between “Good Answer” and “Good RAG”</text>
+
+  <rect x="28" y="75" width="260" height="78" rx="9" fill="#f8fafc" stroke="#94a3b8"/>
+  <text x="158" y="101" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="11.5" font-weight="700">Question</text>
+  <text x="158" y="124" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="11">How does ReAct use self-reflection?</text>
+  <text x="158" y="142" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="9.5">benchmark row 1</text>
+
+  <line x1="288" y1="114" x2="340" y2="114" stroke="#4f46e5" marker-end="url(#c24c-arr)"/>
+  <rect x="346" y="64" width="238" height="100" rx="9" fill="#fef2f2" stroke="#dc2626" stroke-width="1.5"/>
+  <text x="465" y="91" text-anchor="middle" fill="#b91c1c" font-family="system-ui" font-size="12" font-weight="700">Retrieved documents</text>
+  <text x="465" y="116" text-anchor="middle" fill="#dc2626" font-family="system-ui" font-size="11.5" font-weight="700">Retrieval relevance: FALSE</text>
+  <text x="465" y="138" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9.5">evidence does not adequately</text>
+  <text x="465" y="153" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9.5">match the question</text>
+
+  <line x1="584" y1="114" x2="636" y2="114" stroke="#dc2626" marker-end="url(#c24c-red)"/>
+  <rect x="642" y="64" width="270" height="100" rx="9" fill="#fef2f2" stroke="#dc2626" stroke-width="1.5"/>
+  <text x="777" y="91" text-anchor="middle" fill="#b91c1c" font-family="system-ui" font-size="12" font-weight="700">Generated answer</text>
+  <text x="777" y="116" text-anchor="middle" fill="#dc2626" font-family="system-ui" font-size="11.5" font-weight="700">Groundedness: FALSE</text>
+  <text x="777" y="139" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">claims are not supported by retrieved evidence</text>
+
+  <rect x="642" y="194" width="270" height="82" rx="9" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+  <text x="777" y="221" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="11.5" font-weight="700">Yet the answer looks successful</text>
+  <text x="777" y="244" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="11">Correctness: TRUE</text>
+  <text x="777" y="263" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="11">Answer relevance: TRUE</text>
+  <line x1="777" y1="164" x2="777" y2="188" stroke="#059669" marker-end="url(#c24c-arr)"/>
+
+  <rect x="28" y="194" width="556" height="145" rx="10" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="306" y="222" text-anchor="middle" fill="#1d4ed8" font-family="system-ui" font-size="12.5" font-weight="700">Diagnosis: the model likely answered from prior knowledge</text>
+  <text x="56" y="251" fill="#374151" font-family="system-ui" font-size="10.5">1. Inspect the retrieved chunks and similarity scores in the trace.</text>
+  <text x="56" y="273" fill="#374151" font-family="system-ui" font-size="10.5">2. Test query rewriting: “ReAct observation reasoning self-reflection”.</text>
+  <text x="56" y="295" fill="#374151" font-family="system-ui" font-size="10.5">3. Tune chunk boundaries, metadata filters, embedding model, and top-k.</text>
+  <text x="56" y="317" fill="#374151" font-family="system-ui" font-size="10.5">4. Require the generator to abstain when evidence does not support an answer.</text>
+
+  <rect x="183" y="355" width="574" height="25" rx="7" fill="#fef3c7" stroke="#fde68a"/>
+  <text x="470" y="372" text-anchor="middle" fill="#92400e" font-family="system-ui" font-size="10.5" font-weight="600">100% answer correctness did not mean the retrieval-augmented system worked correctly.</text>
+</svg>
+
+<p>
+  This is the chapter's central result. If evaluation stopped at correctness and answer relevance, the
+  benchmark would report a perfect system. The document-aware scores show a different reality: the ReAct
+  answer passed because the model could produce a plausible correct response despite weak evidence. In a
+  private knowledge base, that same behavior becomes an unsupported claim or hallucination.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Observed pattern</th><th>Likely interpretation</th><th>Inspect first</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Correct ✓ · Grounded ✗</td><td>Model knew the answer, but RAG did not support it</td><td>Retrieved chunks and generation prompt</td></tr>
+    <tr><td>Retrieval relevant ✓ · Grounded ✗</td><td>Useful evidence arrived, but generation ignored or contradicted it</td><td>Context formatting, ordering, and instructions</td></tr>
+    <tr><td>Retrieval relevant ✗ · Correct ✗</td><td>Retrieval failure likely propagated to the answer</td><td>Query, embeddings, filters, chunking, and <code>k</code></td></tr>
+    <tr><td>Grounded ✓ · Correct ✗</td><td>The answer faithfully repeats evidence that is incomplete or wrong</td><td>Source quality and corpus freshness</td></tr>
+    <tr><td>Correct ✓ · Answer relevant ✗</td><td>Facts may be right, but the response does not resolve user intent</td><td>Prompt, verbosity, and question interpretation</td></tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Making LLM Judges Reliable</h2>
+<p>
+  An LLM judge is itself a model-driven system. Treat its rubric, prompt, schema, and model version as
+  evaluation code, not as an oracle. A stable benchmark combines judge discipline with deterministic
+  measurements and periodic human calibration.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Practice</th><th>Reason</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Use explicit pairwise relationships</td><td>“Question vs docs” is more testable than “overall RAG quality”</td></tr>
+    <tr><td>Define pass and fail criteria in the rubric</td><td>Reduces hidden assumptions and judge variability</td></tr>
+    <tr><td>Use structured output with a strict schema</td><td>Eliminates brittle text parsing</td></tr>
+    <tr><td>Set temperature to zero and pin the judge model</td><td>Improves repeatability across runs</td></tr>
+    <tr><td>Keep the explanation with the score</td><td>Makes disagreements auditable and helps debug the rubric</td></tr>
+    <tr><td>Build an adversarial calibration set</td><td>Tests partial answers, plausible hallucinations, and irrelevant but keyword-rich docs</td></tr>
+    <tr><td>Measure judge agreement with humans</td><td>Validates that automated scores reflect the intended quality bar</td></tr>
+    <tr><td>Version evaluator prompts and models</td><td>Prevents score drift from masquerading as application change</td></tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">A Subtle Rubric Choice</div>
+  <p>
+    The notebook's retrieval-relevance rubric passes a document set when it contains <em>any</em> keyword
+    or semantic meaning related to the question, even if some content is unrelated. That is a permissive
+    recall-oriented rule. A production system may also need a precision metric that scores each retrieved
+    chunk separately, because one useful chunk should not hide five distracting ones.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>From Tutorial Benchmark to Production Evaluation</h2>
+
+<svg class="diagram-svg diagram-svg--light" viewBox="0 0 940 420" xmlns="http://www.w3.org/2000/svg" role="img"
+  aria-label="A connected production evaluation stack. The left pyramid shows three layers: deterministic checks run on every change, LLM judges run on an offline benchmark, and human experts review a small calibrated or high-risk sample. A clear panel on the right forms a feedback loop from production traces and user feedback, through triage, to versioned test cases that feed the next benchmark run.">
+  <defs>
+    <marker id="c24d-arr" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f46e5"/></marker>
+    <marker id="c24d-green" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#059669"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="470" y="29" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="16" font-weight="700">Production Evaluation: Offline Gates + Online Learning</text>
+  <text x="470" y="49" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">Broad, cheap checks catch regressions early; deeper judgment is reserved for the cases that need it.</text>
+
+  <!-- The evaluation pyramid -->
+  <text x="320" y="83" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10" font-weight="700" letter-spacing="1">OFFLINE RELEASE GATES</text>
+  <polygon points="320,98 454,168 186,168" fill="#fef3c7" stroke="#d97706" stroke-width="1.6"/>
+  <text x="320" y="129" text-anchor="middle" fill="#92400e" font-family="system-ui" font-size="12.5" font-weight="700">Human experts</text>
+  <text x="320" y="149" text-anchor="middle" fill="#92400e" font-family="system-ui" font-size="10">calibration set · high-risk failures · policy review</text>
+
+  <polygon points="186,178 454,178 574,251 66,251" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.6"/>
+  <text x="320" y="210" text-anchor="middle" fill="#6d28d9" font-family="system-ui" font-size="12.5" font-weight="700">LLM-as-a-judge</text>
+  <text x="320" y="230" text-anchor="middle" fill="#6d28d9" font-family="system-ui" font-size="10">correctness · relevance · groundedness · retrieval relevance</text>
+
+  <polygon points="66,261 574,261 670,336 18,336" fill="#ecfdf5" stroke="#059669" stroke-width="1.6"/>
+  <text x="320" y="292" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="12.5" font-weight="700">Deterministic checks - every change</text>
+  <text x="320" y="314" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="10">schema · empty output · latency · cost · citations · safety rules · regression fixtures</text>
+
+  <text x="53" y="116" fill="#b45309" font-family="system-ui" font-size="10" font-weight="700">fewest cases</text>
+  <line x1="116" y1="111" x2="178" y2="111" stroke="#d97706" stroke-width="1.2"/>
+  <text x="38" y="356" fill="#047857" font-family="system-ui" font-size="10" font-weight="700">widest coverage</text>
+  <line x1="130" y1="351" x2="194" y2="351" stroke="#059669" stroke-width="1.2"/>
+
+  <!-- A deliberately enclosed loop, rather than a floating arrow. -->
+  <rect x="700" y="82" width="214" height="255" rx="12" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.4"/>
+  <text x="807" y="111" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="12.5" font-weight="700">Close the loop</text>
+  <text x="807" y="130" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10">production turns into a better benchmark</text>
+
+  <rect x="724" y="149" width="166" height="45" rx="8" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="807" y="169" text-anchor="middle" fill="#1d4ed8" font-family="system-ui" font-size="10.5" font-weight="700">1. Observe production</text>
+  <text x="807" y="185" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9.5">traces · ratings · incidents</text>
+  <line x1="807" y1="194" x2="807" y2="207" stroke="#4f46e5" stroke-width="1.4" marker-end="url(#c24d-arr)"/>
+
+  <rect x="724" y="213" width="166" height="45" rx="8" fill="#f5f3ff" stroke="#7c3aed"/>
+  <text x="807" y="233" text-anchor="middle" fill="#6d28d9" font-family="system-ui" font-size="10.5" font-weight="700">2. Triage + label</text>
+  <text x="807" y="249" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9.5">root cause · severity · rubric</text>
+  <line x1="807" y1="258" x2="807" y2="271" stroke="#4f46e5" stroke-width="1.4" marker-end="url(#c24d-arr)"/>
+
+  <rect x="724" y="277" width="166" height="45" rx="8" fill="#ecfdf5" stroke="#059669"/>
+  <text x="807" y="297" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="10.5" font-weight="700">3. Version test cases</text>
+  <text x="807" y="313" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9.5">dataset + expected behavior</text>
+
+  <path d="M 724 300 C 692 300, 683 299, 671 299" fill="none" stroke="#059669" stroke-width="1.6" marker-end="url(#c24d-green)"/>
+  <text x="686" y="288" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="9.5" font-weight="700">next benchmark</text>
+
+  <path d="M 670 336 C 720 390, 900 385, 900 337" fill="none" stroke="#4f46e5" stroke-width="1.4" stroke-dasharray="5,4" marker-end="url(#c24d-arr)"/>
+  <text x="787" y="390" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="10">compare → release, investigate, or iterate</text>
+
+  <rect x="145" y="377" width="500" height="25" rx="7" fill="#ffffff" stroke="#d1d5db"/>
+  <text x="395" y="394" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10" font-style="italic">Spend human attention where semantic judgment matters; automate the rest at every release.</text>
+</svg>
+
+<table>
+  <thead>
+    <tr><th>Area</th><th>Add beyond the notebook</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Dataset coverage</td><td>Happy paths, no-answer cases, ambiguous questions, typos, multilingual inputs, long-tail entities, and adversarial queries</td></tr>
+    <tr><td>Retrieval metrics</td><td>Per-document relevance, recall@k, precision@k, MRR, metadata-filter accuracy, and citation coverage</td></tr>
+    <tr><td>Generation metrics</td><td>Abstention quality, citation correctness, completeness, tone, safety, and structured-output validity</td></tr>
+    <tr><td>Operations</td><td>Latency percentiles, token usage, dollar cost, error rate, timeout rate, and cache behavior</td></tr>
+    <tr><td>Release gates</td><td>Minimum per-metric thresholds plus “no regression” rules on critical examples</td></tr>
+    <tr><td>Feedback loop</td><td>Promote production failures and human corrections into versioned offline examples</td></tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+<div class="example-block">
+  <div class="label">Remember These Five</div>
+  <p><strong>1. Evaluation is a repeatable experiment.</strong> Freeze examples, run a target over all of them, score with explicit evaluators, preserve traces and metadata, then compare named versions. A few manual prompts are a demo, not a benchmark.</p>
+  <p><strong>2. RAG has four distinct relationships.</strong> Correctness compares answer to reference, answer relevance compares answer to question, groundedness compares answer to retrieved documents, and retrieval relevance compares documents to question. Each failure points to a different repair path.</p>
+  <p><strong>3. Return intermediate artifacts.</strong> A RAG target should expose the final <code>answer</code> and retrieved <code>documents</code>; otherwise retrieval and grounding cannot be evaluated independently.</p>
+  <p><strong>4. Correct does not mean grounded.</strong> The source experiment scored all three answers correct, yet one ReAct answer was neither grounded nor backed by relevant retrieval. The model likely answered from prior knowledge, revealing a broken RAG path hidden behind a good final response.</p>
+  <p><strong>5. Treat judges as versioned software.</strong> Combine deterministic checks, structured LLM judges, and calibrated human review. Pin judge models, make rubrics explicit, test disagreement cases, and track judge changes separately from application changes.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter24-1">&larr; 1 · Chatbot Evaluation</a>
+    <span></span>
+</nav>

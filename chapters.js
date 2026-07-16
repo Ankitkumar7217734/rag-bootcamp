@@ -249,5 +249,22 @@ const chapters = [
         id: "chapter23",
         title: "Chapter 23: LLM Gateways — One Control Plane for Every Model",
         description: "Putting a production control plane between applications and model providers — from the LiteLLM gateway tutorial and handwritten architecture notes: one unified API, automatic fallbacks, caching, task-aware routing, load balancing, cost and latency tracking, LangChain integration, centralized policy, and the path from an in-process SDK to a shared gateway proxy."
+    },
+    {
+        id: "chapter24",
+        title: "Chapter 24: RAG Evaluation — Measuring Retrieval, Grounding & Answer Quality",
+        description: "Testing chatbots and RAG systems as repeatable LangSmith experiments — building question-and-reference datasets, comparing models with correctness and concision judges, evaluating a RAG pipeline across answer correctness, answer relevance, groundedness, and retrieval relevance, and using one revealing failure to diagnose when a correct answer was not actually supported by retrieval.",
+        children: [
+            {
+                id: "chapter24-1",
+                title: "Chatbot Evaluation",
+                description: "The LangSmith experiment loop on a five-example chatbot dataset — LLM-as-a-judge correctness, deterministic concision, and a fair GPT-4o-mini vs GPT-4 Turbo comparison."
+            },
+            {
+                id: "chapter24-2",
+                title: "RAG Evaluation",
+                description: "Build a RAG target that returns answer and documents, score correctness, answer relevance, groundedness, and retrieval relevance, and diagnose a correct answer that retrieval never supported."
+            }
+        ]
     }
 ];

@@ -1,0 +1,167 @@
+<h1>Chapter 24: RAG Evaluation &mdash; Measuring Retrieval, Grounding &amp; Answer Quality</h1>
+<p style="color:#888; margin-bottom: 2rem;"><em>A fluent answer is not evidence that a RAG system works. Evaluation turns questions, reference answers, retrieved documents, and model responses into repeatable experiments that tell you exactly which stage succeeded &mdash; and which one only looked successful.</em></p>
+
+<div class="example-block">
+  <div class="label">Evaluation in One Paragraph</div>
+  <p style="margin-top:0;">
+    An evaluation is a controlled experiment: freeze a <strong><span style="color:#818cf8;">dataset</span></strong>,
+    run a version of the application over every example, score each run with explicit
+    <strong><span style="color:#fbbf24;">evaluators</span></strong>, and compare experiments. A chatbot can
+    be judged from its question, answer, and reference answer. RAG needs more visibility: the answer may
+    be correct while the retriever found weak evidence, or well-grounded while failing to answer the
+    question. That is why this chapter measures four separate relationships instead of collapsing quality
+    into one vague score.
+  </p>
+</div>
+
+<h2>Overview</h2>
+<p>
+  This chapter follows the supplied <strong>Chatbot and RAG Evaluation notebook</strong> and its handwritten
+  LangSmith workflow. It splits into two sub-chapters: first the simpler chatbot experiment loop, then a
+  full RAG benchmark that scores retrieval and generation independently.
+</p>
+
+<table>
+  <thead>
+    <tr><th>#</th><th>Sub-chapter</th><th>What you'll learn</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>1</strong></td><td><strong>Chatbot Evaluation</strong></td><td>Dataset &rarr; target &rarr; evaluators &rarr; experiment; LLM-as-a-judge correctness; deterministic concision; GPT-4o-mini vs GPT-4 Turbo</td></tr>
+    <tr><td><strong>2</strong></td><td><strong>RAG Evaluation</strong></td><td>Expose <code>answer</code> + <code>documents</code>; four core metrics; structured judges; diagnose a correct-but-ungrounded answer; production gates</td></tr>
+  </tbody>
+</table>
+
+<svg class="diagram-svg diagram-svg--light" viewBox="0 0 940 420" xmlns="http://www.w3.org/2000/svg" role="img"
+  aria-label="The evaluation experiment loop. A curated dataset contains input questions and expected reference answers. A target application or chatbot runs once per example and produces an actual output. Evaluators compare different combinations of input, actual output, reference answer, and retrieved documents. LangSmith stores the traces and scores as a named experiment, which can be compared with experiments from other models, prompts, retrievers, or application versions.">
+  <defs>
+    <marker id="c24a-arr" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f46e5"/></marker>
+    <marker id="c24a-green" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#059669"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="470" y="29" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="16" font-weight="700">The Evaluation Experiment Loop</text>
+
+  <rect x="25" y="75" width="186" height="196" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="118" y="103" text-anchor="middle" fill="#1d4ed8" font-family="system-ui" font-size="13" font-weight="700">1. Curated dataset</text>
+  <rect x="47" y="125" width="142" height="50" rx="7" fill="#ffffff" stroke="#bfdbfe"/>
+  <text x="118" y="146" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5">input</text>
+  <text x="118" y="163" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="10">{question: ...}</text>
+  <rect x="47" y="190" width="142" height="58" rx="7" fill="#ffffff" stroke="#bfdbfe"/>
+  <text x="118" y="212" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5">reference output</text>
+  <text x="118" y="230" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="10">{answer: ...}</text>
+  <text x="118" y="292" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">one row = one test case</text>
+
+  <line x1="211" y1="173" x2="268" y2="173" stroke="#4f46e5" stroke-width="1.6" marker-end="url(#c24a-arr)"/>
+  <text x="240" y="162" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="10">inputs</text>
+
+  <rect x="274" y="101" width="185" height="145" rx="10" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="366" y="130" text-anchor="middle" fill="#6d28d9" font-family="system-ui" font-size="13" font-weight="700">2. Target application</text>
+  <rect x="304" y="151" width="125" height="52" rx="8" fill="#ffffff" stroke="#c4b5fd"/>
+  <text x="366" y="173" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="11">Chatbot or RAG</text>
+  <text x="366" y="191" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="10">target(inputs)</text>
+  <text x="366" y="229" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">model + prompt + retrieval</text>
+
+  <line x1="459" y1="173" x2="516" y2="173" stroke="#4f46e5" stroke-width="1.6" marker-end="url(#c24a-arr)"/>
+  <text x="487" y="162" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="10">outputs</text>
+
+  <rect x="522" y="75" width="190" height="196" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+  <text x="617" y="103" text-anchor="middle" fill="#92400e" font-family="system-ui" font-size="13" font-weight="700">3. Evaluators</text>
+  <text x="617" y="130" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5">LLM-as-a-judge</text>
+  <text x="617" y="150" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10">semantic correctness</text>
+  <line x1="551" y1="164" x2="683" y2="164" stroke="#fde68a"/>
+  <text x="617" y="186" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5">Deterministic checks</text>
+  <text x="617" y="206" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10">length · exact match · latency</text>
+  <line x1="551" y1="220" x2="683" y2="220" stroke="#fde68a"/>
+  <text x="617" y="243" text-anchor="middle" fill="#b45309" font-family="monospace" font-size="10">score each run</text>
+
+  <line x1="712" y1="173" x2="769" y2="173" stroke="#059669" stroke-width="1.6" marker-end="url(#c24a-green)"/>
+
+  <rect x="775" y="87" width="140" height="172" rx="10" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+  <text x="845" y="116" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="13" font-weight="700">4. Experiment</text>
+  <text x="845" y="145" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5">traces + scores</text>
+  <text x="845" y="166" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5">errors + latency</text>
+  <text x="845" y="187" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5">model metadata</text>
+  <rect x="795" y="210" width="100" height="29" rx="6" fill="#ffffff" stroke="#a7f3d0"/>
+  <text x="845" y="229" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="10.5" font-weight="600">LangSmith</text>
+
+  <path d="M 845 259 C 845 334, 180 334, 180 277" fill="none" stroke="#059669" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#c24a-green)"/>
+  <text x="520" y="326" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="11">compare → diagnose → change one versioned component → evaluate again</text>
+
+  <rect x="200" y="355" width="540" height="38" rx="8" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="470" y="379" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">Model A vs Model B · prompt v1 vs v2 · retriever k=4 vs k=6 · chunking strategy A vs B</text>
+</svg>
+
+<hr class="divider">
+
+<h2>Why Evaluation Must Be a Dataset, Not a Demo</h2>
+<p>
+  A single hand-picked question can show that a system runs. It cannot show that the system is reliable.
+  The handwritten notes frame evaluation as four deliberate activities: generate or curate data points,
+  use an LLM as a judge where semantic interpretation is needed, define evaluation metrics, and compare
+  multiple LLM or application versions. LangSmith provides the dataset and experiment layer that makes
+  those activities repeatable.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Object</th><th>What it contains</th><th>Why it is frozen</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Example</strong></td><td>Input question and optional reference output</td><td>Every version faces the same test case</td></tr>
+    <tr><td><strong>Dataset</strong></td><td>A named collection of examples</td><td>Defines the benchmark population</td></tr>
+    <tr><td><strong>Target</strong></td><td>A function mapping example inputs to application outputs</td><td>Creates one consistent invocation boundary</td></tr>
+    <tr><td><strong>Evaluator</strong></td><td>A scoring function with a declared data dependency</td><td>Makes “good” explicit and reviewable</td></tr>
+    <tr><td><strong>Experiment</strong></td><td>Runs, traces, scores, errors, metadata, and timing</td><td>Provides a versioned comparison point</td></tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">The Comparison Rule</div>
+  <p>
+    Change one major variable per experiment whenever possible. If you switch the model, rewrite the
+    prompt, change chunking, and replace the embedding model together, a better score cannot tell you
+    which change helped. Evaluation is useful only when experiments remain interpretable.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Explore Each Half</h2>
+<p>
+  Work through the two sub-chapters in order. Sub-chapter 24.1 establishes the LangSmith experiment
+  machinery on a chatbot; 24.2 reuses that loop for a RAG system that must expose its retrieved evidence.
+</p>
+
+<ul>
+  <li><strong><a href="#chapter24-1">1 · Chatbot Evaluation &rarr;</a></strong><br>
+      Five curated examples, an LLM correctness judge, a deterministic concision check, and a fair
+      GPT-4o-mini vs GPT-4 Turbo comparison on the same dataset.</li>
+  <li><strong><a href="#chapter24-2">2 · RAG Evaluation &rarr;</a></strong><br>
+      Build a small RAG target that returns <code>answer</code> and <code>documents</code>, score the four
+      core relationships, and diagnose a correct answer that retrieval never supported.</li>
+</ul>
+
+<div class="example-block">
+  <div class="label">The Core Idea</div>
+  <p>
+    Chatbot evaluation asks whether the answer matches a reference. RAG evaluation asks four questions:
+    Is the answer correct? Does it address the question? Is it grounded in the retrieved docs? Were those
+    docs relevant? A single aggregate score hides which stage failed.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+<div class="example-block">
+  <div class="label">Remember These Four</div>
+  <p><strong>1.</strong> Evaluation is a <strong>repeatable experiment</strong> — freeze examples, run a target, score with explicit evaluators, compare named versions.</p>
+  <p><strong>2.</strong> Start with a <strong>chatbot benchmark</strong> to learn the LangSmith loop before adding retrieval artifacts.</p>
+  <p><strong>3.</strong> RAG needs <strong>four relationships</strong>, not one score — correctness, answer relevance, groundedness, and retrieval relevance.</p>
+  <p><strong>4.</strong> A correct answer can still hide a <strong>broken retrieval path</strong>; expose intermediate documents so you can catch it.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter23">&larr; Chapter 23: LLM Gateways &mdash; One Control Plane for Every Model</a>
+    <a href="#chapter24-1" class="next">1 · Chatbot Evaluation &rarr;</a>
+</nav>
