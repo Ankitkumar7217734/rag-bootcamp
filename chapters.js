@@ -266,5 +266,10 @@ const chapters = [
                 description: "Build a RAG target that returns answer and documents, score correctness, answer relevance, groundedness, and retrieval relevance, and diagnose a correct answer that retrieval never supported."
             }
         ]
+    },
+    {
+        id: "chapter25",
+        title: "Chapter 25: Graph Databases, Knowledge Graphs & Neo4j",
+        description: "Modeling connected knowledge directly — from semantic networks and the property-graph model to nodes, labels, properties, directed relationships, traversal, Neo4j, Cypher, relational-vs-graph tradeoffs, and the architecture that lets LangChain and LangGraph agents retrieve multi-hop evidence for Graph RAG."
     }
 ];

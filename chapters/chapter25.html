@@ -1,0 +1,661 @@
+<h1>Chapter 25: Graph Databases, Knowledge Graphs &amp; Neo4j</h1>
+<p style="color:#888; margin-bottom: 2rem;"><em>Relational databases store facts in rows. Graph databases store the connections between facts as first-class data &mdash; making questions about paths, neighborhoods, influence, ownership, and multi-hop relationships natural to ask and fast to explore.</em></p>
+
+<div class="example-block">
+  <div class="label">Graph Databases in One Paragraph</div>
+  <p style="margin-top:0;">
+    A <strong><span style="color:#818cf8;">graph database</span></strong> represents the world as
+    <strong>nodes</strong> connected by named <strong>relationships</strong>, with labels and key-value
+    properties adding meaning. A knowledge graph uses that structure as a semantic network of people,
+    places, organizations, events, and concepts. Neo4j stores this model directly; Cypher describes the
+    pattern you want to find. For RAG, the result is retrieval based on explicit connections and multi-hop
+    paths, not only similarity between isolated chunks.
+  </p>
+</div>
+
+<h2>Overview</h2>
+<p>
+  The supplied notes move through three layers. First comes the <strong>knowledge graph</strong>: a semantic
+  network built from real-world entities and the relationships between them. Next comes the
+  <strong>Neo4j property-graph database</strong>, which stores nodes, directed relationships, labels, and
+  properties while supporting ACID transactions. Finally comes the application layer: Cypher retrieval,
+  Graph RAG, and LangChain or LangGraph agents that reason over connected evidence.
+</p>
+
+<table>
+  <thead>
+    <tr><th>#</th><th>What you'll learn</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>What a knowledge graph means as a semantic network of real-world entities</td></tr>
+    <tr><td>2</td><td>The property-graph building blocks: nodes, labels, properties, and relationships</td></tr>
+    <tr><td>3</td><td>How direction gives every relationship a start node and an end node</td></tr>
+    <tr><td>4</td><td>How relational tables and graph databases represent the same connected domain differently</td></tr>
+    <tr><td>5</td><td>Why traversal replaces chains of joins for relationship-heavy questions</td></tr>
+    <tr><td>6</td><td>What Neo4j adds: native property graphs, flexible modeling, Cypher, and ACID transactions</td></tr>
+    <tr><td>7</td><td>How Cypher expresses a visual graph pattern declaratively</td></tr>
+    <tr><td>8</td><td>How Graph RAG and agents use connected facts as structured retrieval context</td></tr>
+  </tbody>
+</table>
+
+<svg class="diagram-svg diagram-svg--light" viewBox="0 0 940 430" xmlns="http://www.w3.org/2000/svg" role="img"
+  aria-label="The path from natural language to graph applications. Two natural-language statements are converted into entities and relationships. Those facts become a knowledge graph stored in Neo4j. Cypher traverses the graph, and Graph RAG, LangChain, LangGraph, and multi-agent applications consume the connected evidence.">
+  <defs>
+    <marker id="c25a-arr" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f46e5"/></marker>
+    <marker id="c25a-green" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#059669"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="470" y="29" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="16" font-weight="700">From Language to Connected Retrieval</text>
+  <text x="470" y="49" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">Extract meaning once, store relationships explicitly, then traverse them for applications.</text>
+
+  <rect x="22" y="82" width="200" height="254" rx="11" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="122" y="110" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="12.5" font-weight="700">1. Natural language</text>
+  <rect x="42" y="132" width="160" height="72" rx="8" fill="#ffffff" stroke="#d1d5db"/>
+  <text x="122" y="155" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5">“Rohit Sharma is captain</text>
+  <text x="122" y="174" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5">of the Indian cricket team.”</text>
+  <rect x="42" y="220" width="160" height="72" rx="8" fill="#ffffff" stroke="#d1d5db"/>
+  <text x="122" y="243" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5">“Virat Kohli plays for the</text>
+  <text x="122" y="262" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5">Indian cricket team.”</text>
+  <text x="122" y="317" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10">unstructured text</text>
+
+  <line x1="222" y1="209" x2="270" y2="209" stroke="#4f46e5" stroke-width="1.6" marker-end="url(#c25a-arr)"/>
+  <text x="246" y="196" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="9.5" font-weight="700">extract</text>
+
+  <rect x="276" y="82" width="186" height="254" rx="11" fill="#fef3c7" stroke="#d97706"/>
+  <text x="369" y="110" text-anchor="middle" fill="#92400e" font-family="system-ui" font-size="12.5" font-weight="700">2. Semantic facts</text>
+  <text x="300" y="143" fill="#64748b" font-family="system-ui" font-size="9.5" font-weight="700">ENTITY</text>
+  <rect x="300" y="154" width="138" height="33" rx="7" fill="#ffffff" stroke="#fde68a"/>
+  <text x="369" y="175" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5">Rohit Sharma · Person</text>
+  <rect x="300" y="198" width="138" height="33" rx="7" fill="#ffffff" stroke="#fde68a"/>
+  <text x="369" y="219" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5">India Team · Team</text>
+  <text x="300" y="257" fill="#64748b" font-family="system-ui" font-size="9.5" font-weight="700">RELATIONSHIP</text>
+  <rect x="300" y="268" width="138" height="38" rx="7" fill="#ffffff" stroke="#fde68a"/>
+  <text x="369" y="292" text-anchor="middle" fill="#b45309" font-family="monospace" font-size="10.5">CAPTAIN_OF</text>
+  <text x="369" y="324" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10">subject · predicate · object</text>
+
+  <line x1="462" y1="209" x2="510" y2="209" stroke="#4f46e5" stroke-width="1.6" marker-end="url(#c25a-arr)"/>
+  <text x="486" y="196" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="9.5" font-weight="700">connect</text>
+
+  <rect x="516" y="82" width="188" height="254" rx="11" fill="#ecfdf5" stroke="#059669"/>
+  <text x="610" y="110" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="12.5" font-weight="700">3. Knowledge graph</text>
+  <circle cx="569" cy="176" r="35" fill="#ffffff" stroke="#059669" stroke-width="1.5"/>
+  <text x="569" y="172" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="10.5" font-weight="700">Rohit</text>
+  <text x="569" y="188" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9.5">Person</text>
+  <circle cx="651" cy="247" r="38" fill="#ffffff" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="651" y="243" text-anchor="middle" fill="#6d28d9" font-family="system-ui" font-size="10.5" font-weight="700">India</text>
+  <text x="651" y="259" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9.5">Team</text>
+  <line x1="595" y1="199" x2="620" y2="222" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c25a-arr)"/>
+  <text x="639" y="194" text-anchor="middle" fill="#4338ca" font-family="monospace" font-size="8.8">CAPTAIN_OF</text>
+  <rect x="546" y="291" width="128" height="27" rx="6" fill="#ffffff" stroke="#a7f3d0"/>
+  <text x="610" y="309" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="10" font-weight="700">Neo4j property graph</text>
+
+  <line x1="704" y1="209" x2="752" y2="209" stroke="#059669" stroke-width="1.6" marker-end="url(#c25a-green)"/>
+  <text x="728" y="196" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="9.5" font-weight="700">traverse</text>
+
+  <rect x="758" y="82" width="160" height="254" rx="11" fill="#f5f3ff" stroke="#7c3aed"/>
+  <text x="838" y="110" text-anchor="middle" fill="#6d28d9" font-family="system-ui" font-size="12.5" font-weight="700">4. Applications</text>
+  <rect x="780" y="134" width="116" height="38" rx="7" fill="#ffffff" stroke="#c4b5fd"/>
+  <text x="838" y="158" text-anchor="middle" fill="#6d28d9" font-family="system-ui" font-size="10.5" font-weight="700">Cypher queries</text>
+  <rect x="780" y="185" width="116" height="38" rx="7" fill="#ffffff" stroke="#c4b5fd"/>
+  <text x="838" y="209" text-anchor="middle" fill="#6d28d9" font-family="system-ui" font-size="10.5" font-weight="700">Graph RAG</text>
+  <rect x="780" y="236" width="116" height="38" rx="7" fill="#ffffff" stroke="#c4b5fd"/>
+  <text x="838" y="260" text-anchor="middle" fill="#6d28d9" font-family="system-ui" font-size="10.5" font-weight="700">LangChain</text>
+  <rect x="780" y="287" width="116" height="38" rx="7" fill="#ffffff" stroke="#c4b5fd"/>
+  <text x="838" y="311" text-anchor="middle" fill="#6d28d9" font-family="system-ui" font-size="10.5" font-weight="700">LangGraph agents</text>
+
+  <rect x="180" y="365" width="580" height="39" rx="8" fill="#f8fafc" stroke="#d1d5db"/>
+  <text x="470" y="389" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">The graph becomes a shared memory of entities and relationships for retrieval, reasoning, and agents.</text>
+</svg>
+
+<hr class="divider">
+
+<h2>Knowledge Graphs: Meaning as a Network</h2>
+<p>
+  A <strong>knowledge graph</strong> is a semantic network: it represents real-world entities &mdash; such
+  as people, teams, products, places, events, situations, and concepts &mdash; together with the meaning of
+  their connections. The graph does not merely record that two values coexist. It names why they are
+  connected: <em>captain of</em>, <em>plays for</em>, <em>owns</em>, <em>located in</em>, or
+  <em>depends on</em>.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Natural-language fact</th><th>Subject</th><th>Relationship</th><th>Object</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Rohit Sharma is captain of the Indian cricket team</td><td>Rohit Sharma</td><td><strong>CAPTAIN_OF</strong></td><td>Indian Cricket Team</td></tr>
+    <tr><td>Virat Kohli plays for the Indian cricket team</td><td>Virat Kohli</td><td><strong>PLAYS_FOR</strong></td><td>Indian Cricket Team</td></tr>
+    <tr><td>Rohit Sharma and Virat Kohli are teammates</td><td>Rohit Sharma</td><td><strong>TEAMMATE_OF</strong></td><td>Virat Kohli</td></tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">The Semantic Difference</div>
+  <p>
+    A search index may tell you that “Rohit Sharma” and “Indian cricket team” occur near one another.
+    A knowledge graph records the explicit claim that Rohit Sharma <strong>CAPTAIN_OF</strong> that team.
+    Similarity suggests association; a graph stores a typed relationship that can be traversed and checked.
+  </p>
+</div>
+
+<h3>The Four Pieces of a Property Graph</h3>
+<p>
+  The notes first identify nodes, edges, and labels, then refine the Neo4j model into nodes,
+  relationships, and properties. Together they form the practical property-graph vocabulary:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Element</th><th>Purpose</th><th>Cricket example</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Node</strong></td><td>A distinct entity: a person, place, object, event, or concept</td><td>Rohit Sharma</td></tr>
+    <tr><td><strong>Label</strong></td><td>A category attached to a node; one node can have multiple labels</td><td>Person, Player</td></tr>
+    <tr><td><strong>Relationship</strong></td><td>A named, directed connection between two nodes</td><td>CAPTAIN_OF</td></tr>
+    <tr><td><strong>Property</strong></td><td>A key-value detail stored on a node or relationship</td><td>name: Rohit Sharma; since: 2024</td></tr>
+  </tbody>
+</table>
+
+<svg class="diagram-svg diagram-svg--light" viewBox="0 0 940 500" xmlns="http://www.w3.org/2000/svg" role="img"
+  aria-label="A cricket property graph. Rohit Sharma and Virat Kohli are Person and Player nodes. Indian Cricket Team is a Team node. Rohit has a CAPTAIN_OF relationship to the team, Virat has a PLAYS_FOR relationship to the team, and the two players have a bidirectional TEAMMATE_OF relationship. Callouts identify node labels, node properties, relationship type, direction, and a relationship property.">
+  <defs>
+    <marker id="c25b-arr" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f46e5"/></marker>
+    <marker id="c25b-green" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#059669"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="470" y="29" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="16" font-weight="700">Property Graph Anatomy</text>
+  <text x="470" y="49" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">Entities become nodes; meaning lives in typed, directed relationships and key-value properties.</text>
+
+  <rect x="30" y="76" width="880" height="333" rx="14" fill="#f8fafc" stroke="#d1d5db"/>
+
+  <!-- Rohit node -->
+  <circle cx="232" cy="204" r="70" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+  <rect x="177" y="151" width="44" height="18" rx="9" fill="#2563eb"/><text x="199" y="164" text-anchor="middle" fill="#ffffff" font-family="system-ui" font-size="8.5" font-weight="700">Person</text>
+  <rect x="226" y="151" width="42" height="18" rx="9" fill="#4f46e5"/><text x="247" y="164" text-anchor="middle" fill="#ffffff" font-family="system-ui" font-size="8.5" font-weight="700">Player</text>
+  <text x="232" y="198" text-anchor="middle" fill="#1d4ed8" font-family="system-ui" font-size="13" font-weight="700">Rohit Sharma</text>
+  <text x="232" y="220" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="9.5">country: India</text>
+  <text x="232" y="238" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="9.5">role: Batter</text>
+
+  <!-- Virat node -->
+  <circle cx="232" cy="343" r="62" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
+  <rect x="183" y="299" width="40" height="17" rx="8" fill="#7c3aed"/><text x="203" y="311" text-anchor="middle" fill="#ffffff" font-family="system-ui" font-size="8" font-weight="700">Person</text>
+  <rect x="228" y="299" width="39" height="17" rx="8" fill="#6d28d9"/><text x="247" y="311" text-anchor="middle" fill="#ffffff" font-family="system-ui" font-size="8" font-weight="700">Player</text>
+  <text x="232" y="343" text-anchor="middle" fill="#6d28d9" font-family="system-ui" font-size="12.5" font-weight="700">Virat Kohli</text>
+  <text x="232" y="364" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="9">country: India</text>
+
+  <!-- Team node -->
+  <circle cx="673" cy="264" r="88" fill="#ecfdf5" stroke="#059669" stroke-width="2"/>
+  <rect x="648" y="195" width="50" height="19" rx="9" fill="#059669"/><text x="673" y="208" text-anchor="middle" fill="#ffffff" font-family="system-ui" font-size="8.5" font-weight="700">Team</text>
+  <text x="673" y="255" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="13" font-weight="700">Indian Cricket</text>
+  <text x="673" y="274" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="13" font-weight="700">Team</text>
+  <text x="673" y="302" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="9.5">sport: Cricket</text>
+  <text x="673" y="320" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="9.5">country: India</text>
+
+  <!-- Relationships -->
+  <line x1="298" y1="225" x2="579" y2="255" stroke="#4f46e5" stroke-width="2" marker-end="url(#c25b-arr)"/>
+  <rect x="380" y="216" width="118" height="27" rx="7" fill="#ffffff" stroke="#c7d2fe"/>
+  <text x="439" y="233" text-anchor="middle" fill="#4338ca" font-family="monospace" font-size="10" font-weight="700">CAPTAIN_OF</text>
+  <text x="439" y="259" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="8.8">since: 2024</text>
+
+  <line x1="294" y1="329" x2="584" y2="285" stroke="#059669" stroke-width="2" marker-end="url(#c25b-green)"/>
+  <rect x="389" y="291" width="100" height="27" rx="7" fill="#ffffff" stroke="#a7f3d0"/>
+  <text x="439" y="308" text-anchor="middle" fill="#047857" font-family="monospace" font-size="10" font-weight="700">PLAYS_FOR</text>
+
+  <path d="M 190 271 C 143 286, 143 312, 177 326" fill="none" stroke="#7c3aed" stroke-width="1.6" marker-end="url(#c25b-arr)"/>
+  <path d="M 177 342 C 130 326, 135 279, 188 254" fill="none" stroke="#7c3aed" stroke-width="1.3" marker-end="url(#c25b-arr)"/>
+  <text x="104" y="302" text-anchor="middle" fill="#6d28d9" font-family="monospace" font-size="9" font-weight="700">TEAMMATE_OF</text>
+
+  <!-- Anatomy callouts -->
+  <rect x="76" y="97" width="154" height="35" rx="7" fill="#ffffff" stroke="#bfdbfe"/>
+  <text x="153" y="119" text-anchor="middle" fill="#1d4ed8" font-family="system-ui" font-size="10.5" font-weight="700">Labels categorize a node</text>
+  <line x1="199" y1="132" x2="210" y2="148" stroke="#2563eb"/>
+
+  <rect x="730" y="96" width="145" height="50" rx="7" fill="#ffffff" stroke="#a7f3d0"/>
+  <text x="802" y="117" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="10.5" font-weight="700">Properties add detail</text>
+  <text x="802" y="134" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9.5">key-value pairs</text>
+  <line x1="756" y1="146" x2="712" y2="194" stroke="#059669"/>
+
+  <rect x="342" y="97" width="193" height="52" rx="7" fill="#ffffff" stroke="#c7d2fe"/>
+  <text x="438" y="118" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="10.5" font-weight="700">Relationship type names meaning</text>
+  <text x="438" y="136" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9.5">the arrow records direction</text>
+  <line x1="438" y1="149" x2="438" y2="213" stroke="#4f46e5"/>
+
+  <rect x="180" y="440" width="580" height="35" rx="8" fill="#fef3c7" stroke="#fde68a"/>
+  <text x="470" y="462" text-anchor="middle" fill="#92400e" font-family="system-ui" font-size="10.5">A relationship can carry its own properties, so context such as “since 2024” stays attached to the connection.</text>
+</svg>
+
+<hr class="divider">
+
+<h2>Relational Databases vs Graph Databases</h2>
+<p>
+  Relational database management systems such as MySQL and SQL Server organize data into tables. Records
+  become rows, attributes become columns, and primary or foreign keys preserve structure. To answer a
+  connected question, the query joins rows across tables. A graph database stores the same entities as
+  nodes and the key-based connection as a direct relationship, then follows that path through traversal.
+</p>
+
+<svg class="diagram-svg diagram-svg--light" viewBox="0 0 940 470" xmlns="http://www.w3.org/2000/svg" role="img"
+  aria-label="A side-by-side comparison of relational and graph modeling. The relational side stores Person, Membership, and Team tables connected through primary and foreign keys; answering who plays for a team requires joins. The graph side stores Person and Team nodes connected directly by PLAYS_FOR relationships; answering the same question follows the relationship through traversal.">
+  <defs>
+    <marker id="c25c-arr" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f46e5"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="470" y="29" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="16" font-weight="700">Same Domain, Different Storage Model</text>
+  <text x="470" y="49" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">Relational systems reconstruct connections with joins; graph systems store connections directly.</text>
+
+  <rect x="22" y="76" width="432" height="340" rx="13" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="238" y="105" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="13" font-weight="700">Relational DBMS</text>
+  <text x="238" y="123" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10">tables · rows · columns · constraints</text>
+
+  <rect x="43" y="151" width="112" height="128" rx="6" fill="#ffffff" stroke="#94a3b8"/>
+  <rect x="43" y="151" width="112" height="28" rx="6" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="99" y="169" text-anchor="middle" fill="#1d4ed8" font-family="system-ui" font-size="10.5" font-weight="700">PERSON</text>
+  <text x="53" y="197" fill="#374151" font-family="monospace" font-size="9">id  PK</text><text x="53" y="217" fill="#374151" font-family="monospace" font-size="9">name</text><text x="53" y="237" fill="#374151" font-family="monospace" font-size="9">country</text>
+  <line x1="43" y1="247" x2="155" y2="247" stroke="#e5e7eb"/><text x="53" y="265" fill="#64748b" font-family="monospace" font-size="8.5">7  Virat Kohli</text>
+
+  <rect x="168" y="151" width="118" height="128" rx="6" fill="#ffffff" stroke="#94a3b8"/>
+  <rect x="168" y="151" width="118" height="28" rx="6" fill="#fef3c7" stroke="#d97706"/>
+  <text x="227" y="169" text-anchor="middle" fill="#92400e" font-family="system-ui" font-size="10" font-weight="700">MEMBERSHIP</text>
+  <text x="178" y="197" fill="#374151" font-family="monospace" font-size="9">person_id FK</text><text x="178" y="217" fill="#374151" font-family="monospace" font-size="9">team_id FK</text><text x="178" y="237" fill="#374151" font-family="monospace" font-size="9">role</text>
+  <line x1="168" y1="247" x2="286" y2="247" stroke="#e5e7eb"/><text x="178" y="265" fill="#64748b" font-family="monospace" font-size="8.5">7  2  Player</text>
+
+  <rect x="299" y="151" width="112" height="128" rx="6" fill="#ffffff" stroke="#94a3b8"/>
+  <rect x="299" y="151" width="112" height="28" rx="6" fill="#ecfdf5" stroke="#059669"/>
+  <text x="355" y="169" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="10.5" font-weight="700">TEAM</text>
+  <text x="309" y="197" fill="#374151" font-family="monospace" font-size="9">id  PK</text><text x="309" y="217" fill="#374151" font-family="monospace" font-size="9">name</text><text x="309" y="237" fill="#374151" font-family="monospace" font-size="9">sport</text>
+  <line x1="299" y1="247" x2="411" y2="247" stroke="#e5e7eb"/><text x="309" y="265" fill="#64748b" font-family="monospace" font-size="8.5">2  India Team</text>
+
+  <line x1="155" y1="214" x2="165" y2="214" stroke="#94a3b8"/><line x1="286" y1="214" x2="296" y2="214" stroke="#94a3b8"/>
+  <rect x="92" y="311" width="292" height="52" rx="8" fill="#ffffff" stroke="#d1d5db"/>
+  <text x="238" y="333" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5" font-weight="700">Question: Who plays for the India team?</text>
+  <text x="238" y="351" text-anchor="middle" fill="#b45309" font-family="system-ui" font-size="10">PERSON → JOIN MEMBERSHIP → JOIN TEAM</text>
+  <rect x="142" y="381" width="192" height="23" rx="6" fill="#fef3c7" stroke="#fde68a"/>
+  <text x="238" y="397" text-anchor="middle" fill="#92400e" font-family="system-ui" font-size="9.5" font-weight="700">joins reconstruct relationships</text>
+
+  <rect x="486" y="76" width="432" height="340" rx="13" fill="#ecfdf5" stroke="#a7f3d0"/>
+  <text x="702" y="105" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="13" font-weight="700">Graph Database</text>
+  <text x="702" y="123" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10">nodes · properties · relationships · traversal</text>
+
+  <circle cx="586" cy="224" r="62" fill="#ffffff" stroke="#2563eb" stroke-width="1.7"/>
+  <rect x="562" y="176" width="48" height="17" rx="8" fill="#2563eb"/><text x="586" y="188" text-anchor="middle" fill="#ffffff" font-family="system-ui" font-size="8">Person</text>
+  <text x="586" y="218" text-anchor="middle" fill="#1d4ed8" font-family="system-ui" font-size="12" font-weight="700">Virat Kohli</text>
+  <text x="586" y="239" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="9">country: India</text>
+
+  <circle cx="818" cy="224" r="66" fill="#ffffff" stroke="#059669" stroke-width="1.7"/>
+  <rect x="796" y="173" width="44" height="17" rx="8" fill="#059669"/><text x="818" y="185" text-anchor="middle" fill="#ffffff" font-family="system-ui" font-size="8">Team</text>
+  <text x="818" y="216" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="11.5" font-weight="700">Indian Cricket</text>
+  <text x="818" y="234" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="11.5" font-weight="700">Team</text>
+  <text x="818" y="255" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="9">sport: Cricket</text>
+
+  <line x1="649" y1="224" x2="745" y2="224" stroke="#4f46e5" stroke-width="2" marker-end="url(#c25c-arr)"/>
+  <rect x="657" y="190" width="82" height="25" rx="6" fill="#ffffff" stroke="#c7d2fe"/>
+  <text x="698" y="207" text-anchor="middle" fill="#4338ca" font-family="monospace" font-size="9.5" font-weight="700">PLAYS_FOR</text>
+
+  <rect x="556" y="311" width="292" height="52" rx="8" fill="#ffffff" stroke="#a7f3d0"/>
+  <text x="702" y="333" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5" font-weight="700">Question: Who plays for the India team?</text>
+  <text x="702" y="351" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="10">follow the PLAYS_FOR relationship</text>
+  <rect x="606" y="381" width="192" height="23" rx="6" fill="#ffffff" stroke="#a7f3d0"/>
+  <text x="702" y="397" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="9.5" font-weight="700">connections stored directly</text>
+
+  <text x="470" y="449" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5" font-style="italic">Neither model is universally better: choose the one that matches the shape of your questions and relationships.</text>
+</svg>
+
+<table>
+  <thead>
+    <tr><th>Dimension</th><th>Relational DBMS</th><th>Graph Database</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Primary structure</td><td>Tables, rows, columns</td><td>Nodes, relationships, properties</td></tr>
+    <tr><td>Connection mechanism</td><td>Primary and foreign keys</td><td>Named relationships</td></tr>
+    <tr><td>Connected queries</td><td>Join tables at query time</td><td>Traverse stored paths</td></tr>
+    <tr><td>Schema</td><td>Usually declared before insert</td><td>Flexible labels and properties; constraints can still be enforced</td></tr>
+    <tr><td>Natural strengths</td><td>Transactions, aggregation, tabular reporting</td><td>Networks, hierarchies, paths, recommendations, multi-hop questions</td></tr>
+    <tr><td>Typical examples</td><td>Orders, ledgers, inventory, payroll</td><td>Fraud rings, social networks, dependencies, knowledge graphs</td></tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">“No Joins” Needs Precision</div>
+  <p>
+    The notes summarize Neo4j as “no joins.” The practical meaning is that connected queries do not
+    reconstruct every relationship from matching foreign-key values. The graph stores adjacency directly
+    and traverses it. That does not make traversal free, nor does it make relational databases obsolete;
+    it removes join-centric modeling from domains whose main questions are already about relationships.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Neo4j and the Property-Graph Model</h2>
+<p>
+  <strong>Neo4j</strong> is a graph database built around the property-graph model. Data is stored and
+  managed as labeled nodes, directed relationships, and properties on both. Relationships are always
+  physically directed from a <strong>start node</strong> to an <strong>end node</strong>, even when an
+  application chooses to match them in either direction.
+</p>
+
+<svg class="diagram-svg diagram-svg--light" viewBox="0 0 940 410" xmlns="http://www.w3.org/2000/svg" role="img"
+  aria-label="A Neo4j property-graph example. Tony Stark is a Character node with name and alias properties. Avengers is a Movie node with title and year properties. A directed ACTED_IN relationship runs from Tony Stark as the start node to Avengers as the end node and has a role property. Thanos is another Character node connected to Avengers through a VILLAIN_IN relationship. A Cypher mental-model panel shows that queries describe node relationship node patterns rather than traversal steps.">
+  <defs>
+    <marker id="c25d-arr" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f46e5"/></marker>
+    <marker id="c25d-red" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#dc2626"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="470" y="29" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="16" font-weight="700">Directed Relationships and Visual Pattern Matching</text>
+  <text x="470" y="49" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">A relationship has a start, a type, an end, and optional properties of its own.</text>
+
+  <rect x="24" y="76" width="650" height="281" rx="13" fill="#f8fafc" stroke="#d1d5db"/>
+  <text x="49" y="102" fill="#64748b" font-family="system-ui" font-size="9.5" font-weight="700">PROPERTY GRAPH</text>
+
+  <circle cx="158" cy="208" r="68" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+  <rect x="122" y="157" width="72" height="18" rx="9" fill="#2563eb"/><text x="158" y="170" text-anchor="middle" fill="#ffffff" font-family="system-ui" font-size="8.5" font-weight="700">Character</text>
+  <text x="158" y="204" text-anchor="middle" fill="#1d4ed8" font-family="system-ui" font-size="12.5" font-weight="700">Tony Stark</text>
+  <text x="158" y="225" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="9">alias: Iron Man</text>
+  <text x="158" y="243" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="9">type: Hero</text>
+
+  <circle cx="513" cy="208" r="73" fill="#ecfdf5" stroke="#059669" stroke-width="2"/>
+  <rect x="487" y="151" width="52" height="18" rx="9" fill="#059669"/><text x="513" y="164" text-anchor="middle" fill="#ffffff" font-family="system-ui" font-size="8.5" font-weight="700">Movie</text>
+  <text x="513" y="202" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="13" font-weight="700">Avengers</text>
+  <text x="513" y="224" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="9">year: 2012</text>
+  <text x="513" y="242" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="9">genre: Action</text>
+
+  <line x1="227" y1="208" x2="432" y2="208" stroke="#4f46e5" stroke-width="2" marker-end="url(#c25d-arr)"/>
+  <rect x="284" y="169" width="96" height="27" rx="7" fill="#ffffff" stroke="#c7d2fe"/>
+  <text x="332" y="186" text-anchor="middle" fill="#4338ca" font-family="monospace" font-size="10" font-weight="700">ACTED_IN</text>
+  <text x="332" y="229" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="9">role: Iron Man</text>
+  <text x="244" y="260" text-anchor="middle" fill="#1d4ed8" font-family="system-ui" font-size="9.5" font-weight="700">START NODE</text>
+  <text x="421" y="260" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="9.5" font-weight="700">END NODE</text>
+
+  <circle cx="360" cy="309" r="39" fill="#fef2f2" stroke="#dc2626" stroke-width="1.6"/>
+  <text x="360" y="305" text-anchor="middle" fill="#b91c1c" font-family="system-ui" font-size="10.5" font-weight="700">Thanos</text>
+  <text x="360" y="321" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="8.5">Character</text>
+  <line x1="395" y1="288" x2="455" y2="248" stroke="#dc2626" stroke-width="1.7" marker-end="url(#c25d-red)"/>
+  <text x="438" y="286" text-anchor="middle" fill="#b91c1c" font-family="monospace" font-size="8.8" font-weight="700">VILLAIN_IN</text>
+
+  <rect x="704" y="76" width="212" height="281" rx="13" fill="#f5f3ff" stroke="#7c3aed"/>
+  <text x="810" y="105" text-anchor="middle" fill="#6d28d9" font-family="system-ui" font-size="12.5" font-weight="700">Cypher mental model</text>
+  <text x="810" y="126" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9.8">Describe the pattern, not each step.</text>
+  <rect x="730" y="149" width="160" height="74" rx="9" fill="#ffffff" stroke="#c4b5fd"/>
+  <circle cx="753" cy="185" r="15" fill="#eff6ff" stroke="#2563eb"/>
+  <line x1="768" y1="185" x2="848" y2="185" stroke="#4f46e5" marker-end="url(#c25d-arr)"/>
+  <circle cx="868" cy="185" r="15" fill="#ecfdf5" stroke="#059669"/>
+  <text x="808" y="173" text-anchor="middle" fill="#4338ca" font-family="monospace" font-size="8.5">RELATIONSHIP</text>
+  <text x="753" y="211" text-anchor="middle" fill="#1d4ed8" font-family="system-ui" font-size="8.5">node</text>
+  <text x="868" y="211" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="8.5">node</text>
+
+  <rect x="730" y="242" width="160" height="79" rx="9" fill="#ffffff" stroke="#c4b5fd"/>
+  <text x="810" y="263" text-anchor="middle" fill="#6d28d9" font-family="system-ui" font-size="10" font-weight="700">Ask for a shape</text>
+  <text x="810" y="283" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="9.5">Character → Movie</text>
+  <text x="810" y="302" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9">filtered by labels, types,</text>
+  <text x="810" y="316" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9">properties, and path length</text>
+
+  <rect x="151" y="375" width="638" height="25" rx="7" fill="#fef3c7" stroke="#fde68a"/>
+  <text x="470" y="392" text-anchor="middle" fill="#92400e" font-family="system-ui" font-size="10">Direction describes the stored fact; a query may still choose to explore one way or both ways.</text>
+</svg>
+
+<h3>Flexible Schema Does Not Mean No Governance</h3>
+<p>
+  Neo4j allows different nodes with the same label to carry different properties, and new relationship
+  types can be introduced as the domain evolves. This flexibility is valuable when connected knowledge
+  changes faster than a rigid table design. Production graphs should still use naming conventions,
+  uniqueness constraints, indexes, required identifiers, and data-quality checks. Flexibility removes
+  unnecessary rigidity; it does not remove responsibility.
+</p>
+
+<h3>ACID Still Matters</h3>
+<p>
+  Graph structure does not trade away transactional guarantees. Neo4j supports the familiar ACID model:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Property</th><th>Meaning for graph updates</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Atomicity</strong></td><td>A multi-node, multi-relationship update succeeds completely or rolls back</td></tr>
+    <tr><td><strong>Consistency</strong></td><td>Constraints and transaction rules remain valid before and after the update</td></tr>
+    <tr><td><strong>Isolation</strong></td><td>Concurrent operations do not expose incomplete intermediate graph states</td></tr>
+    <tr><td><strong>Durability</strong></td><td>Committed nodes and relationships survive failure and restart</td></tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Cypher: Query by Describing a Pattern</h2>
+<p>
+  Cypher is Neo4j's declarative graph query language. “Declarative” means you describe the graph pattern
+  and result you want; the database planner decides how to find it. Its notation mirrors the whiteboard
+  model: parentheses represent nodes, bracketed arrows represent relationships, labels constrain entity
+  categories, and properties constrain details. This chapter stays code-free, so the important lesson is
+  the visual grammar rather than command syntax.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Visual idea</th><th>What Cypher expresses</th><th>Question it supports</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Node</td><td>An entity, optionally restricted by label or properties</td><td>Find a Player named Virat Kohli</td></tr>
+    <tr><td>Directed relationship</td><td>A named connection from one node to another</td><td>Which team does this player play for?</td></tr>
+    <tr><td>Undirected match</td><td>A relationship may be matched without caring about stored direction</td><td>Who is connected as a teammate?</td></tr>
+    <tr><td>Path</td><td>Several connected relationships matched together</td><td>Which players share a team with this captain?</td></tr>
+    <tr><td>Property filter</td><td>Only entities or relationships with matching key-value details</td><td>Who has captained the team since 2024?</td></tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">Think in Shapes</div>
+  <p>
+    Before writing a graph query, sketch the answer shape: <strong>Person → relationship → Team</strong>,
+    or <strong>Person → Team ← Person</strong>. The sketch identifies the node labels, relationship types,
+    direction, filters, and number of hops that the query must express. Cypher is close to that sketch by
+    design.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Why Graph Traversal Changes Retrieval</h2>
+<p>
+  Graph retrieval follows relationships from a known or discovered starting node. A one-hop traversal
+  asks about immediate neighbors; a multi-hop traversal asks how entities connect through intermediate
+  nodes. This is valuable whenever the explanation is a path rather than a single matching record.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Hop count</th><th>Cricket question</th><th>Graph path</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1 hop</td><td>Which team does Virat Kohli play for?</td><td>Virat Kohli → PLAYS_FOR → Indian Cricket Team</td></tr>
+    <tr><td>2 hops</td><td>Who captains Virat Kohli's team?</td><td>Virat Kohli → Team ← CAPTAIN_OF ← Rohit Sharma</td></tr>
+    <tr><td>3 hops</td><td>Which players share a team led by the same captain?</td><td>Player → Team ← Captain, then Team ← Player</td></tr>
+  </tbody>
+</table>
+
+<p>
+  The database can return both the answer entities and the path that connects them. That path is useful
+  evidence: an application can explain not only <em>what</em> it found, but <em>why</em> the result follows
+  from stored relationships.
+</p>
+
+<hr class="divider">
+
+<h2>Graph RAG With LangChain and LangGraph</h2>
+<p>
+  Traditional vector RAG retrieves text chunks that are semantically similar to a question. Graph RAG
+  retrieves entities, relationships, neighborhoods, and paths that satisfy a structured meaning. The two
+  approaches are complementary: vector search is strong for fuzzy language and broad discovery, while
+  graph traversal is strong for explicit relationships, constraints, and multi-hop evidence.
+</p>
+
+<svg class="diagram-svg diagram-svg--light" viewBox="0 0 940 490" xmlns="http://www.w3.org/2000/svg" role="img"
+  aria-label="A Graph RAG architecture. A user question enters a LangChain or LangGraph orchestrator. The orchestrator identifies entities and intent, creates or selects a Cypher pattern, and sends it to Neo4j. Neo4j traverses the knowledge graph and returns connected facts and paths. A context builder converts those results into grounded evidence for the language model. The final response includes the answer and an explanation path. A lower hybrid lane shows vector search contributing relevant text passages alongside graph traversal.">
+  <defs>
+    <marker id="c25e-arr" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f46e5"/></marker>
+    <marker id="c25e-green" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#059669"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="470" y="29" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="16" font-weight="700">Graph RAG: Retrieve Relationships, Not Only Similar Text</text>
+  <text x="470" y="49" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">The graph returns connected facts and the path that supports the answer.</text>
+
+  <rect x="23" y="92" width="128" height="72" rx="9" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="87" y="119" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="12" font-weight="700">User question</text>
+  <text x="87" y="140" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9.5">“Who captains</text>
+  <text x="87" y="154" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9.5">Virat's team?”</text>
+  <line x1="151" y1="128" x2="189" y2="128" stroke="#4f46e5" stroke-width="1.6" marker-end="url(#c25e-arr)"/>
+
+  <rect x="195" y="76" width="170" height="104" rx="10" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="280" y="104" text-anchor="middle" fill="#6d28d9" font-family="system-ui" font-size="12.5" font-weight="700">LangChain / LangGraph</text>
+  <text x="280" y="128" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10">extract entities and intent</text>
+  <text x="280" y="148" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10">select a graph tool</text>
+  <text x="280" y="166" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9.5">single agent or multi-agent flow</text>
+  <line x1="365" y1="128" x2="403" y2="128" stroke="#4f46e5" stroke-width="1.6" marker-end="url(#c25e-arr)"/>
+
+  <rect x="409" y="76" width="142" height="104" rx="10" fill="#fef3c7" stroke="#d97706"/>
+  <text x="480" y="104" text-anchor="middle" fill="#92400e" font-family="system-ui" font-size="12.5" font-weight="700">Cypher pattern</text>
+  <text x="480" y="128" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10">Player → Team</text>
+  <text x="480" y="147" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10">Team ← Captain</text>
+  <text x="480" y="166" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9.5">labels · types · filters</text>
+  <line x1="551" y1="128" x2="589" y2="128" stroke="#4f46e5" stroke-width="1.6" marker-end="url(#c25e-arr)"/>
+
+  <rect x="595" y="65" width="165" height="126" rx="10" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+  <text x="677" y="94" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="12.5" font-weight="700">Neo4j</text>
+  <circle cx="630" cy="135" r="18" fill="#ffffff" stroke="#2563eb"/><circle cx="677" cy="153" r="19" fill="#ffffff" stroke="#059669"/><circle cx="724" cy="124" r="18" fill="#ffffff" stroke="#7c3aed"/>
+  <line x1="647" y1="141" x2="657" y2="146" stroke="#4f46e5"/><line x1="696" y1="143" x2="708" y2="133" stroke="#4f46e5"/>
+  <text x="677" y="180" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9.5">traverse connected facts</text>
+  <line x1="760" y1="128" x2="798" y2="128" stroke="#059669" stroke-width="1.6" marker-end="url(#c25e-green)"/>
+
+  <rect x="804" y="76" width="114" height="104" rx="10" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="861" y="104" text-anchor="middle" fill="#1d4ed8" font-family="system-ui" font-size="12.5" font-weight="700">Evidence</text>
+  <text x="861" y="129" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="9.5">connected entities</text>
+  <text x="861" y="147" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="9.5">relationship path</text>
+  <text x="861" y="165" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9.5">source properties</text>
+
+  <path d="M 861 180 C 861 235, 692 235, 692 269" fill="none" stroke="#059669" stroke-width="1.6" marker-end="url(#c25e-green)"/>
+  <rect x="568" y="275" width="248" height="81" rx="10" fill="#ecfdf5" stroke="#059669"/>
+  <text x="692" y="302" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="12" font-weight="700">Grounded answer</text>
+  <text x="692" y="325" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10">Rohit Sharma captains the Indian cricket team.</text>
+  <text x="692" y="344" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9.5">explanation path: Virat → Team ← Rohit</text>
+
+  <!-- Hybrid vector lane -->
+  <rect x="24" y="237" width="480" height="154" rx="12" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="48" y="264" fill="#64748b" font-family="system-ui" font-size="9.5" font-weight="700">OPTIONAL HYBRID LANE</text>
+  <rect x="48" y="283" width="121" height="70" rx="8" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="108" y="309" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="11" font-weight="700">Vector search</text>
+  <text x="108" y="330" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9.5">similar text passages</text>
+  <line x1="169" y1="318" x2="207" y2="318" stroke="#4f46e5" marker-end="url(#c25e-arr)"/>
+  <rect x="213" y="283" width="121" height="70" rx="8" fill="#ffffff" stroke="#7c3aed"/>
+  <text x="273" y="309" text-anchor="middle" fill="#6d28d9" font-family="system-ui" font-size="11" font-weight="700">Context merge</text>
+  <text x="273" y="330" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9.5">retrieved passages</text>
+  <line x1="334" y1="318" x2="372" y2="318" stroke="#4f46e5" marker-end="url(#c25e-arr)"/>
+  <rect x="378" y="283" width="102" height="70" rx="8" fill="#ffffff" stroke="#059669"/>
+  <text x="429" y="309" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="11" font-weight="700">LLM</text>
+  <text x="429" y="330" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9.5">synthesize</text>
+  <path d="M 480 318 C 526 318, 528 318, 562 318" fill="none" stroke="#059669" stroke-width="1.4" marker-end="url(#c25e-green)"/>
+
+  <rect x="160" y="423" width="620" height="38" rx="8" fill="#fef3c7" stroke="#fde68a"/>
+  <text x="470" y="447" text-anchor="middle" fill="#92400e" font-family="system-ui" font-size="10.5">Graph retrieval supplies structure and provenance; vector retrieval supplies flexible semantic recall.</text>
+</svg>
+
+<h3>Where the Orchestration Layer Fits</h3>
+<table>
+  <thead>
+    <tr><th>Layer</th><th>Responsibility</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>LangChain</strong></td><td>Connect the language model, Neo4j retriever or graph tool, prompt, and answer formatter</td></tr>
+    <tr><td><strong>LangGraph</strong></td><td>Model stateful flows that validate a graph query, retry, branch, combine retrieval modes, or ask for clarification</td></tr>
+    <tr><td><strong>Multi-agent system</strong></td><td>Assign graph search, vector search, verification, and synthesis to specialized agents under a shared workflow</td></tr>
+    <tr><td><strong>Neo4j</strong></td><td>Store the property graph, execute Cypher, traverse relationships, and return connected evidence</td></tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>When a Graph Database Is the Right Tool</h2>
+<table>
+  <thead>
+    <tr><th>Strong graph fit</th><th>Why</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Fraud and money-laundering networks</td><td>Risk emerges from shared accounts, devices, addresses, and multi-hop transaction paths</td></tr>
+    <tr><td>Recommendations</td><td>Products, users, behaviors, and preferences form connected neighborhoods</td></tr>
+    <tr><td>Identity and access management</td><td>Permissions flow through users, groups, roles, resources, and inheritance</td></tr>
+    <tr><td>Supply-chain and dependency analysis</td><td>Impact is determined by upstream and downstream paths</td></tr>
+    <tr><td>Knowledge Graph RAG</td><td>Questions require entity resolution, typed facts, multi-hop evidence, and explainable paths</td></tr>
+    <tr><td>Network and infrastructure operations</td><td>Services, hosts, APIs, incidents, and dependencies are naturally connected</td></tr>
+  </tbody>
+</table>
+
+<h3>When It Is Probably Not the First Choice</h3>
+<p>
+  A graph database is not automatically better for every dataset. A simple ledger, flat event stream,
+  columnar analytics workload, or document archive may be better served by relational, time-series,
+  analytical, or document storage. Use a graph when relationships are central to both the domain and the
+  questions &mdash; especially when those questions change or span several hops.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Decision question</th><th>If the answer is “yes”</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Are relationships as important as the entities themselves?</td><td>A property graph deserves serious consideration</td></tr>
+    <tr><td>Do queries repeatedly cross several foreign-key relationships?</td><td>Traversal may simplify the model and query shape</td></tr>
+    <tr><td>Must the system return an explanation path?</td><td>Graph paths provide natural provenance</td></tr>
+    <tr><td>Does the domain evolve with new entity and relationship types?</td><td>Flexible graph modeling may reduce migration friction</td></tr>
+    <tr><td>Are most workloads simple aggregates over stable tables?</td><td>Keep the relational model unless another requirement dominates</td></tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Designing a Useful Knowledge Graph</h2>
+<p>
+  The hardest part is rarely drawing circles and arrows. It is choosing stable entity boundaries,
+  meaningful relationship types, and properties that support real questions without copying every source
+  sentence into the graph.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Design step</th><th>Question to ask</th><th>Common failure</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Start from questions</td><td>Which decisions or paths must the application retrieve?</td><td>Modeling the source format instead of the use case</td></tr>
+    <tr><td>Choose node identities</td><td>What counts as the same person, team, product, or concept?</td><td>Duplicate entities caused by spelling or aliases</td></tr>
+    <tr><td>Name relationships</td><td>What precise verb connects these node types?</td><td>Generic CONNECTED_TO edges with no semantic value</td></tr>
+    <tr><td>Choose direction</td><td>Which direction expresses the fact most naturally?</td><td>Inconsistent inverse relationships</td></tr>
+    <tr><td>Place properties</td><td>Does this detail describe the entity or the connection?</td><td>Putting “since” on a person instead of on CAPTAIN_OF</td></tr>
+    <tr><td>Preserve provenance</td><td>Where did this node or relationship fact come from?</td><td>Answers that cannot cite or verify their source</td></tr>
+    <tr><td>Constrain identifiers</td><td>Which IDs or names must be unique?</td><td>A flexible graph that slowly accumulates contradictions</td></tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">Model Relationships as Facts</div>
+  <p>
+    If a connection has its own time, confidence, role, source, or status, it belongs as a relationship
+    with properties &mdash; not as a text field buried inside one node. That decision is what makes the
+    graph traversable, explainable, and useful to RAG.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+<div class="example-block">
+  <div class="label">Remember These Five</div>
+  <p><strong>1. A knowledge graph is a semantic network.</strong> It models real-world entities and names the relationships between them, turning language such as “Rohit captains India” into a connected fact that can be traversed.</p>
+  <p><strong>2. Neo4j uses the property-graph model.</strong> Nodes carry labels and properties; directed relationships connect a start node to an end node and can carry properties of their own.</p>
+  <p><strong>3. Graph traversal replaces relationship reconstruction.</strong> Relational databases connect tables through keys and joins; a graph stores adjacency directly and follows paths. Choose according to the shape of the domain and its questions.</p>
+  <p><strong>4. Cypher is declarative and visual.</strong> Think in node-relationship-node patterns, filters, direction, and path length. Describe the shape you need; let Neo4j plan the traversal.</p>
+  <p><strong>5. Graph RAG retrieves connected evidence.</strong> LangChain or LangGraph can translate intent into graph retrieval, collect paths from Neo4j, and give the LLM both facts and provenance &mdash; often alongside vector search in a hybrid design.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter24-2">&larr; Chapter 24: RAG Evaluation</a>
+    <span></span>
+</nav>
