@@ -244,5 +244,10 @@ const chapters = [
         id: "chapter22",
         title: "Chapter 22: Guardrails — Building Safe, Compliant AI Agents",
         description: "Making agents safe for production — from the LangChain guardrails crash-course notebook: deterministic vs model-based checks, the built-in PIIMiddleware (redact/mask/hash/block) and HumanInTheLoopMiddleware (interrupt → approve/edit/reject via a checkpointer), custom before_agent input filters and after_agent output validators, stacking five layers of defense in one middleware array, and a healthcare chatbot capstone with PII redaction, approval gates, and auto-disclaimers."
+    },
+    {
+        id: "chapter23",
+        title: "Chapter 23: LLM Gateways — One Control Plane for Every Model",
+        description: "Putting a production control plane between applications and model providers — from the LiteLLM gateway tutorial and handwritten architecture notes: one unified API, automatic fallbacks, caching, task-aware routing, load balancing, cost and latency tracking, LangChain integration, centralized policy, and the path from an in-process SDK to a shared gateway proxy."
     }
 ];

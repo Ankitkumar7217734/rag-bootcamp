@@ -1,0 +1,980 @@
+<h1>Chapter 23: LLM Gateways &mdash; One Control Plane for Every Model</h1>
+<p style="color:#888; margin-bottom: 2rem;"><em>Your chatbot, RAG pipeline, and agents should not each carry a separate OpenAI integration, a separate Groq integration, and a separate outage plan. Put one intelligent layer in the middle, and every application gets routing, fallbacks, caching, governance, and observability together.</em></p>
+
+<div class="example-block">
+  <div class="label">LLM Gateway in One Paragraph</div>
+  <p style="margin-top:0;">
+    An <strong><span style="color:#818cf8;">LLM gateway</span></strong> is a control plane between your
+    applications and model providers. The application sends one OpenAI-shaped request to one endpoint;
+    the gateway decides which deployment should serve it, retries or falls back when that deployment
+    fails, returns cached answers when possible, applies shared policy, and records cost and latency.
+    The result is a clean separation: applications own <em>product logic</em>, providers supply
+    <em>model capability</em>, and the gateway owns <em>operational policy</em>.
+  </p>
+</div>
+
+<h2>Overview</h2>
+<p>
+  This chapter is built from the <strong>LiteLLM + LangChain gateway tutorial</strong> and the accompanying
+  handwritten architecture notes. Those notes draw the key transition clearly: first, every chatbot,
+  RAG pipeline, and application talks directly to OpenAI, Gemini, or Claude; then a small middleware
+  layer is introduced so those same applications talk to one gateway instead. The notebook turns that
+  drawing into working Python and progressively adds the capabilities a production gateway needs.
+</p>
+
+<table>
+  <thead>
+    <tr><th>#</th><th>What you'll learn</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>Why direct provider integrations become operationally expensive</td></tr>
+    <tr><td>2</td><td>How LiteLLM exposes one <code>completion()</code> API across many providers</td></tr>
+    <tr><td>3</td><td>How fallback chains keep an application alive during outages and rate limits</td></tr>
+    <tr><td>4</td><td>How caching, cost tracking, and observability change the economics of LLM calls</td></tr>
+    <tr><td>5</td><td>How aliases, task routing, and load-balancing strategies select a deployment</td></tr>
+    <tr><td>6</td><td>How to plug the same gateway into LangChain with <code>ChatLiteLLM</code></td></tr>
+    <tr><td>7</td><td>How gateway callbacks become a central enforcement point for privacy and safety</td></tr>
+    <tr><td>8</td><td>When to use LiteLLM as an in-process SDK and when to run it as a shared proxy</td></tr>
+  </tbody>
+</table>
+
+<svg class="diagram-svg diagram-svg--light" viewBox="0 0 940 510" xmlns="http://www.w3.org/2000/svg" role="img"
+  aria-label="Evolution from direct LLM provider integrations to an LLM gateway. The top half shows a chatbot, RAG pipeline, and application each connected directly to OpenAI, Gemini, and Claude, creating many integrations. The bottom half shows the three applications sending requests through one gateway that provides routing, fallbacks, caching, rate limiting, guardrails, cost tracking, and observability before reaching multiple providers.">
+  <defs>
+    <marker id="c23a-gray" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#94a3b8"/></marker>
+    <marker id="c23a-indigo" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f46e5"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
+  <text x="470" y="28" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="16" font-weight="700">From Integration Sprawl to One Control Plane</text>
+  <text x="225" y="58" text-anchor="middle" fill="#dc2626" font-family="system-ui" font-size="12.5" font-weight="700">Without a gateway</text>
+  <text x="708" y="58" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="12.5" font-weight="700">With an LLM gateway</text>
+
+  <rect x="20" y="78" width="410" height="360" rx="12" fill="#fef2f2" stroke="#fecaca"/>
+  <rect x="46" y="105" width="105" height="48" rx="8" fill="#ffffff" stroke="#dc2626"/>
+  <text x="98" y="134" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="12">Chatbot</text>
+  <rect x="46" y="190" width="105" height="48" rx="8" fill="#ffffff" stroke="#dc2626"/>
+  <text x="98" y="219" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="12">RAG</text>
+  <rect x="46" y="275" width="105" height="48" rx="8" fill="#ffffff" stroke="#dc2626"/>
+  <text x="98" y="304" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="12">Agent</text>
+
+  <rect x="306" y="104" width="98" height="48" rx="8" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="355" y="133" text-anchor="middle" fill="#1d4ed8" font-family="system-ui" font-size="12">OpenAI</text>
+  <rect x="306" y="190" width="98" height="48" rx="8" fill="#ecfdf5" stroke="#059669"/>
+  <text x="355" y="219" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="12">Gemini</text>
+  <rect x="306" y="276" width="98" height="48" rx="8" fill="#f5f3ff" stroke="#7c3aed"/>
+  <text x="355" y="305" text-anchor="middle" fill="#6d28d9" font-family="system-ui" font-size="12">Claude</text>
+
+  <line x1="151" y1="129" x2="302" y2="129" stroke="#94a3b8" marker-end="url(#c23a-gray)"/>
+  <line x1="151" y1="129" x2="302" y2="210" stroke="#94a3b8" marker-end="url(#c23a-gray)"/>
+  <line x1="151" y1="129" x2="302" y2="296" stroke="#94a3b8" marker-end="url(#c23a-gray)"/>
+  <line x1="151" y1="214" x2="302" y2="129" stroke="#94a3b8" marker-end="url(#c23a-gray)"/>
+  <line x1="151" y1="214" x2="302" y2="214" stroke="#94a3b8" marker-end="url(#c23a-gray)"/>
+  <line x1="151" y1="214" x2="302" y2="296" stroke="#94a3b8" marker-end="url(#c23a-gray)"/>
+  <line x1="151" y1="299" x2="302" y2="129" stroke="#94a3b8" marker-end="url(#c23a-gray)"/>
+  <line x1="151" y1="299" x2="302" y2="214" stroke="#94a3b8" marker-end="url(#c23a-gray)"/>
+  <line x1="151" y1="299" x2="302" y2="300" stroke="#94a3b8" marker-end="url(#c23a-gray)"/>
+  <text x="225" y="373" text-anchor="middle" fill="#b91c1c" font-family="system-ui" font-size="11.5">3 apps × 3 providers = 9 integration paths</text>
+  <text x="225" y="396" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">Different SDKs · duplicated retries · fragmented logs</text>
+
+  <rect x="452" y="78" width="468" height="360" rx="12" fill="#ecfdf5" stroke="#a7f3d0"/>
+  <rect x="474" y="105" width="95" height="42" rx="8" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="521" y="131" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="11.5">Chatbot</text>
+  <rect x="474" y="166" width="95" height="42" rx="8" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="521" y="192" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="11.5">RAG</text>
+  <rect x="474" y="227" width="95" height="42" rx="8" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="521" y="253" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="11.5">Agent</text>
+
+  <line x1="569" y1="126" x2="603" y2="176" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c23a-indigo)"/>
+  <line x1="569" y1="187" x2="603" y2="187" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c23a-indigo)"/>
+  <line x1="569" y1="248" x2="603" y2="198" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#c23a-indigo)"/>
+
+  <rect x="609" y="102" width="170" height="178" rx="10" fill="#f5f3ff" stroke="#4f46e5" stroke-width="1.8"/>
+  <text x="694" y="129" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="13" font-weight="700">LLM Gateway</text>
+  <text x="630" y="157" fill="#374151" font-family="system-ui" font-size="10.5">✓ routing</text>
+  <text x="630" y="178" fill="#374151" font-family="system-ui" font-size="10.5">✓ fallbacks</text>
+  <text x="630" y="199" fill="#374151" font-family="system-ui" font-size="10.5">✓ caching</text>
+  <text x="630" y="220" fill="#374151" font-family="system-ui" font-size="10.5">✓ rate limits</text>
+  <text x="700" y="157" fill="#374151" font-family="system-ui" font-size="10.5">✓ guardrails</text>
+  <text x="700" y="178" fill="#374151" font-family="system-ui" font-size="10.5">✓ cost</text>
+  <text x="700" y="199" fill="#374151" font-family="system-ui" font-size="10.5">✓ latency</text>
+  <text x="700" y="220" fill="#374151" font-family="system-ui" font-size="10.5">✓ audit logs</text>
+  <text x="694" y="256" text-anchor="middle" fill="#6d28d9" font-family="monospace" font-size="10.5">one API contract</text>
+
+  <line x1="779" y1="191" x2="813" y2="126" stroke="#4f46e5" marker-end="url(#c23a-indigo)"/>
+  <line x1="779" y1="191" x2="813" y2="191" stroke="#4f46e5" marker-end="url(#c23a-indigo)"/>
+  <line x1="779" y1="191" x2="813" y2="256" stroke="#4f46e5" marker-end="url(#c23a-indigo)"/>
+  <rect x="817" y="105" width="80" height="42" rx="8" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="857" y="131" text-anchor="middle" fill="#1d4ed8" font-family="system-ui" font-size="11">OpenAI</text>
+  <rect x="817" y="170" width="80" height="42" rx="8" fill="#ecfdf5" stroke="#059669"/>
+  <text x="857" y="196" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="11">Gemini</text>
+  <rect x="817" y="235" width="80" height="42" rx="8" fill="#f5f3ff" stroke="#7c3aed"/>
+  <text x="857" y="261" text-anchor="middle" fill="#6d28d9" font-family="system-ui" font-size="11">Claude</text>
+
+  <rect x="486" y="320" width="399" height="82" rx="9" fill="#ffffff" stroke="#a7f3d0"/>
+  <text x="685" y="345" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="12" font-weight="700">The contract stays stable</text>
+  <text x="685" y="368" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5">Apps ask for an alias such as “fast-cheap” or “smart-coding”.</text>
+  <text x="685" y="387" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">The deployment behind that alias can change without an app rewrite.</text>
+  <text x="470" y="480" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="11" font-style="italic">The gateway does not replace application logic or model providers; it separates them.</text>
+</svg>
+
+<hr class="divider">
+
+<h2>Why Direct Provider Integrations Break Down</h2>
+<p>
+  Direct API integration is reasonable for a prototype. One application, one SDK, one model, and one
+  API key are easy to understand. The trouble begins when the prototype becomes a platform. A chatbot
+  needs fast responses, a coding agent needs a stronger model, a summarizer needs low cost, and a RAG
+  service needs stable throughput. Each team then reimplements the same operational machinery.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Production problem</th><th>Without a gateway</th><th>Gateway responsibility</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Provider-specific APIs</td><td>Every app imports and maintains multiple SDKs</td><td>Translate one request format to each provider</td></tr>
+    <tr><td>Outages and rate limits</td><td>Each app invents retry and fallback logic</td><td>Apply one tested fallback policy centrally</td></tr>
+    <tr><td>Model replacement</td><td>Model names leak into product code</td><td>Expose stable aliases backed by replaceable deployments</td></tr>
+    <tr><td>Repeated prompts</td><td>The same answer is purchased many times</td><td>Cache eligible requests and responses</td></tr>
+    <tr><td>Spend visibility</td><td>Costs are split across provider dashboards</td><td>Attribute tokens and cost by user, team, and application</td></tr>
+    <tr><td>Security policy</td><td>PII and prompt checks differ by service</td><td>Enforce common rules before traffic leaves the boundary</td></tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">The Architectural Boundary</div>
+  <p>
+    Keep the question <em>“What should this application do?”</em> in application code. Move the questions
+    <em>“Which deployment should answer, what happens if it fails, may this request leave the network,
+    and how do we measure it?”</em> into the gateway. That boundary is the real value; multi-provider
+    syntax is only the first benefit.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>LiteLLM: One API Across Providers</h2>
+<p>
+  The notebook uses <strong>LiteLLM</strong>, an open-source gateway and translation layer supporting a
+  broad set of hosted and local providers. In SDK mode, the smallest useful abstraction is one Python
+  function: <code>completion()</code>. The message schema and response access pattern stay the same;
+  the <code>model</code> string selects the provider.
+</p>
+
+<pre># Install the core packages
+pip install litellm langchain langchain-community langchain-openai python-dotenv</pre>
+
+<pre>import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+print("OpenAI key loaded:   ", "yes" if os.getenv("OPENAI_API_KEY") else "no")
+print("Anthropic key loaded:", "yes" if os.getenv("ANTHROPIC_API_KEY") else "no")
+print("Groq key loaded:     ", "yes" if os.getenv("GROQ_API_KEY") else "no")</pre>
+
+<p>
+  Never print the keys themselves. A presence check is enough for local setup; in production, inject
+  secrets from a secret manager rather than committing a <code>.env</code> file.
+</p>
+
+<pre>from litellm import completion
+
+prompt = "Explain RAG in one sentence."
+providers = [
+    ("OpenAI",    "gpt-4o-mini"),
+    ("Groq",      "groq/llama-3.3-70b-versatile"),
+    ("Anthropic", "claude-3-5-haiku-20241022"),
+    ("Gemini",    "gemini/gemini-1.5-flash"),
+]
+
+for label, model in providers:
+    try:
+        response = completion(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        answer = response.choices[0].message.content
+        print(f"{label}: {answer[:80]}")
+    except Exception as exc:
+        print(f"{label}: {type(exc).__name__}")</pre>
+
+<p>
+  Provider prefixes matter. A name such as <code>groq/llama-3.3-70b-versatile</code> tells LiteLLM both
+  the provider adapter and the model. The notebook's run also demonstrates an important operational
+  reality: missing credentials or provider permissions are normal failure modes, so gateway code must
+  treat provider failure as data, not as a surprise.
+</p>
+
+<hr class="divider">
+
+<h2>Automatic Fallbacks: Failure Becomes a Routing Event</h2>
+<p>
+  A fallback chain is an ordered list of acceptable alternatives. The gateway tries the primary model;
+  if the call fails for a configured reason, it attempts the next deployment. The application receives
+  the first successful response through the same interface.
+</p>
+
+<svg class="diagram-svg diagram-svg--light" viewBox="0 0 940 350" xmlns="http://www.w3.org/2000/svg" role="img"
+  aria-label="Automatic fallback chain. An application request enters the LLM gateway. The gateway tries a primary Gemini deployment, which returns a 403 failure, then tries GPT-4o-mini, which succeeds. A third Groq model remains available as the next fallback. The successful response returns to the application while telemetry records both attempts.">
+  <defs>
+    <marker id="c23b-arr" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f46e5"/></marker>
+    <marker id="c23b-red" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#dc2626"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="470" y="30" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="16" font-weight="700">Fallback Chain: One Failure, No Application Outage</text>
+
+  <rect x="28" y="105" width="125" height="66" rx="9" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="90" y="132" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="12" font-weight="600">Application</text>
+  <text x="90" y="151" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="10.5">completion(...)</text>
+  <line x1="153" y1="138" x2="205" y2="138" stroke="#4f46e5" stroke-width="1.6" marker-end="url(#c23b-arr)"/>
+
+  <rect x="211" y="86" width="155" height="104" rx="10" fill="#f5f3ff" stroke="#4f46e5" stroke-width="1.8"/>
+  <text x="288" y="116" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="13" font-weight="700">LLM Gateway</text>
+  <text x="288" y="141" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5">ordered attempts</text>
+  <text x="288" y="162" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="10">primary → backup 1 → backup 2</text>
+
+  <line x1="366" y1="111" x2="430" y2="82" stroke="#dc2626" stroke-width="1.5" marker-end="url(#c23b-red)"/>
+  <rect x="436" y="54" width="142" height="58" rx="8" fill="#fef2f2" stroke="#dc2626"/>
+  <text x="507" y="78" text-anchor="middle" fill="#b91c1c" font-family="system-ui" font-size="11.5" font-weight="600">1. Gemini primary</text>
+  <text x="507" y="97" text-anchor="middle" fill="#dc2626" font-family="monospace" font-size="10">403 / unavailable ✗</text>
+
+  <path d="M 578 83 C 625 83, 625 138, 658 138" fill="none" stroke="#dc2626" stroke-width="1.4" stroke-dasharray="4,3" marker-end="url(#c23b-red)"/>
+  <rect x="664" y="109" width="142" height="58" rx="8" fill="#ecfdf5" stroke="#059669"/>
+  <text x="735" y="133" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="11.5" font-weight="600">2. GPT-4o-mini</text>
+  <text x="735" y="152" text-anchor="middle" fill="#047857" font-family="monospace" font-size="10">success ✓</text>
+
+  <path d="M 806 138 C 845 138, 845 213, 806 213" fill="none" stroke="#94a3b8" stroke-width="1.3" stroke-dasharray="4,3"/>
+  <rect x="664" y="184" width="142" height="58" rx="8" fill="#f8fafc" stroke="#94a3b8"/>
+  <text x="735" y="208" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="11.5" font-weight="600">3. Groq backup</text>
+  <text x="735" y="227" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="10">not needed</text>
+
+  <path d="M 664 138 C 580 205, 470 225, 366 168" fill="none" stroke="#059669" stroke-width="1.6" marker-end="url(#c23b-arr)"/>
+  <path d="M 211 168 C 180 224, 122 224, 90 176" fill="none" stroke="#059669" stroke-width="1.6" marker-end="url(#c23b-arr)"/>
+  <text x="459" y="235" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="11">successful response returns through the original call</text>
+
+  <rect x="211" y="270" width="595" height="48" rx="8" fill="#eff6ff" stroke="#bfdbfe"/>
+  <text x="508" y="290" text-anchor="middle" fill="#1d4ed8" font-family="system-ui" font-size="11.5" font-weight="600">Telemetry records every attempt</text>
+  <text x="508" y="308" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">primary error · fallback chosen · total latency · model used · final cost</text>
+</svg>
+
+<pre>from litellm import completion
+
+response = completion(
+    model="openai/fake-nonexistent-model-9999",  # fails intentionally
+    messages=[{"role": "user", "content": "What is an LLM Gateway?"}],
+    fallbacks=[
+        "gpt-4o-mini",
+        "groq/llama-3.3-70b-versatile",
+    ],
+)
+
+print("Model that answered:", response.model)
+print(response.choices[0].message.content)</pre>
+
+<div class="example-block">
+  <div class="label">Fallbacks Are Not Magic</div>
+  <p>
+    Define which errors are retryable, set a total timeout, cap retries, and choose fallbacks that can
+    satisfy the same contract. A fallback from a large reasoning model to a tiny fast model may keep the
+    endpoint alive while silently lowering answer quality. Availability policy must include a quality floor.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>Cost Tracking and Caching</h2>
+
+<h3>Measure Every Call</h3>
+<p>
+  LiteLLM normalizes token usage and maintains model pricing metadata, so a response can be translated
+  into an estimated dollar cost. The value becomes much more useful when the gateway attaches dimensions
+  such as <code>user</code>, team, feature, environment, and request ID.
+</p>
+
+<pre>from litellm import completion, completion_cost
+
+response = completion(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "Write a haiku about AI."}],
+)
+
+cost = completion_cost(completion_response=response)
+
+print("Input tokens: ", response.usage.prompt_tokens)
+print("Output tokens:", response.usage.completion_tokens)
+print(f"Cost: ${cost:.8f}")</pre>
+
+<pre>Input tokens:  14
+Output tokens: 19
+Cost:          $0.00001350</pre>
+
+<h3>Do Not Buy the Same Answer Twice</h3>
+<p>
+  Exact caching is ideal when the complete request is deterministic enough to reuse: same model,
+  messages, parameters, tool schema, and relevant tenant policy. In the notebook, the first call takes
+  <strong>1.45 seconds</strong>; the second identical call returns from a local cache in
+  <strong>0.0021 seconds</strong>, about <strong>700× faster</strong> with no second model charge.
+</p>
+
+<pre>import time
+import litellm
+from litellm import completion
+from litellm.caching import Cache
+
+litellm.cache = Cache(type="local")
+prompt = "What does LLM stand for? Answer in one line."
+
+start = time.time()
+first = completion(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": prompt}],
+    caching=True,
+)
+first_latency = time.time() - start
+
+start = time.time()
+second = completion(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": prompt}],
+    caching=True,
+)
+cached_latency = time.time() - start
+
+print(f"First call:  {first_latency:.2f}s")
+print(f"Cached call: {cached_latency:.4f}s")</pre>
+
+<table>
+  <thead>
+    <tr><th>Cache choice</th><th>Use it when</th><th>Main risk</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>In-memory</td><td>Local development and one-process demos</td><td>Lost on restart; not shared across replicas</td></tr>
+    <tr><td>Redis exact cache</td><td>Production replicas need shared deterministic reuse</td><td>Stale responses and cross-tenant key mistakes</td></tr>
+    <tr><td>Semantic cache</td><td>Near-duplicate questions should reuse answers</td><td>Similarity can merge requests whose details matter</td></tr>
+    <tr><td>No cache</td><td>Highly personal, time-sensitive, or side-effecting requests</td><td>Higher latency and cost</td></tr>
+  </tbody>
+</table>
+
+<p>
+  A safe cache key must include every input that can change the answer. At minimum, consider the model
+  alias or pinned version, system prompt, messages, temperature, tool definitions, tenant, permissions,
+  and knowledge-base version. Never let one user's private response become another user's cache hit.
+</p>
+
+<hr class="divider">
+
+<h2>Smart Routing With Stable Model Aliases</h2>
+<p>
+  A gateway should let applications request a <em>capability</em>, not hard-code infrastructure. The
+  notebook defines aliases such as <code>fast-cheap</code>, <code>smart-coding</code>, and
+  <code>balanced</code>. Each alias maps to a concrete provider deployment. Tomorrow, the mapping can
+  change without touching application code.
+</p>
+
+<pre>import os
+from litellm import Router
+
+model_list = [
+    {
+        "model_name": "fast-cheap",
+        "litellm_params": {
+            "model": "groq/llama-3.3-70b-versatile",
+            "api_key": os.getenv("GROQ_API_KEY"),
+        },
+    },
+    {
+        "model_name": "smart-coding",
+        "litellm_params": {
+            "model": "gpt-4o",
+            "api_key": os.getenv("OPENAI_API_KEY"),
+        },
+    },
+    {
+        "model_name": "balanced",
+        "litellm_params": {
+            "model": "gpt-4o-mini",
+            "api_key": os.getenv("OPENAI_API_KEY"),
+        },
+    },
+]
+
+router = Router(model_list=model_list)
+
+response = router.completion(
+    model="fast-cheap",
+    messages=[{"role": "user", "content": "Summarize: AI is changing software."}],
+)</pre>
+
+<h3>Routing and Load Balancing Are Different Decisions</h3>
+<p>
+  <strong>Routing</strong> chooses a model pool or capability class: coding versus summarization, premium
+  versus economy, EU-hosted versus US-hosted. <strong>Load balancing</strong> chooses one deployment
+  inside the selected pool. Keeping those decisions separate makes policies easier to reason about.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Strategy</th><th>Decision rule</th><th>Good fit</th><th>Caution</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>simple-shuffle</code></td><td>Distribute calls across eligible deployments</td><td>Simple traffic spreading and key pools</td><td>Does not optimize cost by itself</td></tr>
+    <tr><td><code>least-busy</code></td><td>Choose the deployment with least in-flight work</td><td>Concurrent traffic with uneven queues</td><td>Sequential demos may repeatedly select one target</td></tr>
+    <tr><td><code>latency-based-routing</code></td><td>Prefer deployments with better recent response time</td><td>Interactive applications</td><td>Needs exploration and enough samples</td></tr>
+    <tr><td>Cost-aware policy</td><td>Choose the cheapest deployment meeting quality/SLA rules</td><td>High-volume batch and budget-sensitive features</td><td>Must be explicitly configured and verified</td></tr>
+  </tbody>
+</table>
+
+<div class="example-block">
+  <div class="label">Notebook Correction</div>
+  <p>
+    The source labels one example “cost-based-routing,” but its actual constructor sets
+    <code>routing_strategy="simple-shuffle"</code>. Its output therefore rotates among premium, cheap,
+    and Groq deployments; it does <strong>not</strong> demonstrate cheapest-model selection. Treat comments
+    as intent and the executable configuration as truth.
+  </p>
+</div>
+
+<svg class="diagram-svg diagram-svg--light" viewBox="0 0 940 540" xmlns="http://www.w3.org/2000/svg" role="img"
+  aria-label="Gateway request lifecycle. A request first passes authentication, rate limits, and input policy, then checks the cache. A cache hit returns immediately. A cache miss is classified by task and routed to a model pool. The gateway selects a deployment based on health, latency, load, cost, and region, calls the provider, falls back on retryable failure, records tokens cost latency and errors, writes an eligible result to cache, and returns a normalized response.">
+  <defs>
+    <marker id="c23c-arr" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f46e5"/></marker>
+    <marker id="c23c-green" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#059669"/></marker>
+    <marker id="c23c-red" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#dc2626"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="470" y="24" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="16" font-weight="700">The Gateway Request Lifecycle</text>
+
+  <!-- Cache-hit fast path: one continuous outer route (right edge), never through boxes -->
+  <path d="M 430 68 L 430 48 L 922 48 L 922 355 L 168 355 L 168 372" fill="none" stroke="#059669" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#c23c-green)"/>
+  <text x="676" y="42" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="10.5">yes · return cached response</text>
+
+  <rect x="25" y="82" width="125" height="58" rx="8" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="87" y="107" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="12" font-weight="600">1. Request</text>
+  <text x="87" y="126" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="10">messages + metadata</text>
+  <line x1="150" y1="111" x2="182" y2="111" stroke="#4f46e5" marker-end="url(#c23c-arr)"/>
+
+  <rect x="188" y="73" width="150" height="76" rx="8" fill="#fef3c7" stroke="#d97706"/>
+  <text x="263" y="97" text-anchor="middle" fill="#92400e" font-family="system-ui" font-size="12" font-weight="600">2. Admission</text>
+  <text x="263" y="117" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">auth · quota · rate limit</text>
+  <text x="263" y="135" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">PII · injection · policy</text>
+  <line x1="338" y1="111" x2="371" y2="111" stroke="#4f46e5" marker-end="url(#c23c-arr)"/>
+
+  <polygon points="430,68 488,111 430,154 372,111" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="430" y="107" text-anchor="middle" fill="#1d4ed8" font-family="system-ui" font-size="11.5" font-weight="600">3. Cache</text>
+  <text x="430" y="123" text-anchor="middle" fill="#1d4ed8" font-family="system-ui" font-size="10">hit?</text>
+
+  <line x1="430" y1="154" x2="430" y2="193" stroke="#4f46e5" marker-end="url(#c23c-arr)"/>
+  <text x="441" y="178" fill="#4338ca" font-family="system-ui" font-size="10">no</text>
+  <rect x="348" y="199" width="164" height="72" rx="8" fill="#f5f3ff" stroke="#7c3aed"/>
+  <text x="430" y="224" text-anchor="middle" fill="#6d28d9" font-family="system-ui" font-size="12" font-weight="600">4. Classify &amp; route</text>
+  <text x="430" y="244" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">code · summary · general</text>
+  <text x="430" y="260" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="10">choose capability pool</text>
+
+  <line x1="512" y1="235" x2="568" y2="235" stroke="#4f46e5" marker-end="url(#c23c-arr)"/>
+  <rect x="574" y="189" width="180" height="92" rx="8" fill="#ecfdf5" stroke="#059669"/>
+  <text x="664" y="214" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="12" font-weight="600">5. Select deployment</text>
+  <text x="664" y="235" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5">health · load · latency</text>
+  <text x="664" y="253" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5">cost · region · data policy</text>
+  <text x="664" y="270" text-anchor="middle" fill="#047857" font-family="monospace" font-size="10">alias → concrete model</text>
+
+  <line x1="754" y1="235" x2="792" y2="235" stroke="#4f46e5" marker-end="url(#c23c-arr)"/>
+  <rect x="798" y="198" width="117" height="74" rx="8" fill="#ffffff" stroke="#4f46e5"/>
+  <text x="856" y="223" text-anchor="middle" fill="#4338ca" font-family="system-ui" font-size="12" font-weight="600">6. Provider</text>
+  <text x="856" y="243" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">OpenAI · Groq</text>
+  <text x="856" y="260" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">Claude · Gemini</text>
+
+  <!-- Retry loop under boxes 5 → 6 -->
+  <path d="M 820 272 Q 760 318 664 281" fill="none" stroke="#dc2626" stroke-width="1.4" stroke-dasharray="4,3" marker-end="url(#c23c-red)"/>
+  <text x="742" y="316" text-anchor="middle" fill="#b91c1c" font-family="system-ui" font-size="10.5">retryable failure → next fallback</text>
+
+  <!-- Provider → observe: down then into top of box 7 -->
+  <path d="M 856 272 L 856 330 L 695 330 L 695 372" fill="none" stroke="#059669" stroke-width="1.6" marker-end="url(#c23c-green)"/>
+  <rect x="574" y="372" width="242" height="76" rx="8" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="695" y="397" text-anchor="middle" fill="#1d4ed8" font-family="system-ui" font-size="12" font-weight="600">7. Observe &amp; account</text>
+  <text x="695" y="418" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5">tokens · cost · latency · errors</text>
+  <text x="695" y="436" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">user · team · app · request ID</text>
+
+  <line x1="574" y1="410" x2="509" y2="410" stroke="#4f46e5" marker-end="url(#c23c-arr)"/>
+  <rect x="348" y="372" width="155" height="76" rx="8" fill="#f8fafc" stroke="#94a3b8"/>
+  <text x="425" y="397" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="12" font-weight="600">8. Cache write</text>
+  <text x="425" y="418" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">only if eligible</text>
+  <text x="425" y="436" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">tenant-safe key + TTL</text>
+
+  <line x1="348" y1="410" x2="284" y2="410" stroke="#4f46e5" marker-end="url(#c23c-arr)"/>
+  <rect x="58" y="372" width="220" height="76" rx="8" fill="#ecfdf5" stroke="#059669"/>
+  <text x="168" y="397" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="12" font-weight="600">9. Normalized response</text>
+  <text x="168" y="418" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5">same schema whichever model answered</text>
+  <text x="168" y="436" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="10">choices[0].message.content</text>
+
+  <text x="470" y="512" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="11" font-style="italic">Fast-path cache hits skip model routing; every path still needs authentication, policy, and telemetry.</text>
+</svg>
+
+<hr class="divider">
+
+<h2>Load Balancing Across Deployments</h2>
+<p>
+  Multiple deployments can share one alias. They may be two API keys for the same model, the same model
+  in two regions, or roughly equivalent models from different providers. The router then chooses one
+  eligible deployment for each request.
+</p>
+
+<pre>from litellm import Router
+import os
+
+model_list = [
+    {
+        "model_name": "gpt-pool",
+        "litellm_params": {
+            "model": "gpt-4o",
+            "api_key": os.getenv("OPENAI_API_KEY"),
+        },
+        "model_info": {"id": "openai-gpt4o"},
+    },
+    {
+        "model_name": "gpt-pool",
+        "litellm_params": {
+            "model": "groq/llama-3.3-70b-versatile",
+            "api_key": os.getenv("GROQ_API_KEY"),
+        },
+        "model_info": {"id": "groq-llama-70b"},
+    },
+]
+
+router = Router(
+    model_list=model_list,
+    routing_strategy="simple-shuffle",
+)
+
+for request_number in range(1, 7):
+    response = router.completion(
+        model="gpt-pool",
+        messages=[{"role": "user", "content": f"Say hello, request {request_number}"}],
+    )
+    deployment = response._hidden_params.get("model_id", "unknown")
+    print(request_number, deployment, response._response_ms)</pre>
+
+<p>
+  In the captured notebook output, six requests were split across OpenAI and Groq, with Groq generally
+  returning faster. A latency-based run explored both deployments and then selected Groq for most later
+  calls as its measured response time stayed lower. This is adaptive behavior: early requests gather
+  evidence; later requests exploit it.
+</p>
+
+<hr class="divider">
+
+<h2>Observability: Every Call Becomes an Auditable Event</h2>
+<p>
+  A production gateway should emit a structured record for both success and failure. At minimum, record
+  the logical alias, concrete deployment, token counts, latency, cost, cache status, fallback count,
+  tenant or user attribution, and a correlation ID. Avoid logging raw prompts by default; prompts can
+  contain credentials, personal data, retrieved documents, and proprietary instructions.
+</p>
+
+<pre>import json
+import litellm
+from litellm import completion
+
+call_logs = []
+
+def log_success(kwargs, completion_response, start_time, end_time):
+    call_logs.append({
+        "model": kwargs.get("model"),
+        "input_tokens": completion_response.usage.prompt_tokens,
+        "output_tokens": completion_response.usage.completion_tokens,
+        "latency_sec": round((end_time - start_time).total_seconds(), 2),
+        "cost_usd": kwargs.get("response_cost", 0),
+        "user": kwargs.get("user", "anonymous"),
+    })
+
+def log_failure(kwargs, completion_response, start_time, end_time):
+    print("Call failed:", kwargs.get("exception"))
+
+litellm.success_callback = [log_success]
+litellm.failure_callback = [log_failure]
+
+completion(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "What is RAG?"}],
+    user="student_42",
+)
+
+print(json.dumps(call_logs, indent=2, default=str))</pre>
+
+<div class="example-block">
+  <div class="label">Verify the Telemetry Path</div>
+  <p>
+    The notebook's captured callback demo prints an empty list, <code>[]</code>. That means the intended
+    logger did not receive the event in that environment &mdash; likely because callback behavior or
+    registration differed for the installed LiteLLM version. In production, an empty audit trail is a
+    failed test, not a successful observability example. Pin versions, use the callback signature for that
+    release, and assert that a known request produces exactly one success or failure record.
+  </p>
+</div>
+
+<table>
+  <thead>
+    <tr><th>Field</th><th>Why it matters</th><th>Privacy-safe default</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Request / trace ID</td><td>Connect gateway, app, agent, and provider events</td><td>Always log</td></tr>
+    <tr><td>User / tenant / team</td><td>Quota, chargeback, abuse investigation</td><td>Log an internal ID, not an email</td></tr>
+    <tr><td>Alias and deployment</td><td>Explain routing and fallback outcomes</td><td>Always log</td></tr>
+    <tr><td>Tokens, cost, latency</td><td>Budget and performance management</td><td>Always log</td></tr>
+    <tr><td>Prompt and response</td><td>Debugging and quality review</td><td>Off or redacted; sample only with policy</td></tr>
+    <tr><td>Cache / fallback metadata</td><td>Measure savings and resilience</td><td>Always log</td></tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<h2>Integrating the Gateway With LangChain</h2>
+<p>
+  LangChain owns orchestration &mdash; prompts, chains, tools, agents, and RAG flow. LiteLLM owns the
+  provider abstraction and gateway policy. The <code>ChatLiteLLM</code> adapter lets a normal LangChain
+  pipeline use that backend without changing LCEL composition.
+</p>
+
+<pre>pip install langchain-litellm</pre>
+
+<pre>from langchain_litellm import ChatLiteLLM
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+
+llm = ChatLiteLLM(model="gpt-4o-mini", temperature=0.3)
+
+prompt = ChatPromptTemplate.from_messages([
+    ("system", "You are a helpful AI tutor named KrishGPT. Be concise."),
+    ("user", "{question}"),
+])
+
+chain = prompt | llm | StrOutputParser()
+
+answer = chain.invoke({"question": "What is an LLM Gateway in 3 bullets?"})
+print(answer)</pre>
+
+<p>
+  The orchestration does not change when the backend changes. Replace the model string with a different
+  LiteLLM-supported deployment or, preferably, a gateway alias. Prompts, parsers, retrievers, tools, and
+  downstream application code remain intact.
+</p>
+
+<h3>LangChain-Level Fallbacks</h3>
+<pre>from langchain_litellm import ChatLiteLLM
+
+primary = ChatLiteLLM(model="openai/fake-nonexistent-model")
+fallback_1 = ChatLiteLLM(model="gpt-4o-mini", temperature=0.2)
+fallback_2 = ChatLiteLLM(
+    model="groq/llama-3.3-70b-versatile",
+    temperature=0.2,
+)
+
+robust_llm = primary.with_fallbacks([fallback_1, fallback_2])</pre>
+
+<p>
+  This works, but decide where fallback policy should live. If every chain defines its own list, policy
+  fragments again. A shared gateway is usually the better home for organization-wide availability rules;
+  chain-level fallbacks are useful when a workflow has a special semantic requirement.
+</p>
+
+<hr class="divider">
+
+<h2>End-to-End Build: A Task-Aware Chatbot Router</h2>
+<p>
+  The notebook's capstone classifies each request into <code>code</code>, <code>summary</code>, or
+  <code>general</code>, assigns a different ordered model chain to each task, then returns not just the
+  answer but the model, latency, and estimated cost. It is a small example of policy-based routing.
+</p>
+
+<svg class="diagram-svg diagram-svg--light" viewBox="0 0 940 440" xmlns="http://www.w3.org/2000/svg" role="img"
+  aria-label="Task-aware chatbot router. A user query goes to a cheap classifier that labels it code, summary, or general. Code routes to GPT-4o then GPT-4o-mini then Groq; summary routes to GPT-4o-mini then Groq; general routes to Groq then GPT-4o-mini. The first successful model produces the answer, and the gateway attaches model used, latency, and cost metadata.">
+  <defs>
+    <marker id="c23d-arr" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4f46e5"/></marker>
+    <marker id="c23d-green" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#059669"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="470" y="29" text-anchor="middle" fill="#1f2937" font-family="system-ui" font-size="16" font-weight="700">Task-Aware Routing With Per-Task Fallback Chains</text>
+
+  <rect x="28" y="167" width="130" height="66" rx="9" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="93" y="194" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="12" font-weight="600">User query</text>
+  <text x="93" y="214" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">any task</text>
+  <line x1="158" y1="200" x2="204" y2="200" stroke="#4f46e5" marker-end="url(#c23d-arr)"/>
+
+  <rect x="210" y="150" width="155" height="100" rx="9" fill="#fef3c7" stroke="#d97706"/>
+  <text x="287" y="178" text-anchor="middle" fill="#92400e" font-family="system-ui" font-size="12.5" font-weight="700">Cheap classifier</text>
+  <text x="287" y="201" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="10.5">max_tokens=5</text>
+  <text x="287" y="223" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5">exactly one label</text>
+  <text x="287" y="240" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10">code · summary · general</text>
+
+  <path d="M 365 175 C 405 175, 405 94, 448 94" fill="none" stroke="#4f46e5" marker-end="url(#c23d-arr)"/>
+  <path d="M 365 200 C 405 200, 405 200, 448 200" fill="none" stroke="#4f46e5" marker-end="url(#c23d-arr)"/>
+  <path d="M 365 225 C 405 225, 405 306, 448 306" fill="none" stroke="#4f46e5" marker-end="url(#c23d-arr)"/>
+
+  <rect x="454" y="57" width="265" height="74" rx="8" fill="#f5f3ff" stroke="#7c3aed"/>
+  <text x="476" y="82" fill="#6d28d9" font-family="system-ui" font-size="12" font-weight="700">CODE</text>
+  <text x="476" y="105" fill="#374151" font-family="monospace" font-size="10.5">GPT-4o → GPT-4o-mini → Groq</text>
+  <text x="476" y="121" fill="#64748b" font-family="system-ui" font-size="10">quality first, then cheaper backups</text>
+
+  <rect x="454" y="163" width="265" height="74" rx="8" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="476" y="188" fill="#1d4ed8" font-family="system-ui" font-size="12" font-weight="700">SUMMARY</text>
+  <text x="476" y="211" fill="#374151" font-family="monospace" font-size="10.5">GPT-4o-mini → Groq</text>
+  <text x="476" y="227" fill="#64748b" font-family="system-ui" font-size="10">economy model is usually enough</text>
+
+  <rect x="454" y="269" width="265" height="74" rx="8" fill="#ecfdf5" stroke="#059669"/>
+  <text x="476" y="294" fill="#047857" font-family="system-ui" font-size="12" font-weight="700">GENERAL</text>
+  <text x="476" y="317" fill="#374151" font-family="monospace" font-size="10.5">Groq → GPT-4o-mini</text>
+  <text x="476" y="333" fill="#64748b" font-family="system-ui" font-size="10">latency first for conversational work</text>
+
+  <path d="M 719 94 C 760 94, 760 176, 790 176" fill="none" stroke="#059669" marker-end="url(#c23d-green)"/>
+  <line x1="719" y1="200" x2="790" y2="200" stroke="#059669" marker-end="url(#c23d-green)"/>
+  <path d="M 719 306 C 760 306, 760 224, 790 224" fill="none" stroke="#059669" marker-end="url(#c23d-green)"/>
+
+  <rect x="796" y="154" width="120" height="92" rx="9" fill="#ffffff" stroke="#059669" stroke-width="1.5"/>
+  <text x="856" y="179" text-anchor="middle" fill="#047857" font-family="system-ui" font-size="12" font-weight="700">Result</text>
+  <text x="856" y="201" text-anchor="middle" fill="#374151" font-family="system-ui" font-size="10.5">answer</text>
+  <text x="856" y="218" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">model · latency</text>
+  <text x="856" y="235" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">cost · task</text>
+
+  <rect x="210" y="380" width="610" height="35" rx="8" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="515" y="402" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10.5">Each route is an ordered chain: try the primary, continue only on failure, raise the last error if all fail.</text>
+</svg>
+
+<pre>import time
+from litellm import completion, completion_cost
+
+def classify_task(user_query: str) -> str:
+    response = completion(
+        model="groq/llama-3.3-70b-versatile",
+        messages=[{
+            "role": "user",
+            "content": (
+                "Classify the query into exactly one word: "
+                f"'code', 'summary', or 'general'. Query: {user_query}"
+            ),
+        }],
+        max_tokens=5,
+    )
+    return response.choices[0].message.content.strip().lower()
+
+def call_with_fallbacks(model_chain, messages):
+    last_error = None
+    for model in model_chain:
+        try:
+            return completion(model=model, messages=messages)
+        except Exception as exc:
+            print(f"{model} failed ({type(exc).__name__}); trying next")
+            last_error = exc
+    raise last_error
+
+def smart_chat(user_query: str):
+    task = classify_task(user_query)
+
+    routing = {
+        "code": [
+            "gpt-4o",
+            "gpt-4o-mini",
+            "groq/llama-3.3-70b-versatile",
+        ],
+        "summary": [
+            "gpt-4o-mini",
+            "groq/llama-3.3-70b-versatile",
+        ],
+        "general": [
+            "groq/llama-3.3-70b-versatile",
+            "gpt-4o-mini",
+        ],
+    }
+
+    model_chain = routing.get(task, routing["general"])
+    start = time.time()
+    response = call_with_fallbacks(
+        model_chain,
+        [{"role": "user", "content": user_query}],
+    )
+    latency = time.time() - start
+
+    try:
+        cost = f"${completion_cost(completion_response=response):.6f}"
+    except Exception:
+        cost = "n/a"
+
+    return {
+        "detected_task": task,
+        "model_used": response.model,
+        "answer": response.choices[0].message.content,
+        "latency_sec": round(latency, 2),
+        "cost_usd": cost,
+    }</pre>
+
+<table>
+  <thead>
+    <tr><th>Notebook query</th><th>Detected task</th><th>Model used</th><th>Latency</th><th>Cost</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Write a Fibonacci function</td><td><code>code</code></td><td>GPT-4o</td><td>8.25 s</td><td>$0.004380</td></tr>
+    <tr><td>Summarize attention in two sentences</td><td><code>summary</code></td><td>GPT-4o-mini</td><td>1.94 s</td><td>$0.000044</td></tr>
+    <tr><td>Tell me a fact about elephants</td><td><code>general</code></td><td>Groq Llama 3.3</td><td>0.69 s</td><td>n/a</td></tr>
+  </tbody>
+</table>
+
+<p>
+  This design is intentionally understandable, but a production classifier needs structured output,
+  an allow-list of labels, a confidence or fallback rule, and evaluation data. A free-form LLM response
+  can return punctuation or an unexpected label; <code>routing.get(task, routing["general"])</code> is the
+  final safety net, not a substitute for validation.
+</p>
+
+<hr class="divider">
+
+<h2>Centralized Guardrails at the Gateway Boundary</h2>
+<p>
+  The handwritten notes include <strong>guardrails</strong> among gateway capabilities, and the notebook
+  demonstrates PII redaction, prompt-injection detection, and forbidden-topic checks through LiteLLM
+  callbacks. This is a natural architectural fit: one pre-call policy can protect every application
+  before a prompt is sent to an external provider.
+</p>
+
+<pre>import re
+import litellm
+
+PII_PATTERNS = {
+    "EMAIL": r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",
+    "AADHAAR": r"\b\d{4}\s?\d{4}\s?\d{4}\b",
+    "PAN": r"\b[A-Z]{5}\d{4}[A-Z]\b",
+    "CREDIT_CARD": r"\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b",
+}
+
+def redact_pii(text: str):
+    detected = []
+    clean = text
+    for label, pattern in PII_PATTERNS.items():
+        matches = re.findall(pattern, clean)
+        if matches:
+            detected.append({"type": label, "count": len(matches)})
+            clean = re.sub(pattern, f"&lt;{label}_REDACTED&gt;", clean)
+    return clean, detected
+
+def pii_input_guardrail(kwargs):
+    for message in kwargs.get("messages", []):
+        if message.get("role") == "user":
+            clean, detected = redact_pii(message["content"])
+            if detected:
+                message["content"] = clean
+
+litellm.input_callback = [pii_input_guardrail]</pre>
+
+<div class="example-block">
+  <div class="label">Enforcement Must Be Tested, Not Assumed</div>
+  <p>
+    In the notebook's injection and forbidden-topic runs, detection messages print, yet the captured model
+    calls still return answers instead of reaching the surrounding <code>except GuardrailViolation</code>
+    branches. Callback exception semantics can differ across versions and execution paths. For a hard-block
+    policy, write an integration test proving that the provider receives zero requests after a violation.
+    Chapter 22 covers layered guardrail design in depth; the gateway adds a shared enforcement location.
+  </p>
+</div>
+
+<hr class="divider">
+
+<h2>SDK Mode vs Shared Proxy Mode</h2>
+<p>
+  The notebook examples import LiteLLM inside Python, which is excellent for learning and for one service.
+  An organization-wide gateway is usually a standalone proxy: applications call one internal endpoint,
+  while provider credentials, aliases, budgets, and routing policy stay on the gateway server.
+</p>
+
+<table>
+  <thead>
+    <tr><th>Mode</th><th>Shape</th><th>Best for</th><th>Trade-off</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>In-process SDK</td><td>Application imports <code>litellm</code></td><td>Notebooks, prototypes, one Python service</td><td>Policy and credentials are distributed with every app</td></tr>
+    <tr><td>Shared proxy</td><td>Apps call one OpenAI-compatible internal URL</td><td>Multiple languages, teams, and services</td><td>The gateway becomes critical infrastructure</td></tr>
+    <tr><td>Hybrid</td><td>Thin client SDK calls the shared proxy</td><td>Standard metadata, tracing, and developer ergonomics</td><td>Requires disciplined ownership of both layers</td></tr>
+  </tbody>
+</table>
+
+<pre># Illustrative LiteLLM proxy configuration
+model_list:
+  - model_name: fast-cheap
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_API_KEY
+
+  - model_name: balanced
+    litellm_params:
+      model: gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+router_settings:
+  routing_strategy: latency-based-routing
+  num_retries: 2
+  timeout: 30</pre>
+
+<p>
+  Treat gateway configuration as code: version it, review it, validate it in staging, and roll it out with
+  metrics. A typo in a shared alias can affect every AI feature at once, so the gateway deserves the same
+  change discipline as an API gateway or database schema.
+</p>
+
+<hr class="divider">
+
+<h2>Production Hardening Checklist</h2>
+
+<table>
+  <thead>
+    <tr><th>#</th><th>Practice</th><th>Why</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>Use Redis or another shared cache</td><td>Survives restarts and works across replicas</td></tr>
+    <tr><td>2</td><td>Apply per-user and per-team budgets</td><td>Stops one client from exhausting capacity or spend</td></tr>
+    <tr><td>3</td><td>Export logs and traces to an observability backend</td><td>Supports debugging, SLOs, quality review, and incident response</td></tr>
+    <tr><td>4</td><td>Issue virtual keys instead of sharing provider keys</td><td>Enables scoped access, revocation, and chargeback</td></tr>
+    <tr><td>5</td><td>Pin model versions where stability matters</td><td>Avoids silent provider-side behavior changes</td></tr>
+    <tr><td>6</td><td>Set timeouts, bounded retries, and circuit breakers</td><td>Prevents slow or unhealthy providers from consuming all workers</td></tr>
+    <tr><td>7</td><td>Redact sensitive data before logs and external calls</td><td>Reduces privacy and compliance exposure</td></tr>
+    <tr><td>8</td><td>Continuously health-check deployments</td><td>Removes unhealthy targets before user traffic discovers them</td></tr>
+    <tr><td>9</td><td>Run multiple gateway replicas with autoscaling</td><td>The gateway must not become the single point of failure it was meant to solve</td></tr>
+    <tr><td>10</td><td>Evaluate routing policy with real task datasets</td><td>Cheap and fast are useful only if answer quality remains acceptable</td></tr>
+  </tbody>
+</table>
+
+<h3>Popular Gateway Options</h3>
+<table>
+  <thead>
+    <tr><th>Gateway</th><th>Type</th><th>Typical strength</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>LiteLLM</strong></td><td>Open source</td><td>Broad provider support, SDK plus self-hosted proxy</td></tr>
+    <tr><td><strong>Portkey</strong></td><td>SaaS / open source</td><td>Observability, governance, and prompt operations</td></tr>
+    <tr><td><strong>Helicone</strong></td><td>SaaS / open source</td><td>OpenAI-compatible proxy with strong logging workflows</td></tr>
+    <tr><td><strong>Cloudflare AI Gateway</strong></td><td>Managed service</td><td>Edge integration, analytics, caching, and Cloudflare ecosystem fit</td></tr>
+    <tr><td><strong>Kong AI Gateway</strong></td><td>Enterprise gateway</td><td>AI traffic policy inside an established API gateway platform</td></tr>
+    <tr><td><strong>OpenRouter</strong></td><td>Managed model access</td><td>Many models through one account and API</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Choose based on deployment constraints, supported providers, data residency, authentication, policy
+  depth, observability, and operational ownership. “Supports many models” is the entry requirement;
+  reliability and governance determine whether the gateway is ready for production.
+</p>
+
+<hr class="divider">
+
+<h2>Key Takeaways</h2>
+<div class="example-block">
+  <div class="label">Remember These Five</div>
+  <p><strong>1. A gateway is a control plane, not merely a wrapper.</strong> The unified API is useful, but centralized routing, resilience, policy, accounting, and observability are the architectural payoff.</p>
+  <p><strong>2. Applications should request capabilities through stable aliases.</strong> Names such as <code>fast-cheap</code> and <code>smart-coding</code> decouple product code from provider and model churn.</p>
+  <p><strong>3. Route first, then load-balance.</strong> Choose the right capability pool for the task; only then select a healthy deployment by latency, load, region, cost, or another explicit policy.</p>
+  <p><strong>4. Fallbacks, caches, and callbacks need proof.</strong> Test the failure path, cache isolation, telemetry delivery, and hard-block semantics. A printed detection message or commented strategy name is not evidence that policy worked.</p>
+  <p><strong>5. The gateway becomes critical infrastructure.</strong> Run it redundantly, protect it with quotas and secrets management, version its configuration, monitor its SLOs, and keep a quality floor beneath every cost or latency optimization.</p>
+</div>
+
+<!-- Page Navigation -->
+<nav class="page-nav">
+    <a href="#chapter22">&larr; Chapter 22: Guardrails &mdash; Building Safe, Compliant AI Agents</a>
+    <span></span>
+</nav>
